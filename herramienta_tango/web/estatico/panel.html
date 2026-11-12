@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0B6E69">
+<title>Herramienta Tango</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --zinc: #E6EAED;
+    --papel: #FFFFFF;
+    --grafito: #1B242C;
+    --plomo: #5E6B76;
+    --linea: #CBD3D9;
+    --patina: #0B6E69;
+    --patina-oscura: #08524E;
+    --patina-suave: #DCEFED;
+    --oxido: #B3261E;
+    --oxido-suave: #FBE9E7;
+    --ambar: #8A5A00;
+    --ambar-suave: #FFF3D6;
+    --radio: 12px;
+    --fuente: "Segoe UI Variable Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--zinc); color: var(--grafito); font: 16px/1.5 var(--fuente); }
+  .contenedor { max-width: 980px; margin: 0 auto; padding: 28px 20px 56px; }
+
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 22px; }
+  .marca { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; margin: 0; }
+  .marca span { color: var(--patina); }
+  .version { color: var(--plomo); font-size: .9rem; font-variant-numeric: tabular-nums; }
+
+  .tarjeta { background: var(--papel); border: 1px solid var(--linea); border-radius: var(--radio); padding: 22px 24px; }
+  .tarjeta h2 { font-size: 1.05rem; margin: 0 0 4px; }
+  .tarjeta .bajada { color: var(--plomo); margin: 0 0 16px; font-size: .95rem; }
+
+  .grilla { display: grid; grid-template-columns: 1.15fr .85fr; gap: 16px; }
+  .columna { display: grid; gap: 16px; align-content: start; }
+  @media (max-width: 760px) { .grilla { grid-template-columns: 1fr; } }
+
+  /* Estado de la conexion: el elemento principal del panel */
+  .estado { display: flex; gap: 16px; align-items: flex-start; }
+  .luz { flex: none; width: 18px; height: 18px; border-radius: 50%; margin-top: 7px; background: var(--plomo); box-shadow: 0 0 0 6px #EDF1F3; }
+  .estado.ok .luz { background: #1E8E5A; box-shadow: 0 0 0 6px #DDF3E7; }
+  .estado.mal .luz { background: var(--oxido); box-shadow: 0 0 0 6px var(--oxido-suave); }
+  .estado.espera .luz { background: #C58A00; box-shadow: 0 0 0 6px var(--ambar-suave); }
+  .estado-titulo { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; margin: 0; }
+  .estado-detalle { color: var(--plomo); margin: 4px 0 0; overflow-wrap: anywhere; }
+  .acciones { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+
+  .boton {
+    font: inherit; font-weight: 600; font-size: .95rem; border-radius: 10px; padding: 10px 18px; min-height: 44px;
+    border: 1px solid var(--linea); background: var(--papel); color: var(--grafito); cursor: pointer;
+    text-decoration: none; display: inline-flex; align-items: center; justify-content: center;
+  }
+  .boton:hover { border-color: var(--plomo); }
+  .boton.primario { background: var(--patina); border-color: var(--patina); color: #fff; }
+  .boton.primario:hover { background: var(--patina-oscura); }
+  .boton.peligro { color: var(--oxido); }
+  .boton.peligro.confirmar { background: var(--oxido); border-color: var(--oxido); color: #fff; }
+  .boton:disabled { opacity: .55; cursor: default; }
+  :is(button, a, input):focus-visible { outline: 3px solid var(--patina); outline-offset: 2px; }
+
+  /* Celular */
+  .qr { display: grid; justify-items: center; gap: 14px; text-align: center; }
+  .qr-codigo { width: 200px; height: 200px; border: 1px solid var(--linea); border-radius: 10px; padding: 8px; background: #fff; }
+  .qr-codigo svg { width: 100%; height: 100%; display: block; }
+  .qr-codigo svg path { fill: var(--grafito); }
+  .url { font-size: 1.15rem; font-weight: 650; overflow-wrap: anywhere; margin: 0 0 4px; font-variant-numeric: tabular-nums; }
+  .chico { font-size: .88rem; color: var(--plomo); margin: 0; }
+
+  /* Ajustes */
+  .fila { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; }
+  .fila:not(:first-of-type) { border-top: 1px solid #E3E8EB; }
+  .fila[hidden] + .fila { border-top: 0; }
+  .fila-texto strong { display: block; font-weight: 600; }
+  .fila-texto span { display: block; color: var(--plomo); font-size: .88rem; }
+  .interruptor { position: relative; width: 50px; height: 28px; flex: none; }
+  .interruptor input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; z-index: 1; }
+  .interruptor span { position: absolute; inset: 0; border-radius: 999px; background: var(--linea); transition: background .15s; }
+  .interruptor span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; transition: transform .15s; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+  .interruptor input:checked + span { background: var(--patina); }
+  .interruptor input:checked + span::after { transform: translateX(22px); }
+  .interruptor input:focus-visible + span { outline: 3px solid var(--patina); outline-offset: 2px; }
+
+  /* Formulario de conexion */
+  .formulario { max-width: 560px; margin: 0 auto; }
+  .formulario.tarjeta { padding: 28px 30px; }
+  .formulario h2 { font-size: 1.4rem; letter-spacing: -0.01em; }
+  .campo { margin-bottom: 18px; }
+  .campo label { display: block; font-weight: 600; margin-bottom: 6px; }
+  .campo input[type=text], .campo input[type=password] {
+    width: 100%; font: inherit; padding: 12px 14px; border: 2px solid var(--linea); border-radius: 10px; background: #fff;
+  }
+  .campo input:focus { outline: none; border-color: var(--patina); box-shadow: 0 0 0 3px var(--patina-suave); }
+  .campo .ayuda { font-size: .88rem; color: var(--plomo); margin: 6px 0 0; }
+  .con-boton { display: flex; gap: 8px; }
+  .con-boton input { flex: 1; }
+  .marcar { display: flex; gap: 10px; align-items: center; margin: 4px 0 20px; }
+  .marcar input { width: 20px; height: 20px; accent-color: var(--patina); }
+
+  .mensaje { border-radius: 10px; padding: 12px 14px; margin: 0 0 16px; font-size: .95rem; }
+  .mensaje.error { background: var(--oxido-suave); color: var(--oxido); border: 1px solid #F1C4BF; }
+  .mensaje.bien { background: #DDF3E7; color: #145C3B; border: 1px solid #B8E3CB; }
+  .mensaje.info { background: var(--ambar-suave); color: var(--ambar); border: 1px solid #F0DDA8; }
+  [hidden] { display: none !important; }
+
+  .cerrado { text-align: center; padding: 80px 20px; }
+  .cerrado h2 { font-size: 1.5rem; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="contenedor">
+  <header>
+    <h1 class="marca">Herramienta <span>Tango</span></h1>
+    <div class="version" id="version"></div>
+  </header>
+
+  <div id="aviso-global" class="mensaje info" role="status" hidden></div>
+
+  <!-- Conexion (primera vez o al cambiar datos) -->
+  <section id="vista-conexion" hidden>
+    <form class="formulario tarjeta" id="form-conexion" novalidate>
+      <h2 id="titulo-conexion">Conectar con Tango</h2>
+      <p class="bajada" id="bajada-conexion">Se hace una sola vez. Después el programa arranca solo.</p>
+      <div id="msg-conexion" class="mensaje" hidden></div>
+
+      <div class="campo">
+        <label for="servidor">Dirección del servidor de Tango</label>
+        <input type="text" id="servidor" placeholder="http://NOMBRE-PC:17000" autocomplete="off" spellcheck="false">
+        <p class="ayuda">Es la que aparece en el navegador cuando abrís el Tango web. Podés pegarla entera.</p>
+      </div>
+
+      <div class="campo">
+        <label for="token">Token de Tango</label>
+        <div class="con-boton">
+          <input type="password" id="token" autocomplete="off" spellcheck="false" placeholder="XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX">
+          <button type="button" class="boton" id="ver-token" aria-pressed="false">Mostrar</button>
+        </div>
+        <p class="ayuda" id="ayuda-token">En el Tango web: tu usuario (arriba a la derecha) &gt; Desarrollador &gt; Generar &gt; Aceptar. Copiá el token y pegalo acá.</p>
+      </div>
+
+      <label class="marcar" id="marcar-inicio"><input type="checkbox" id="inicio-al-conectar" checked> Abrir el programa solo al prender la PC</label>
+
+      <div class="acciones">
+        <button type="submit" class="boton primario" id="conectar">Conectar</button>
+        <button type="button" class="boton" id="cancelar-conexion" hidden>Cancelar</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- Panel principal -->
+  <section id="vista-panel" hidden>
+    <div class="grilla">
+      <div class="columna">
+        <div class="tarjeta">
+          <div class="estado espera" id="estado">
+            <div class="luz" aria-hidden="true"></div>
+            <div>
+              <p class="estado-titulo" id="estado-titulo">Probando la conexión…</p>
+              <p class="estado-detalle" id="estado-detalle"></p>
+            </div>
+          </div>
+          <div class="acciones">
+            <a class="boton primario" href="/" target="_blank" rel="noopener">Abrir Stock por partida</a>
+            <button type="button" class="boton" id="probar">Probar conexión</button>
+          </div>
+        </div>
+
+        <div class="tarjeta">
+          <h2>Ajustes</h2>
+          <div class="fila" id="fila-inicio">
+            <div class="fila-texto">
+              <strong>Abrir al prender la PC</strong>
+              <span>El programa queda funcionando sin que nadie lo abra.</span>
+            </div>
+            <label class="interruptor"><input type="checkbox" id="inicio" aria-label="Abrir al prender la PC"><span></span></label>
+          </div>
+          <div class="fila">
+            <div class="fila-texto">
+              <strong id="act-titulo">Actualizaciones</strong>
+              <span id="act-detalle">Se instalan solas.</span>
+            </div>
+            <button type="button" class="boton" id="buscar-act">Buscar ahora</button>
+          </div>
+          <div class="fila">
+            <div class="fila-texto">
+              <strong>Servidor y token</strong>
+              <span id="servidor-actual"></span>
+            </div>
+            <button type="button" class="boton" id="cambiar">Cambiar</button>
+          </div>
+          <div class="fila">
+            <div class="fila-texto">
+              <strong>Cerrar el programa</strong>
+              <span>Nadie va a poder consultar desde el celular hasta que se vuelva a abrir.</span>
+            </div>
+            <button type="button" class="boton peligro" id="cerrar">Cerrar</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="columna">
+        <div class="tarjeta">
+          <h2>Desde el celular</h2>
+          <p class="bajada">Escaneá el código con la cámara. El celular tiene que estar en el Wi-Fi de la oficina.</p>
+          <div class="qr">
+            <div class="qr-codigo" id="qr" role="img" aria-label="Código QR para abrir la consulta en el celular"></div>
+            <div>
+              <p class="url" id="url-celular"></p>
+              <p class="chico" id="otras-urls"></p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="vista-cerrado" class="cerrado" hidden>
+    <h2>El programa está cerrado</h2>
+    <p class="chico">Para volver a abrirlo, abrí <strong>HerramientaTango.exe</strong> desde su carpeta.</p>
+  </section>
+</div>
+
+<script src="qrcode.js"></script>
+<script>
+(() => {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  let sis = null;            // ultimo estado recibido
+  let versionInicial = null;
+  let editando = false;      // formulario de conexion abierto por el usuario
+  let cerrado = false;
+
+  async function api(ruta, datos) {
+    const op = datos === undefined ? { cache: "no-store" } : {
+      method: "POST", cache: "no-store",
+      headers: { "Content-Type": "application/json", "X-Herramienta-Tango": "1" },
+      body: JSON.stringify(datos),
+    };
+    const r = await fetch(ruta, op);
+    return r.json();
+  }
+
+  function mostrar(vista) {
+    for (const v of ["conexion", "panel", "cerrado"]) $("vista-" + v).hidden = v !== vista;
+  }
+
+  function mensaje(el, tipo, texto) {
+    el.className = "mensaje " + tipo;
+    el.textContent = texto;
+    el.hidden = !texto;
+  }
+
+  // ------------------------------------------------------------ dibujo
+  const TEXTOS_TANGO = {
+    ok: ["Conectado a Tango", ""],
+    sin_conexion: ["Sin conexión con Tango", ""],
+    token_invalido: ["Tango rechazó el token", "Generá uno nuevo en Tango y cargalo en Ajustes > Servidor y token."],
+    sin_configurar: ["Falta configurar", ""],
+  };
+
+  function dibujar() {
+    if (!sis || cerrado) return;
+    $("version").textContent = "Versión " + sis.version;
+
+    if (!sis.configurado || editando) {
+      mostrar("conexion");
+      const cambio = sis.configurado;
+      $("titulo-conexion").textContent = cambio ? "Cambiar servidor o token" : "Conectar con Tango";
+      $("bajada-conexion").textContent = cambio
+        ? "Si solo cambiás la dirección, podés dejar el token vacío."
+        : "Se hace una sola vez. Después el programa arranca solo.";
+      $("cancelar-conexion").hidden = !cambio;
+      $("marcar-inicio").hidden = cambio || !sis.inicio_automatico_disponible;
+      if (!$("servidor").value) $("servidor").value = sis.servidor || "";
+      return;
+    }
+    mostrar("panel");
+
+    // Estado de Tango
+    const t = sis.tango || {};
+    const caja = $("estado");
+    caja.className = "estado " + (t.estado === "ok" ? "ok" : t.revisado ? "mal" : "espera");
+    if (!t.revisado) {
+      $("estado-titulo").textContent = "Probando la conexión…";
+      $("estado-detalle").textContent = sis.servidor;
+    } else {
+      const [titulo, extra] = TEXTOS_TANGO[t.estado] || ["Estado desconocido", ""];
+      $("estado-titulo").textContent = titulo;
+      $("estado-detalle").textContent = t.estado === "ok"
+        ? `${sis.servidor} · ${t.mensaje}`
+        : (extra || t.mensaje);
+    }
+
+    // Celular
+    const ips = sis.direcciones || [];
+    const url = ips.length ? `http://${ips[0]}:${sis.puerto}` : "";
+    if ($("url-celular").textContent !== url) {
+      $("url-celular").textContent = url || "No se encontró la dirección de red de esta PC.";
+      $("qr").innerHTML = "";
+      if (url && window.qrcode) {
+        const q = qrcode(0, "M"); q.addData(url); q.make();
+        $("qr").innerHTML = q.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
+      }
+    }
+    $("otras-urls").textContent = ips.length > 1
+      ? "Si no abre, probá con: " + ips.slice(1).map(ip => `http://${ip}:${sis.puerto}`).join("  o  ")
+      : "Guardala como acceso directo en la pantalla de inicio del celular.";
+
+    // Ajustes
+    $("fila-inicio").hidden = !sis.inicio_automatico_disponible;
+    $("inicio").checked = !!sis.inicio_automatico;
+    $("servidor-actual").textContent = sis.servidor || "Sin configurar";
+
+    const a = sis.actualizacion;
+    const det = $("act-detalle");
+    if (!a || a.estado === "desactivado") {
+      $("act-titulo").textContent = "Actualizaciones desactivadas";
+      det.textContent = "Se activan en config.ini.";
+      $("buscar-act").hidden = true;
+    } else {
+      $("buscar-act").hidden = false;
+      const textos = {
+        sin_revisar: ["Actualizaciones", "Todavía no se revisó."],
+        al_dia: ["Al día", "Las versiones nuevas se instalan solas."],
+        disponible: [`Hay una versión nueva: ${a.version_disponible}`, a.automatica ? "Se instala sola en unos minutos." : "Se instala desde Buscar ahora."],
+        instalando: [`Instalando la versión ${a.version_disponible}`, "El programa se reinicia solo en unos segundos."],
+        reiniciando: [`Reiniciando con la versión ${a.version_disponible}`, "La página vuelve sola."],
+        error: ["No se pudo revisar", a.mensaje],
+      };
+      const [titulo, texto] = textos[a.estado] || ["Actualizaciones", a.mensaje || ""];
+      $("act-titulo").textContent = titulo;
+      det.textContent = texto;
+    }
+  }
+
+  // ------------------------------------------------------------ estado periodico
+  async function refrescar() {
+    if (cerrado) return;
+    try {
+      const d = await api("/api/sistema");
+      if (!d.ok) throw new Error(d.error);
+      if (versionInicial && d.version !== versionInicial) { location.reload(); return; }
+      versionInicial = versionInicial || d.version;
+      sis = d;
+      $("aviso-global").hidden = true;
+      dibujar();
+    } catch {
+      const instalando = sis && sis.actualizacion && ["instalando", "reiniciando"].includes(sis.actualizacion.estado);
+      mensaje($("aviso-global"), "info", instalando
+        ? "Reiniciando con la versión nueva… la página vuelve sola."
+        : "El programa no responde. Si lo cerraste, volvé a abrir HerramientaTango.exe.");
+    }
+  }
+
+  // ------------------------------------------------------------ conexion
+  $("ver-token").addEventListener("click", e => {
+    const campo = $("token");
+    const ver = campo.type === "password";
+    campo.type = ver ? "text" : "password";
+    e.currentTarget.textContent = ver ? "Ocultar" : "Mostrar";
+    e.currentTarget.setAttribute("aria-pressed", String(ver));
+  });
+
+  $("form-conexion").addEventListener("submit", async e => {
+    e.preventDefault();
+    const boton = $("conectar");
+    boton.disabled = true; boton.textContent = "Probando con Tango…";
+    mensaje($("msg-conexion"), "", "");
+    try {
+      const d = await api("/api/sistema/configurar", { servidor: $("servidor").value, token: $("token").value });
+      if (!d.ok) { mensaje($("msg-conexion"), "error", d.mensaje || d.error); return; }
+      if (!sis.configurado && $("inicio-al-conectar").checked && d.sistema.inicio_automatico_disponible) {
+        await api("/api/sistema/inicio-automatico", { activo: true });
+      }
+      $("token").value = "";
+      editando = false;
+      await refrescar();
+    } catch {
+      mensaje($("msg-conexion"), "error", "No se pudo hablar con el programa. ¿Sigue abierto?");
+    } finally {
+      boton.disabled = false; boton.textContent = "Conectar";
+    }
+  });
+
+  $("cambiar").addEventListener("click", () => {
+    editando = true; $("servidor").value = sis.servidor || ""; $("token").value = "";
+    mensaje($("msg-conexion"), "", ""); dibujar(); $("servidor").focus();
+  });
+  $("cancelar-conexion").addEventListener("click", () => { editando = false; dibujar(); });
+
+  // ------------------------------------------------------------ ajustes
+  $("probar").addEventListener("click", async e => {
+    const b = e.currentTarget; b.disabled = true; b.textContent = "Probando…";
+    try { const d = await api("/api/sistema/probar", {}); sis = d.sistema; dibujar(); }
+    finally { b.disabled = false; b.textContent = "Probar conexión"; }
+  });
+
+  $("inicio").addEventListener("change", async e => {
+    const d = await api("/api/sistema/inicio-automatico", { activo: e.target.checked });
+    if (!d.ok) { e.target.checked = !e.target.checked; alert(d.mensaje); }
+  });
+
+  $("buscar-act").addEventListener("click", async e => {
+    const b = e.currentTarget; b.disabled = true; b.textContent = "Buscando…";
+    await api("/api/sistema/buscar-actualizacion", {});
+    setTimeout(async () => { await refrescar(); b.disabled = false; b.textContent = "Buscar ahora"; }, 2500);
+  });
+
+  let confirmarHasta = 0;
+  $("cerrar").addEventListener("click", async e => {
+    const b = e.currentTarget;
+    if (Date.now() > confirmarHasta) {
+      confirmarHasta = Date.now() + 4000;
+      b.classList.add("confirmar"); b.textContent = "¿Cerrar? Tocá de nuevo";
+      setTimeout(() => { b.classList.remove("confirmar"); b.textContent = "Cerrar"; }, 4000);
+      return;
+    }
+    await api("/api/sistema/cerrar", {});
+    cerrado = true; mostrar("cerrado"); $("aviso-global").hidden = true;
+  });
+
+  refrescar();
+  setInterval(refrescar, 5000);
+})();
+</script>
+</body>
+</html>

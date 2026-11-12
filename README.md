@@ -21,11 +21,13 @@ herramienta_tango/
     modelos.py                 entidades con nombres claros (Articulo, SaldoPartida, Pedido...)
     servicio.py                puerta única hacia Tango, con caché
   web/
-    servidor.py                API propia + páginas
-    estatico/                  páginas para el celular
+    servidor.py                API propia + panel + páginas
+    estatico/                  panel de la PC y páginas para el celular
   config.py                    config.ini
   credenciales.py              token de Tango cifrado (DPAPI)
   actualizador.py              actualización automática desde los Releases
+  contexto.py                  estado del programa y acciones del panel
+  sistema.py                   Windows: inicio automático, avisos, red
   app.py                       arranque
 tests/                         pruebas (sin Tango real)
 ```
@@ -58,18 +60,18 @@ Si el antivirus marca el .exe como sospechoso (pasa a veces con los .exe hechos 
 
 ## Instalarlo en la PC de la oficina
 
-1. Descomprimí el zip en una carpeta fija, por ejemplo `C:\HerramientaTango`.
-2. Abrí `HerramientaTango.exe`. La primera vez te pide tres datos y los guarda:
-   - **Dirección del servidor de Tango**: la misma que se ve en el navegador al abrir el Tango web (por ejemplo `http://NOMBRE-PC:17000`).
-   - **Número de empresa**: aparece en la dirección del Tango web, `.../company/NUMERO/...`.
-   - **Token de Tango**: se genera en el Tango web, menú de usuario > Desarrollador > Generar > **Aceptar**.
-3. La primera vez, Windows pregunta si permite el acceso a la red: elegí **Permitir**. Si la red de la oficina figura como "Pública", marcá también esa opción.
-4. La ventana muestra las direcciones para abrir desde el celular, por ejemplo `http://192.168.0.20:8085`. Guardala como acceso directo en la pantalla de inicio del celular.
+1. Descomprimí el zip en una carpeta fija, por ejemplo `C:\HerramientaTango`, y abrí `HerramientaTango.exe`. No abre ninguna ventana negra: se abre el **panel** en el navegador.
+2. La primera vez, el panel pide dos datos y los prueba contra Tango antes de guardarlos:
+   - **Dirección del servidor de Tango**: la que se ve en el navegador al abrir el Tango web (se puede pegar entera).
+   - **Token de Tango**: en el Tango web, menú de usuario > Desarrollador > Generar > **Aceptar**.
+   - Dejá marcada la opción **Abrir el programa solo al prender la PC**.
+3. Si Windows pregunta si permite el acceso a la red, elegí **Permitir** (si la red figura como "Pública", marcá también esa opción).
+4. En el panel aparece un **código QR**: se escanea con el celular (conectado al Wi-Fi de la oficina) y abre la consulta de stock.
 
-Para que arranque solo al prender la PC: Windows + R, `shell:startup`, y pegá ahí un acceso directo al .exe.
+Si se vuelve a abrir el `.exe` con el programa ya funcionando, solo abre el panel. El panel (`http://127.0.0.1:8085/panel`) solo funciona desde la misma PC: desde otro equipo no se puede cambiar la configuración.
 
 Junto al .exe se crean (y **no** se suben al repositorio):
-- `config.ini`: servidor de Tango, empresa, puerto. Se edita con el Bloc de notas.
+- `config.ini`: ajustes finos (puerto, actualizaciones). La empresa viene fija en 3.
 - `token.dat`: el token de Tango **cifrado**. Solo lo puede leer el mismo usuario de Windows en la misma PC.
 - `herramienta_tango.log`: registro, por si algo falla.
 
@@ -97,10 +99,11 @@ Cerrá el programa, reemplazá el `.exe` por el de la última versión y abrilo.
 
 | Lo que se ve | Qué hacer |
 |---|---|
-| "Tango rechazó el token (401)" | Borrá `token.dat`, abrí el programa y pegá un token aceptado en Tango. |
-| "No se pudo conectar con Tango" | Revisá que el servidor de Tango esté prendido y que `servidor` en `config.ini` sea correcto. |
-| El celular no abre la página | El celular tiene que estar en el Wi-Fi de la oficina. Revisá el permiso del firewall. |
-| "No se pudo abrir el puerto 8085" | El programa ya está abierto en otra ventana, o cambiá `puerto` en `config.ini`. |
+| El panel dice "Tango rechazó el token" | Generá un token nuevo en Tango (Desarrollador > Generar > Aceptar) y cargalo en Ajustes > Servidor y token. |
+| El panel dice "Sin conexión con Tango" | Revisá que el servidor de Tango esté prendido y la dirección en Ajustes > Servidor y token. |
+| El celular no abre la página | El celular tiene que estar en el Wi-Fi de la oficina. Revisá el permiso del firewall. Si el panel muestra otras direcciones, probá con esas. |
+| Aviso "el puerto 8085 está ocupado" | Otro programa usa ese puerto: cambiá `puerto` en `config.ini`. |
+| Algo no funciona y no se ve por qué | Mirá `herramienta_tango.log` en la carpeta del programa. |
 
 ## Límites actuales
 
@@ -112,7 +115,7 @@ Cerrá el programa, reemplazá el `.exe` por el de la última versión y abrilo.
 
 ```
 python -m unittest discover -s tests      # pruebas
-python HerramientaTango.py --no-abrir     # correrlo sin generar el .exe
+python HerramientaTango.py                # correrlo sin generar el .exe (abre el panel)
 ```
 
 Solo usa la librería estándar de Python 3.10 o superior.

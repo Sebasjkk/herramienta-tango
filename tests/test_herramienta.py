@@ -13,10 +13,21 @@ import urllib.error
 import urllib.request
 from datetime import date
 
-from herramienta_tango.tango import procesos
+import tempfile
+from pathlib import Path
+from unittest import mock
+
+from herramienta_tango import config
+from herramienta_tango.contexto import Contexto
+from herramienta_tango.tango import TokenInvalido, procesos
 from herramienta_tango.tango.modelos import Articulo, Pedido, SaldoPartida
 from herramienta_tango.tango.servicio import ServicioTango
 from herramienta_tango.web.servidor import crear_servidor
+
+CFG = config.Config(servidor="http://tango-prueba:17000", company="3", timeout=5, puerto=0,
+                    vigencia_saldos=60, repo_actualizaciones="", actualizacion_automatica=False,
+                    actualizacion_cada_minutos=15)
+TOKEN_OK = "11111111-2222-3333-4444-555555555555"
 
 SALDO = {"ID_STA08": 7, "ID_STA11": 2091, "ID_STA22": 1, "PARTIDA": " 709 ",
          "NUMERO_DE_DESPACHO": "16073IC04087780K", "FECHA_DE_VENCIMIENTO": "2016-11-15T00:00:00",
@@ -91,10 +102,34 @@ class TestServicio(unittest.TestCase):
         self.assertEqual(cliente.llamadas[-1], (procesos.LIVE_VENTAS_DETALLE, date(2026, 10, 1), date(2026, 10, 31)))
 
 
+class ClienteConToken:
+    """Cliente falso para probar la configuracion: solo acepta TOKEN_OK."""
+
+    def __init__(self, servidor, company, token, timeout):
+        self.token = token
+
+    def listar(self, proceso, vista=""):
+        if self.token != TOKEN_OK:
+            raise TokenInvalido("401")
+        return []
+
+    def consulta_live(self, proceso, desde=None, hasta=None):
+        return [SALDO]
+
+
 class TestServidor(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.servidor = crear_servidor(ServicioTango(ClienteFalso()), 0)
+        cls.tmp = tempfile.TemporaryDirectory()
+        carpeta = Path(cls.tmp.name)
+        cls.parches = [mock.patch.object(config, "RUTA_CONFIG", carpeta / "config.ini"),
+                       mock.patch.object(config, "RUTA_TOKEN", carpeta / "token.dat"),
+                       mock.patch.dict("os.environ", {"HERRAMIENTA_TANGO_TOKEN": ""})]
+        for p in cls.parches:
+            p.start()
+        cls.contexto = Contexto(CFG, fabrica_cliente=ClienteConToken)
+        cls.contexto._servicio = ServicioTango(ClienteFalso())
+        cls.servidor = crear_servidor(cls.contexto, 0)
         cls.base = f"http://127.0.0.1:{cls.servidor.server_address[1]}"
         threading.Thread(target=cls.servidor.serve_forever, daemon=True).start()
 
@@ -102,6 +137,9 @@ class TestServidor(unittest.TestCase):
     def tearDownClass(cls):
         cls.servidor.shutdown()
         cls.servidor.server_close()
+        for p in cls.parches:
+            p.stop()
+        cls.tmp.cleanup()
 
     def _get(self, ruta):
         try:
@@ -109,6 +147,51 @@ class TestServidor(unittest.TestCase):
                 return r.status, r.read()
         except urllib.error.HTTPError as e:
             return e.code, e.read()
+
+    def _post(self, ruta, datos, encabezado=True):
+        pedido = urllib.request.Request(self.base + ruta, data=json.dumps(datos).encode(), method="POST",
+                                        headers={"Content-Type": "application/json",
+                                                 **({"X-Herramienta-Tango": "1"} if encabezado else {})})
+        try:
+            with urllib.request.urlopen(pedido) as r:
+                return r.status, json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            return e.code, json.loads(e.read())
+
+    def test_panel_y_estado_del_sistema(self):
+        estado, cuerpo = self._get("/panel")
+        self.assertEqual(estado, 200)
+        self.assertIn(b"Herramienta", cuerpo)
+        estado, cuerpo = self._get("/api/sistema")
+        datos = json.loads(cuerpo)
+        self.assertEqual(estado, 200)
+        self.assertTrue(datos["configurado"])
+
+    def test_post_sin_encabezado_se_rechaza(self):
+        estado, _ = self._post("/api/sistema/probar", {}, encabezado=False)
+        self.assertEqual(estado, 403)
+
+    def test_configurar_con_token_malo(self):
+        estado, datos = self._post("/api/sistema/configurar",
+                                   {"servidor": "tango-prueba:17000", "token": "99999999-2222-3333-4444-555555555555"})
+        self.assertEqual(estado, 400)
+        self.assertIn("rechazó", datos["mensaje"])
+        # No se guarda un token rechazado (si hay uno guardado, es el bueno de otra prueba)
+        if config.RUTA_TOKEN.exists():
+            self.assertEqual(config.RUTA_TOKEN.read_text().strip(), TOKEN_OK)
+
+    def test_configurar_sin_puerto(self):
+        estado, datos = self._post("/api/sistema/configurar", {"servidor": "tango-prueba", "token": TOKEN_OK})
+        self.assertEqual(estado, 400)
+        self.assertIn("puerto", datos["mensaje"])
+
+    def test_configurar_bien_guarda(self):
+        estado, datos = self._post("/api/sistema/configurar",
+                                   {"servidor": "http://tango-prueba:17000/company/3/menu", "token": TOKEN_OK})
+        self.assertEqual(estado, 200, datos)
+        self.assertEqual(datos["sistema"]["servidor"], "http://tango-prueba:17000")
+        self.assertTrue(config.RUTA_TOKEN.exists())
+        self.assertIn("tango-prueba:17000", config.RUTA_CONFIG.read_text(encoding="utf-8"))
 
     def test_partidas(self):
         estado, cuerpo = self._get("/api/stock/partidas")
@@ -132,10 +215,8 @@ class TestServidor(unittest.TestCase):
         self.assertFalse(json.loads(cuerpo)["ok"])
 
     def test_solo_lectura(self):
-        pedido = urllib.request.Request(self.base + "/api/stock/partidas", data=b"{}", method="POST")
-        with self.assertRaises(urllib.error.HTTPError) as ctx:
-            urllib.request.urlopen(pedido)
-        self.assertEqual(ctx.exception.code, 405)
+        estado, _ = self._post("/api/stock/partidas", {})
+        self.assertEqual(estado, 405)
 
     def test_consulta_inexistente(self):
         estado, _ = self._get("/api/no-existe")
@@ -144,3 +225,30 @@ class TestServidor(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestConfig(unittest.TestCase):
+    def test_normalizar_servidor(self):
+        n = config.normalizar_servidor
+        self.assertEqual(n("pc-tango:17000"), "http://pc-tango:17000")
+        self.assertEqual(n("http://pc-tango:17000/login-redirect/%7BABC%7D/-1"), "http://pc-tango:17000")
+        self.assertTrue(config.servidor_valido(n("pc-tango:17000")))
+        self.assertFalse(config.servidor_valido(n("pc-tango")))
+
+    def test_empresa_por_defecto(self):
+        self.assertEqual(config.DEFECTO["tango"]["company"], "3")
+
+
+class TestSinConfigurar(unittest.TestCase):
+    def test_tango_responde_503(self):
+        contexto = Contexto(CFG)
+        servidor = crear_servidor(contexto, 0)
+        threading.Thread(target=servidor.serve_forever, daemon=True).start()
+        try:
+            urllib.request.urlopen(f"http://127.0.0.1:{servidor.server_address[1]}/api/stock/partidas")
+            self.fail("tenia que fallar")
+        except urllib.error.HTTPError as e:
+            self.assertEqual(e.code, 503)
+        finally:
+            servidor.shutdown()
+            servidor.server_close()

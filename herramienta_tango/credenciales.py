@@ -7,14 +7,19 @@ Fuera de Windows (solo para pruebas) se guarda sin cifrar con permisos 600.
 
 from __future__ import annotations
 
-import getpass
 import logging
 import os
+import re
 
-from .config import RUTA_TOKEN
+from . import config
 
 log = logging.getLogger("herramienta_tango")
-LARGO_TOKEN = 36
+
+PATRON_TOKEN = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+
+
+def formato_valido(token: str) -> bool:
+    return bool(PATRON_TOKEN.match((token or "").strip()))
 
 
 def _dpapi(datos: bytes, cifrar: bool) -> bytes:
@@ -37,48 +42,26 @@ def _dpapi(datos: bytes, cifrar: bool) -> bytes:
         ctypes.windll.kernel32.LocalFree(salida.pbData)
 
 
-def _guardar(token: str) -> None:
-    datos = token.encode("utf-8")
+def guardar_token(token: str) -> None:
+    datos = token.strip().encode("utf-8")
     if os.name == "nt":
-        RUTA_TOKEN.write_bytes(_dpapi(datos, cifrar=True))
+        config.RUTA_TOKEN.write_bytes(_dpapi(datos, cifrar=True))
     else:
-        RUTA_TOKEN.write_bytes(datos)
-        os.chmod(RUTA_TOKEN, 0o600)
+        config.RUTA_TOKEN.write_bytes(datos)
+        os.chmod(config.RUTA_TOKEN, 0o600)
 
 
-def _leer() -> str | None:
-    if not RUTA_TOKEN.exists():
+def leer_token() -> str | None:
+    if os.environ.get("HERRAMIENTA_TANGO_TOKEN"):  # solo para pruebas
+        return os.environ["HERRAMIENTA_TANGO_TOKEN"].strip()
+    if not config.RUTA_TOKEN.exists():
         return None
     try:
-        datos = RUTA_TOKEN.read_bytes()
+        datos = config.RUTA_TOKEN.read_bytes()
         if os.name == "nt":
             datos = _dpapi(datos, cifrar=False)
-        return datos.decode("utf-8").strip()
+        token = datos.decode("utf-8").strip()
+        return token or None
     except Exception:
         log.warning("No se pudo leer token.dat (se guardó con otro usuario o en otra PC).")
         return None
-
-
-def _pedir() -> str:
-    print()
-    print("Hace falta el token de desarrollador de Tango.")
-    print("Se genera en el Tango web: menú de usuario > Desarrollador > Generar > Aceptar.")
-    while True:
-        token = getpass.getpass("Pegá el token (no se muestra al escribir) y apretá Enter: ").strip()
-        if len(token) == LARGO_TOKEN and token.count("-") == 4:
-            return token
-        print(f"  Ese token tiene {len(token)} caracteres; debería tener {LARGO_TOKEN} "
-              "(formato XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX). Probá de nuevo.")
-
-
-def obtener_token(forzar_nuevo: bool = False) -> str:
-    if os.environ.get("HERRAMIENTA_TANGO_TOKEN"):  # solo para pruebas
-        return os.environ["HERRAMIENTA_TANGO_TOKEN"].strip()
-    if not forzar_nuevo:
-        token = _leer()
-        if token:
-            return token
-    token = _pedir()
-    _guardar(token)
-    log.info("Token guardado cifrado en token.dat")
-    return token

@@ -239,11 +239,12 @@ class Actualizador:
 
 
 def reiniciar_con(ruta_exe: Path, argumentos: list[str]) -> None:
-    """Abre el .exe nuevo como un proceso independiente, en su propia ventana."""
+    """Abre el .exe nuevo como un proceso independiente."""
     import subprocess
 
     entorno = {k: v for k, v in os.environ.items() if not k.startswith(("_PYI", "_MEI"))}
     entorno["PYINSTALLER_RESET_ENVIRONMENT"] = "1"  # que no reuse la carpeta temporal del proceso viejo
-    flags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0)
+    # Proceso independiente y sin ventana (el .exe no usa consola)
+    flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
     subprocess.Popen([str(ruta_exe), *argumentos], cwd=str(ruta_exe.parent), env=entorno,
                      creationflags=flags, close_fds=True)

@@ -46,18 +46,19 @@ jobs:
         run: python -m pip install "pyinstaller==6.*"
 
       - name: Generar el exe
-        run: >
-          python -m PyInstaller --onefile --name HerramientaTango
-          --add-data "herramienta_tango/web/estatico;herramienta_tango/web/estatico"
-          HerramientaTango.py
+        run: |
+          python scripts/archivo_version.py ${{ env.VERSION }} version_info.txt
+          python -m PyInstaller --onefile --noconsole --name HerramientaTango --icon recursos/icono.ico --version-file version_info.txt --add-data "herramienta_tango/web/estatico;herramienta_tango/web/estatico" HerramientaTango.py
 
       - name: Probar que el exe arranca
         shell: pwsh
         run: |
-          $salida = & dist\HerramientaTango.exe --version
-          if ($LASTEXITCODE -ne 0) { throw "El exe no arranca (codigo $LASTEXITCODE)" }
-          if ($salida -notmatch [regex]::Escape($env:VERSION)) { throw "Version incorrecta: $salida" }
-          Write-Output $salida
+          $archivo = Join-Path $env:RUNNER_TEMP 'version.txt'
+          $p = Start-Process dist\HerramientaTango.exe -ArgumentList '--escribir-version', $archivo -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "El exe no arranca (codigo $($p.ExitCode))" }
+          $salida = Get-Content $archivo -Raw
+          if ($salida -ne $env:VERSION) { throw "Version incorrecta: $salida" }
+          Write-Output "Version del exe: $salida"
 
       - name: Probar la actualizacion automatica
         shell: pwsh

@@ -28,8 +28,8 @@ RUTA_LOG = CARPETA / "herramienta_tango.log"
 
 DEFECTO = {
     "tango": {
-        "servidor": "",
-        "company": "",
+        "servidor": "",          # se completa desde el panel la primera vez
+        "company": "3",
         "timeout_segundos": "30",
     },
     "programa": {
@@ -44,10 +44,11 @@ DEFECTO = {
 }
 
 COMENTARIO = """\
-; Configuracion de Herramienta Tango.
+; Configuracion de Herramienta Tango. Lo normal es configurarla desde el panel
+; (se abre en el navegador al iniciar el programa); este archivo es para ajustes finos.
 ; servidor: direccion del Tango (la misma que se usa en el navegador).
-; company: ID interno de la empresa (se ve en la URL del Tango web: /company/NUMERO/...).
-; puerto: puerto donde se abre la pagina para el celular.
+; company: ID interno de la empresa en Tango.
+; puerto: puerto donde se abren el panel y la pagina para el celular.
 ; vigencia_saldos_segundos: cuanto tiempo se reutiliza la consulta de saldos.
 ; actualizaciones: de que repositorio de GitHub se bajan las versiones nuevas,
 ;   si se instalan solas (si / no) y cada cuantos minutos se revisa.
@@ -67,60 +68,56 @@ class Config:
     actualizacion_cada_minutos: int
 
 
-def _preguntar_servidor() -> str:
-    print("Falta la dirección del servidor de Tango.")
-    print("Es la misma que se ve en el navegador al abrir el Tango web, por ejemplo http://NOMBRE-PC:17000")
-    while True:
-        valor = input("Dirección del servidor: ").strip().rstrip("/")
-        if valor and not valor.lower().startswith(("http://", "https://")):
-            valor = "http://" + valor
-        if valor.count(":") >= 2:  # esquema + puerto
-            # Si pegaron una URL completa del Tango web, quedarse con servidor y puerto
-            partes = valor.split("/")
-            return "/".join(partes[:3])
-        print("  Tiene que incluir el puerto, por ejemplo http://NOMBRE-PC:17000. Probá de nuevo.")
+def normalizar_servidor(texto: str) -> str:
+    """Acepta 'nombre-pc:17000', 'http://nombre-pc:17000' o una URL completa del Tango web."""
+    valor = (texto or "").strip()
+    if not valor:
+        return ""
+    if not valor.lower().startswith(("http://", "https://")):
+        valor = "http://" + valor
+    partes = valor.split("/")
+    return "/".join(partes[:3])
 
 
-def _preguntar_company() -> str:
-    print("Falta el número de empresa.")
-    print("Se ve en la dirección del Tango web: .../company/NUMERO/...")
-    while True:
-        valor = input("Número de empresa: ").strip()
-        if valor.isdigit():
-            return valor
-        print("  Tiene que ser un número. Probá de nuevo.")
+def servidor_valido(servidor: str) -> bool:
+    host = servidor.split("//", 1)[-1]
+    return bool(host) and ":" in host and host.rsplit(":", 1)[1].isdigit()
 
 
-def cargar() -> Config:
+def _leer() -> configparser.ConfigParser:
     cfg = configparser.ConfigParser()
     cfg.read_dict(DEFECTO)
     if RUTA_CONFIG.exists():
         cfg.read(RUTA_CONFIG, encoding="utf-8")
+    return cfg
 
-    cambio = not RUTA_CONFIG.exists()
-    if not cfg.get("tango", "servidor").strip():
-        print()
-        cfg.set("tango", "servidor", _preguntar_servidor())
-        cambio = True
-    if not cfg.get("tango", "company").strip():
-        print()
-        cfg.set("tango", "company", _preguntar_company())
-        cambio = True
-    if cambio:
+
+def _escribir(cfg: configparser.ConfigParser) -> None:
+    with open(RUTA_CONFIG, "w", encoding="utf-8") as f:
+        f.write(COMENTARIO)
+        cfg.write(f)
+
+
+def cargar() -> Config:
+    cfg = _leer()
+    if not RUTA_CONFIG.exists():
         try:
-            with open(RUTA_CONFIG, "w", encoding="utf-8") as f:
-                f.write(COMENTARIO)
-                cfg.write(f)
-            print(f"Configuración guardada en {RUTA_CONFIG.name}")
+            _escribir(cfg)
         except OSError:
             pass
     return Config(
-        servidor=cfg.get("tango", "servidor"),
-        company=cfg.get("tango", "company"),
+        servidor=normalizar_servidor(cfg.get("tango", "servidor")),
+        company=cfg.get("tango", "company").strip() or "3",
         timeout=cfg.getint("tango", "timeout_segundos"),
         puerto=cfg.getint("programa", "puerto"),
         vigencia_saldos=cfg.getint("programa", "vigencia_saldos_segundos"),
-        repo_actualizaciones=cfg.get("actualizaciones", "repositorio"),
+        repo_actualizaciones=cfg.get("actualizaciones", "repositorio").strip(),
         actualizacion_automatica=cfg.get("actualizaciones", "automatica").strip().lower() in ("si", "sí", "s", "true", "1"),
         actualizacion_cada_minutos=cfg.getint("actualizaciones", "cada_minutos"),
     )
+
+
+def guardar_servidor(servidor: str) -> None:
+    cfg = _leer()
+    cfg.set("tango", "servidor", servidor)
+    _escribir(cfg)
