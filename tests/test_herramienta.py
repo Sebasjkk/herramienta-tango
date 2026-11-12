@@ -20,7 +20,7 @@ from unittest import mock
 from herramienta_tango import config, credenciales
 from herramienta_tango.contexto import Contexto
 from herramienta_tango.tango import TokenInvalido, procesos
-from herramienta_tango.tango.modelos import Articulo, Pedido, SaldoPartida
+from herramienta_tango.tango.modelos import Articulo, Pedido, PrecioVigente, SaldoPartida
 from herramienta_tango.tango.servicio import ServicioTango
 from herramienta_tango.web.servidor import crear_servidor
 
@@ -43,6 +43,11 @@ PEDIDO = {"ID_GVA21": 1, "NRO_PEDIDO": " 00000-00000017", "CODIGO_CLIENTE": "CLI
           "FECHA_ENTR": None, "NRO_OC_COMP": "OC-123", "FECHA_O_COMP": None, "NOMBRE_SUC": "CENTRAL",
           "NOMBRE_LIS": "METCO", "TOTAL_PEDI": 10.5, "LEYENDA_1": "", "LEYENDA_2": "Urgente"}
 
+PRECIO = {"COD_ARTICULO": "0039812", "DESCRIPCION": "CORREA PRUEBA", "NRO_LISTA_DE_PRECIOS": 10,
+          "DESC_LISTA_DE_PRECIOS": "CLIENTE01", "PRECIO": 241.78, "MONEDA": False, "COD_CLIENTE": "CLI01",
+          "RAZON_SOCIAL": "CLIENTE PRUEBA S.A.", "FECHA_MODIFICACION": "2026-09-17T18:38:18",
+          "ID_STA11": 3655, "ID_GVA14": 660}
+
 
 class ClienteFalso:
     """Reemplaza al cliente HTTP: cuenta cuantas veces se le pidio cada proceso."""
@@ -52,7 +57,7 @@ class ClienteFalso:
 
     def consulta_live(self, proceso, desde=None, hasta=None):
         self.llamadas.append((proceso, desde, hasta))
-        return [SALDO]
+        return [PRECIO] if proceso == procesos.LIVE_PRECIOS_VIGENTES else [SALDO]
 
     def listar(self, proceso, vista=""):
         self.llamadas.append((proceso,))
@@ -79,6 +84,13 @@ class TestModelos(unittest.TestCase):
         self.assertEqual(p.numero, "00000-00000017")
         self.assertEqual(p.orden_compra_cliente, "OC-123")
         self.assertEqual(p.leyendas, ("Urgente",))
+
+    def test_precio_vigente(self):
+        p = PrecioVigente.desde_tango(PRECIO)
+        self.assertEqual((p.numero_lista, p.lista, p.precio, p.moneda), (10, "CLIENTE01", 241.78, "US$"))
+        self.assertEqual((p.codigo_cliente, p.modificado), ("CLI01", "2026-09-17"))
+        sin_nombre = PrecioVigente.desde_tango({"NRO_LISTA_DE_PRECIOS": 3, "MONEDA": True})
+        self.assertEqual((sin_nombre.lista, sin_nombre.moneda, sin_nombre.cliente), ("Lista 3", "$", ""))
 
     def test_campos_faltantes_no_rompen(self):
         s = SaldoPartida.desde_tango({})
@@ -114,7 +126,7 @@ class ClienteConToken:
         return []
 
     def consulta_live(self, proceso, desde=None, hasta=None):
-        return [SALDO]
+        return [PRECIO] if proceso == procesos.LIVE_PRECIOS_VIGENTES else [SALDO]
 
 
 class TestServidor(unittest.TestCase):
@@ -208,6 +220,17 @@ class TestServidor(unittest.TestCase):
         estado, cuerpo = self._get("/stock")
         self.assertEqual(estado, 200)
         self.assertIn(b"Stock por partida", cuerpo)
+
+    def test_precios(self):
+        estado, cuerpo = self._get("/api/precios")
+        datos = json.loads(cuerpo)
+        self.assertEqual(estado, 200)
+        self.assertEqual(datos["datos"][0]["precio"], 241.78)
+        estado, cuerpo = self._get("/precios")
+        self.assertEqual(estado, 200)
+        self.assertIn(b"Listas de precios", cuerpo)
+        _, menu = self._get("/")
+        self.assertIn(b"/precios", menu)
 
     def test_no_sale_de_la_carpeta_estatica(self):
         estado, _ = self._get("/../../config.py")

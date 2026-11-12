@@ -11,6 +11,7 @@ de la empresa consulte Tango sin conocer su API:
     GET /api/clientes
     GET /api/pedidos
     GET /api/listas-precios
+    GET /api/precios                 precios vigentes de todas las listas
     GET /api/ventas?desde=AAAA-MM-DD&hasta=AAAA-MM-DD
 
 Con ?refrescar=1 se saltea la cache. Las respuestas tienen la forma
@@ -97,6 +98,7 @@ def crear_rutas(contexto) -> dict[str, Callable[[dict, bool], tuple]]:
         "/api/clientes": lambda qs, f: s().clientes(f),
         "/api/pedidos": lambda qs, f: s().pedidos(f),
         "/api/listas-precios": lambda qs, f: s().listas_precios(f),
+        "/api/precios": lambda qs, f: s().precios(f),
         "/api/ventas": ventas,
     }
 

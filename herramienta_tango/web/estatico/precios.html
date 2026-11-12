@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0B6E69">
+<title>Listas de precios | Herramienta Tango</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --zinc: #E6EAED;      /* fondo */
+    --papel: #FFFFFF;     /* superficies */
+    --grafito: #1B242C;   /* texto */
+    --plomo: #5E6B76;     /* texto secundario */
+    --linea: #CBD3D9;     /* bordes */
+    --patina: #0B6E69;    /* interaccion */
+    --patina-suave: #DCEFED;
+    --oxido: #B3261E;     /* negativos */
+    --oxido-suave: #FBE9E7;
+    --radio: 10px;
+    --fuente: "Segoe UI Variable Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--zinc); color: var(--grafito);
+    font: 16px/1.45 var(--fuente);
+  }
+  .art-total, .lote-saldo, .estado { font-variant-numeric: tabular-nums; }
+  .contenedor { max-width: 720px; margin: 0 auto; padding: 0 14px 48px; }
+
+  /* Barra superior fija */
+  .barra {
+    position: sticky; top: 0; z-index: 5;
+    background: var(--zinc);
+    padding: 12px 0 10px;
+    border-bottom: 1px solid var(--linea);
+  }
+  .barra-sup { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.15rem; font-weight: 650; margin: 0; letter-spacing: -0.01em; white-space: nowrap; line-height: 1.2; }
+  h1 .marca { display: block; font-size: .75rem; font-weight: 600; color: var(--patina); letter-spacing: 0; text-decoration: none; }
+  h1 .marca:hover { text-decoration: underline; }
+  .estado { font-size: .82rem; color: var(--plomo); text-align: right; }
+  .estado button { margin-left: 6px; }
+
+  .buscador { position: relative; }
+  .buscador input {
+    width: 100%; font: inherit; font-size: 1.15rem;
+    padding: 14px 44px 14px 14px;
+    border: 2px solid var(--linea); border-radius: var(--radio);
+    background: var(--papel); color: var(--grafito);
+    -webkit-appearance: none; appearance: none;
+  }
+  .buscador input::-webkit-search-cancel-button, .buscador input::-webkit-search-decoration { -webkit-appearance: none; display: none; }
+  .buscador input:focus { outline: none; border-color: var(--patina); box-shadow: 0 0 0 3px var(--patina-suave); }
+  .limpiar {
+    position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+    width: 36px; height: 36px; border: 0; border-radius: 50%;
+    background: transparent; color: var(--plomo); font-size: 1.4rem; line-height: 1; cursor: pointer;
+  }
+  .limpiar[hidden] { display: none; }
+
+  .filtros { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }
+  select, .boton, .chip {
+    font: inherit; font-size: .9rem; min-height: 40px;
+    border-radius: 999px; border: 1px solid var(--linea);
+    background: var(--papel); color: var(--grafito); padding: 6px 14px; cursor: pointer;
+  }
+  select { padding-right: 30px; -webkit-appearance: none; appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, var(--plomo) 50%), linear-gradient(135deg, var(--plomo) 50%, transparent 50%);
+    background-position: calc(100% - 16px) 50%, calc(100% - 11px) 50%; background-size: 5px 5px; background-repeat: no-repeat; }
+  .chip { display: inline-flex; align-items: center; gap: 8px; user-select: none; }
+  .chip input { width: 18px; height: 18px; accent-color: var(--patina); margin: 0; }
+  .chip-neg[aria-pressed="true"] { background: var(--oxido); border-color: var(--oxido); color: #fff; }
+  .chip-neg .cant { font-weight: 650; }
+  .boton-texto { border: 0; background: none; color: var(--patina); font: inherit; font-size: .82rem; font-weight: 600; padding: 4px 2px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+  :is(button, select, input, .chip):focus-visible { outline: 3px solid var(--patina); outline-offset: 2px; }
+
+  /* Mensajes */
+  .aviso { margin: 22px 2px; color: var(--plomo); }
+  .aviso strong { color: var(--grafito); }
+  .aviso p { margin: 0 0 8px; }
+  .error { background: var(--oxido-suave); color: var(--oxido); border: 1px solid #F1C4BF; border-radius: var(--radio); padding: 12px 14px; margin-top: 16px; }
+  .resumen { font-size: .85rem; color: var(--plomo); margin: 14px 2px 8px; }
+
+
+  /* Listas */
+  .listas { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+  .lista a {
+    display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; align-items: center;
+    background: var(--papel); border: 1px solid var(--linea); border-radius: var(--radio);
+    padding: 14px; color: inherit; text-decoration: none;
+  }
+  .lista a:hover { border-color: var(--patina); }
+  .lista a:active { background: var(--patina-suave); }
+  .lista a:focus-visible { outline: 3px solid var(--patina); outline-offset: 2px; }
+  .lista .nombre { font-weight: 650; font-size: 1.05rem; overflow-wrap: anywhere; }
+  .lista .cant { grid-column: 2; grid-row: 1 / span 2; text-align: right; font-size: .85rem; color: var(--plomo); line-height: 1.2; }
+  .lista .cant b { display: block; font-size: 1.35rem; color: var(--grafito); font-variant-numeric: tabular-nums; }
+  .lista .quien { grid-column: 1; font-size: .85rem; color: var(--plomo); overflow-wrap: anywhere; }
+  h2 { font-size: .95rem; font-weight: 650; margin: 22px 2px 10px; }
+
+  /* Detalle de una lista */
+  .cabecera-lista { background: var(--papel); border: 1px solid var(--linea); border-radius: var(--radio); padding: 14px; margin-top: 14px; }
+  .cabecera-lista .nombre { font-size: 1.3rem; font-weight: 700; letter-spacing: -0.01em; }
+  .cabecera-lista p { margin: 4px 0 0; font-size: .88rem; color: var(--plomo); }
+  .precios { list-style: none; margin: 12px 0 0; padding: 0; background: var(--papel); border: 1px solid var(--linea); border-radius: var(--radio); overflow: hidden; }
+  .precio { display: grid; grid-template-columns: 1fr auto; gap: 1px 12px; padding: 11px 14px; }
+  .precio + .precio { border-top: 1px solid #E3E8EB; }
+  .precio .cod { font-size: .8rem; color: var(--plomo); }
+  .precio .desc { font-weight: 600; overflow-wrap: anywhere; line-height: 1.3; }
+  .precio .valor { grid-column: 2; grid-row: 1 / span 2; text-align: right; font-weight: 700; font-size: 1.1rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .precio .valor small { font-size: .78rem; font-weight: 600; color: var(--plomo); margin-right: 3px; }
+  .precio .valor.cero { color: var(--plomo); font-weight: 500; font-size: .9rem; }
+  .precio .meta { grid-column: 1 / -1; font-size: .78rem; color: var(--plomo); }
+  .precio .meta a { color: var(--patina); }
+  .articulo-en-listas .cod { font-size: .8rem; color: var(--plomo); }
+  .articulo-en-listas .nombre { font-size: 1.05rem; line-height: 1.25; overflow-wrap: anywhere; }
+  .articulo-en-listas .precios { margin-top: 10px; }
+
+  .mas { text-align: center; color: var(--plomo); font-size: .85rem; margin: 18px 0; }
+  .pie { margin-top: 28px; font-size: .78rem; color: var(--plomo); }
+  .actualizando { background: var(--patina-suave); color: var(--patina); border: 1px solid #B9DDD9;
+    border-radius: var(--radio); padding: 10px 14px; margin-top: 10px; font-size: .9rem; font-weight: 600; }
+  .actualizando[hidden] { display: none; }
+  .cargando { opacity: .55; transition: opacity .2s; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="contenedor">
+  <header class="barra">
+    <div class="barra-sup">
+      <h1><a class="marca" id="volver" href="/">‹ Menú</a><span id="titulo">Listas de precios</span></h1>
+      <div class="estado"><span id="estado">Consultando Tango…</span><button type="button" class="boton-texto" id="actualizar">Actualizar</button></div>
+    </div>
+    <div class="buscador">
+      <label for="q" style="position:absolute;left:-9999px">Buscar</label>
+      <input id="q" type="search" inputmode="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+             placeholder="Lista, cliente o artículo" enterkeyhint="search">
+      <button type="button" class="limpiar" id="limpiar" aria-label="Borrar búsqueda" hidden>×</button>
+    </div>
+  </header>
+
+  <div class="actualizando" id="actualizando" role="status" hidden></div>
+  <main id="resultados" aria-live="polite"></main>
+
+  <p class="pie">Solo lectura: los precios salen de la consulta «Precios vigentes a una fecha» de Tango y no se modifica nada. <span id="version"></span></p>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const ui = { q: $("q"), limpiar: $("limpiar"), resultados: $("resultados"), estado: $("estado"),
+               actualizar: $("actualizar"), titulo: $("titulo"), volver: $("volver") };
+  const MAX_FILAS = 120;
+  const MAX_ARTICULOS = 25;
+  const fmtPrecio = new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmt = new Intl.NumberFormat("es-AR");
+  const fmtHora = d => d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hour12: false });
+  const fmtFecha = iso => iso ? new Date(iso + "T00:00:00").toLocaleDateString("es-AR") : "";
+  const norm = s => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+  const sinCeros = s => s.replace(/^0+/, "");
+
+  let listas = [];            // [{nro, nombre, renglones:[...], quien:Set, conPrecio}]
+  let porNro = new Map();
+
+  function el(tag, clase, texto) {
+    const e = document.createElement(tag);
+    if (clase) e.className = clase;
+    if (texto !== undefined) e.textContent = texto;
+    return e;
+  }
+
+  // ---------------------------------------------------------------- datos
+  async function pedir(ruta, forzar) {
+    const r = await fetch(ruta + (forzar ? "?refrescar=1" : ""), { cache: "no-store" });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || "Error al consultar Tango.");
+    return d;
+  }
+
+  async function cargar(forzar) {
+    ui.resultados.classList.add("cargando");
+    ui.estado.textContent = "Consultando Tango…";
+    try {
+      const [precios, clientes] = await Promise.all([
+        pedir("/api/precios", forzar),
+        pedir("/api/clientes", forzar).catch(() => null),   // si falla, solo falta "quién la usa"
+      ]);
+      armar(precios.datos, clientes ? clientes.datos : []);
+      ui.estado.textContent = "Tango, " + fmtHora(new Date(precios.actualizado)) + " h";
+      render();
+    } catch (e) {
+      ui.estado.textContent = "Sin datos";
+      ui.resultados.replaceChildren(mensajeError(e.message === "Failed to fetch"
+        ? "No hay conexión con el programa de la PC. Revisá que el celular esté en el Wi-Fi de la oficina y que el programa siga abierto."
+        : e.message));
+    } finally {
+      ui.resultados.classList.remove("cargando");
+    }
+  }
+
+  function armar(precios, clientes) {
+    porNro = new Map();
+    const vistos = new Set();
+    for (const x of precios) {
+      // La consulta puede repetir un renglon identico: se muestra una sola vez
+      const clave = [x.numero_lista, x.codigo_articulo, x.precio, x.codigo_cliente].join("|");
+      if (vistos.has(clave)) continue;
+      vistos.add(clave);
+      if (!porNro.has(x.numero_lista)) {
+        porNro.set(x.numero_lista, { nro: x.numero_lista, nombre: x.lista, renglones: [], quien: new Set(), conPrecio: 0 });
+      }
+      const l = porNro.get(x.numero_lista);
+      const r = { art: x.codigo_articulo, desc: x.descripcion, precio: x.precio, moneda: x.moneda,
+                  cliente: x.cliente, modificado: x.modificado };
+      r._txt = norm(r.art + " " + r.desc);
+      r._art = sinCeros(norm(r.art));
+      l.renglones.push(r);
+      if (x.precio > 0) l.conPrecio++;
+      if (x.cliente) l.quien.add(x.cliente);
+    }
+    // Clientes que tienen asignada la lista en su ficha
+    const porNombre = new Map([...porNro.values()].map(l => [norm(l.nombre), l]));
+    for (const c of clientes) {
+      const l = porNombre.get(norm(c.lista_precios));
+      if (l && c.razon_social && c.habilitado !== false) l.quien.add(c.razon_social);
+    }
+    listas = [...porNro.values()];
+    for (const l of listas) {
+      l.renglones.sort((a, b) => a.desc.localeCompare(b.desc, "es") || a.art.localeCompare(b.art));
+      l._txt = norm(l.nombre + " " + [...l.quien].join(" "));
+    }
+    listas.sort((a, b) => b.conPrecio - a.conPrecio || a.nombre.localeCompare(b.nombre, "es"));
+  }
+
+  function mensajeError(texto) {
+    const d = el("div", "error");
+    d.append(el("p", "", texto));
+    const b = el("button", "boton-texto", "Volver a intentar");
+    b.type = "button"; b.addEventListener("click", () => cargar(true));
+    d.append(b);
+    return d;
+  }
+
+  // ---------------------------------------------------------------- navegacion
+  // #lista=10 abre una lista; sin nada, el listado. El boton Atras del celular vuelve.
+  function listaActual() {
+    const m = location.hash.match(/^#lista=(-?\d+)/);
+    return m ? porNro.get(Number(m[1])) : null;
+  }
+
+  function coincide(r, tokens) {
+    return tokens.every(t => r._txt.includes(t) || r._art.includes(sinCeros(t)));
+  }
+
+  // ---------------------------------------------------------------- dibujo
+  function render() {
+    ui.limpiar.hidden = !ui.q.value;
+    if (!listas.length && !porNro.size) return;
+    const l = listaActual();
+    if (l) {
+      ui.titulo.textContent = l.nombre;
+      ui.volver.textContent = "‹ Listas";
+      ui.volver.href = "#";
+      ui.q.placeholder = "Buscar artículo en " + l.nombre;
+      dibujarLista(l);
+    } else {
+      ui.titulo.textContent = "Listas de precios";
+      ui.volver.textContent = "‹ Menú";
+      ui.volver.href = "/";
+      ui.q.placeholder = "Lista, cliente o artículo";
+      dibujarInicio();
+    }
+  }
+
+  function quienTexto(l) {
+    const q = [...l.quien];
+    if (!q.length) return "Sin clientes asignados";
+    return (q.length === 1 ? "Cliente: " : "Clientes: ") + (q.length > 3 ? q.slice(0, 3).join(", ") + ` y ${q.length - 3} más` : q.join(", "));
+  }
+
+  function tarjetaLista(l) {
+    const li = el("li", "lista");
+    const a = el("a");
+    a.href = "#lista=" + l.nro;
+    a.append(el("span", "nombre", l.nombre),
+             el("span", "quien", quienTexto(l)));
+    const c = el("span", "cant");
+    c.append(el("b", "", fmt.format(l.conPrecio)), l.conPrecio === 1 ? "precio" : "precios");
+    a.append(c);
+    li.append(a);
+    return li;
+  }
+
+  function dibujarInicio() {
+    const tokens = norm(ui.q.value).split(/\s+/).filter(Boolean);
+    const frag = document.createDocumentFragment();
+    const ls = tokens.length ? listas.filter(l => tokens.every(t => l._txt.includes(t))) : listas;
+
+    if (!tokens.length) {
+      const total = listas.reduce((a, l) => a + l.conPrecio, 0);
+      frag.append(el("p", "resumen", `${listas.length} listas con ${fmt.format(total)} precios cargados. Tocá una lista para ver sus artículos, o buscá un artículo para ver su precio en todas las listas.`));
+    }
+    if (ls.length) {
+      if (tokens.length) frag.append(el("h2", "", ls.length === 1 ? "1 lista" : `${ls.length} listas`));
+      const ul = el("ul", "listas");
+      for (const l of ls) ul.append(tarjetaLista(l));
+      frag.append(ul);
+    }
+
+    // Un articulo en todas las listas
+    if (tokens.length) {
+      const arts = new Map();
+      for (const l of listas) for (const r of l.renglones) {
+        if (!coincide(r, tokens)) continue;
+        if (!arts.has(r.art)) arts.set(r.art, { art: r.art, desc: r.desc, en: [] });
+        arts.get(r.art).en.push({ l, r });
+      }
+      const q = sinCeros(norm(ui.q.value));
+      const lista = [...arts.values()].sort((a, b) =>
+        (sinCeros(norm(a.art)) === q ? 0 : 1) - (sinCeros(norm(b.art)) === q ? 0 : 1) || a.desc.localeCompare(b.desc, "es"));
+      if (lista.length) {
+        frag.append(el("h2", "", lista.length === 1 ? "1 artículo" : `${lista.length} artículos`));
+        for (const g of lista.slice(0, MAX_ARTICULOS)) {
+          const cab = el("div", "cabecera-lista articulo-en-listas");
+          cab.append(el("div", "cod", g.art), el("div", "nombre", g.desc));
+          const ul = el("ul", "precios");
+          g.en.sort((a, b) => a.l.nombre.localeCompare(b.l.nombre, "es"));
+          for (const { l, r } of g.en) ul.append(filaPrecio(r, l, true));
+          cab.append(ul);
+          frag.append(cab);
+        }
+        if (lista.length > MAX_ARTICULOS) frag.append(el("p", "mas", `Se muestran ${MAX_ARTICULOS} de ${lista.length}. Escribí más para achicar la búsqueda.`));
+      }
+      if (!ls.length && !lista.length) {
+        const a = el("div", "aviso");
+        const p = el("p");
+        p.append("Nada coincide con ", el("strong", "", `«${ui.q.value.trim()}»`), ".");
+        a.append(p, el("p", "", "Probá con menos palabras o con parte del código."));
+        frag.append(a);
+      }
+    }
+    ui.resultados.replaceChildren(frag);
+  }
+
+  // enArticulo: la fila va dentro de la tarjeta de un articulo y muestra la lista en lugar del articulo
+  function filaPrecio(r, lista, enArticulo) {
+    const li = el("li", "precio");
+    if (enArticulo) li.append(el("span", "cod", "Lista " + lista.nro), el("span", "desc", lista.nombre));
+    else li.append(el("span", "cod", r.art), el("span", "desc", r.desc));
+    const v = el("span", "valor" + (r.precio > 0 ? "" : " cero"));
+    if (r.precio > 0) v.append(el("small", "", r.moneda), fmtPrecio.format(r.precio));
+    else v.textContent = "Sin precio";
+    li.append(v);
+    const meta = [];
+    if (r.cliente && lista.quien.size > 1) meta.push("Precio para " + r.cliente);
+    if (r.modificado) meta.push("Modificado el " + fmtFecha(r.modificado));
+    if (enArticulo || meta.length) {
+      const m = el("span", "meta", meta.join(" · "));
+      if (enArticulo) {
+        const a = el("a", "", "Ver lista completa");
+        a.href = "#lista=" + lista.nro;
+        if (meta.length) m.append(" · ");
+        m.append(a);
+      }
+      li.append(m);
+    }
+    return li;
+  }
+
+  function dibujarLista(l) {
+    const tokens = norm(ui.q.value).split(/\s+/).filter(Boolean);
+    const frag = document.createDocumentFragment();
+    const cab = el("div", "cabecera-lista");
+    cab.append(el("div", "nombre", l.nombre));
+    const sinPrecio = l.renglones.length - l.conPrecio;
+    cab.append(el("p", "", `Lista ${l.nro} · ${fmt.format(l.conPrecio)} artículos con precio` + (sinPrecio ? ` · ${fmt.format(sinPrecio)} sin precio` : "")));
+    cab.append(el("p", "", quienTexto(l)));
+    frag.append(cab);
+
+    const filas = tokens.length ? l.renglones.filter(r => coincide(r, tokens)) : l.renglones;
+    if (!filas.length) {
+      const a = el("div", "aviso");
+      const p = el("p");
+      p.append("Ningún artículo de ", el("strong", "", l.nombre), " coincide con ", el("strong", "", `«${ui.q.value.trim()}»`), ".");
+      a.append(p);
+      frag.append(a);
+    } else {
+      const ul = el("ul", "precios");
+      for (const r of filas.slice(0, MAX_FILAS)) ul.append(filaPrecio(r, l));
+      frag.append(ul);
+      if (filas.length > MAX_FILAS) frag.append(el("p", "mas", `Se muestran ${MAX_FILAS} de ${fmt.format(filas.length)}. Escribí para buscar un artículo.`));
+    }
+    ui.resultados.replaceChildren(frag);
+  }
+
+  // ---------------------------------------------------------------- eventos
+  let espera;
+  ui.q.addEventListener("input", () => { clearTimeout(espera); espera = setTimeout(render, 120); });
+  ui.limpiar.addEventListener("click", () => { ui.q.value = ""; render(); ui.q.focus(); });
+  ui.actualizar.addEventListener("click", () => cargar(true));
+  window.addEventListener("hashchange", () => { ui.q.value = ""; render(); window.scrollTo(0, 0); });
+
+  // ---------------------------------------------------------------- actualizaciones del programa
+  let versionInicial = null;
+  async function revisarVersion() {
+    const aviso = $("actualizando");
+    try {
+      const r = await fetch("/api/estado", { cache: "no-store" });
+      const e = await r.json();
+      if (!versionInicial) {
+        versionInicial = e.version;
+        $("version").textContent = "Versión " + e.version + ".";
+      } else if (e.version !== versionInicial) {
+        location.reload();
+        return;
+      }
+      const a = e.actualizacion || {};
+      if (a.estado === "instalando" || a.estado === "reiniciando") {
+        aviso.textContent = `Instalando la versión ${a.version_disponible}. La página vuelve sola en unos segundos.`;
+        aviso.hidden = false;
+      } else {
+        aviso.hidden = true;
+      }
+    } catch {
+      if (!aviso.hidden) aviso.textContent = "Reiniciando el programa con la versión nueva…";
+    }
+  }
+
+  cargar(false);
+  revisarVersion();
+  setInterval(revisarVersion, 15000);
+})();
+</script>
+</body>
+</html>

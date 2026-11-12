@@ -19,7 +19,7 @@ from typing import Callable, TypeVar
 from . import procesos
 from .cliente import ClienteTango
 from .modelos import (Articulo, Cliente, Deposito, ListaPrecios, Pedido,
-                      RenglonVenta, SaldoPartida)
+                      PrecioVigente, RenglonVenta, SaldoPartida)
 
 T = TypeVar("T")
 
@@ -55,6 +55,7 @@ class ServicioTango:
         "articulos": 600,
         "clientes": 600,
         "listas_precios": 600,
+        "precios": 300,
         "depositos": 3600,
     }
 
@@ -99,6 +100,13 @@ class ServicioTango:
     def listas_precios(self, forzar: bool = False) -> tuple[list[ListaPrecios], float]:
         return self._cacheado("listas_precios", "listas_precios", lambda: [
             ListaPrecios.desde_tango(x) for x in self._cliente.listar(procesos.LISTAS_PRECIOS)
+        ], forzar)
+
+    def precios(self, forzar: bool = False) -> tuple[list[PrecioVigente], float]:
+        """Precios vigentes de todas las listas (consulta Live 12742)."""
+        return self._cacheado("precios", "precios", lambda: [
+            PrecioVigente.desde_tango(x)
+            for x in self._cliente.consulta_live(procesos.LIVE_PRECIOS_VIGENTES)
         ], forzar)
 
     def ventas(self, desde: date, hasta: date, forzar: bool = False) -> tuple[list[RenglonVenta], float]:

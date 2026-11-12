@@ -203,6 +203,36 @@ class ListaPrecios:
 
 
 @dataclass(frozen=True)
+class PrecioVigente:
+    """Un precio de un articulo en una lista, tal como lo muestra la consulta
+    Precios vigentes a una fecha. Si el precio es propio de un cliente, viene el cliente."""
+    codigo_articulo: str
+    descripcion: str
+    numero_lista: int | None
+    lista: str
+    precio: float
+    moneda: str              # "$" (moneda corriente) o "US$" (extranjera)
+    codigo_cliente: str
+    cliente: str
+    modificado: str | None   # AAAA-MM-DD
+
+    @classmethod
+    def desde_tango(cls, x: dict) -> "PrecioVigente":
+        nro = x.get("NRO_LISTA_DE_PRECIOS")
+        return cls(
+            codigo_articulo=_txt(x.get("COD_ARTICULO")),
+            descripcion=_txt(x.get("DESCRIPCION")),
+            numero_lista=nro,
+            lista=_txt(x.get("DESC_LISTA_DE_PRECIOS")) or (f"Lista {nro}" if nro is not None else ""),
+            precio=_num(x.get("PRECIO")),
+            moneda="$" if _bool(x.get("MONEDA")) else "US$",
+            codigo_cliente=_txt(x.get("COD_CLIENTE")),
+            cliente=_txt(x.get("RAZON_SOCIAL")),
+            modificado=_fecha(x.get("FECHA_MODIFICACION")),
+        )
+
+
+@dataclass(frozen=True)
 class RenglonVenta:
     fecha: str | None
     tipo_comprobante: str

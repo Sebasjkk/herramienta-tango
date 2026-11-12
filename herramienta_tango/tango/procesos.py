@@ -23,3 +23,9 @@ LISTAS_PRECIOS = 984
 # Consultas Live (endpoint api/GetApiLiveQueryData)
 LIVE_SALDOS_POR_PARTIDA = 17686
 LIVE_VENTAS_DETALLE = 17839  # renglones de comprobantes de venta, por fecha
+LIVE_PRECIOS_VIGENTES = 12742  # Ventas > Consultas > Precios > Precios vigentes a una fecha
+
+# Pantalla de carga de precios (Ventas > Archivos > Actualizaciones > Precios de venta >
+# Actualizacion individual). Tabla GVA17. Para las listas por cliente muestra 0 en
+# lugar del precio que aparece en la consulta 12742; no se usa hasta aclarar por que.
+PRECIOS_ABM = 20091

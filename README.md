@@ -8,7 +8,8 @@ Hoy es **solo lectura**: no carga ni modifica nada en Tango.
 
 | Módulo | Estado | Dónde |
 |---|---|---|
-| Stock por partida | Listo | Página principal |
+| Stock por partida | Listo | Menú → Stock por partida |
+| Listas de precios | Solo lectura | Menú → Listas de precios |
 
 ## Cómo está armado
 
@@ -62,6 +63,7 @@ Todas responden `{"ok": true, "actualizado": "...", "datos": [...]}`. Con `?refr
 | `/api/clientes` | Clientes (código, razón social, CUIT, lista de precios) |
 | `/api/pedidos` | Pedidos de venta (encabezado, con OC del cliente) |
 | `/api/listas-precios` | Listas de precios |
+| `/api/precios` | Precios vigentes de todas las listas (artículo, lista, precio, moneda, cliente) |
 | `/api/ventas?desde=AAAA-MM-DD&hasta=AAAA-MM-DD` | Renglones de comprobantes de venta (máx. 366 días) |
 
 ## Cómo se genera el paquete
@@ -111,6 +113,7 @@ Ojo: cualquiera con permiso de escritura en este repositorio puede publicar una 
 
 - Stock por partida muestra solo artículos que llevan partidas.
 - No hay escritura en Tango.
+- Los precios se leen de la consulta «Precios vigentes a una fecha» (12742). La pantalla de carga de precios (20091) muestra 0 en las listas por cliente; hasta saber cuál de las dos usa Tango al facturar, no se cambian precios desde acá.
 - Funciona solo dentro de la red de la oficina, a propósito: el token de Tango viaja sin cifrar y la API propia no pide clave.
 
 ## Desarrollo
