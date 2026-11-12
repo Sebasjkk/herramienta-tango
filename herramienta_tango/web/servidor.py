@@ -24,6 +24,7 @@ Panel de la PC (solo desde la misma PC donde corre el programa):
     POST /api/sistema/probar          vuelve a probar la conexion con Tango
     POST /api/sistema/inicio-automatico   {"activo": true|false}
     POST /api/sistema/buscar-actualizacion
+    POST /api/sistema/accesos-directos   crea los accesos directos de nuevo
     POST /api/sistema/cerrar
 
 Los POST exigen el encabezado X-Herramienta-Tango, para que una pagina web
@@ -128,6 +129,15 @@ def crear_manejador(contexto):
         threading.Thread(target=contexto.actualizador.revisar, kwargs={"instalar": True}, daemon=True).start()
         return 200, {"ok": True, "mensaje": "Buscando actualizaciones..."}
 
+    def accion_accesos(datos: dict) -> tuple[int, dict]:
+        try:
+            lugares = sistema.crear_accesos_directos()
+        except Exception as e:
+            return 400, {"ok": False, "mensaje": f"No se pudieron crear: {e}"}
+        if not lugares:
+            return 400, {"ok": False, "mensaje": "Solo disponible con el programa instalado en Windows."}
+        return 200, {"ok": True, "mensaje": "Listo: hay un acceso directo en el escritorio y en el menú Inicio."}
+
     def accion_cerrar(datos: dict) -> tuple[int, dict]:
         threading.Timer(0.5, contexto.al_cerrar).start()
         return 200, {"ok": True, "mensaje": "El programa se está cerrando."}
@@ -137,6 +147,7 @@ def crear_manejador(contexto):
         "/api/sistema/probar": accion_probar,
         "/api/sistema/inicio-automatico": accion_inicio,
         "/api/sistema/buscar-actualizacion": accion_actualizacion,
+        "/api/sistema/accesos-directos": accion_accesos,
         "/api/sistema/cerrar": accion_cerrar,
     }
 

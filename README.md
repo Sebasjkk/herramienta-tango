@@ -12,8 +12,22 @@ Hoy es **solo lectura**: no carga ni modifica nada en Tango.
 
 ## Cómo está armado
 
+El programa corre con el **Python oficial** embebido (`pythonw.exe`, firmado por la Python Software Foundation) y su código son archivos `.py`. No hay un `.exe` propio: así los antivirus (Avast, Defender) no lo confunden con algo peligroso.
+
+Instalado en la PC queda así:
+
 ```
-HerramientaTango.py            punto de entrada (el que se convierte en .exe)
+C:\HerramientaTango\
+  Abrir Herramienta Tango.cmd    abre el programa (la primera vez crea los accesos directos)
+  python\                        Python oficial embebido (no cambia)
+  app\                           código del programa (es lo que se actualiza)
+  config.ini, token.dat, herramienta_tango.log   datos (no se tocan al actualizar)
+```
+
+Código en este repositorio:
+
+```
+HerramientaTango.pyw           punto de entrada
 herramienta_tango/
   tango/
     cliente.py                 única parte que habla con la API de Tango (solo GET)
@@ -22,17 +36,18 @@ herramienta_tango/
     servicio.py                puerta única hacia Tango, con caché
   web/
     servidor.py                API propia + panel + páginas
-    estatico/                  panel de la PC y páginas para el celular
-  config.py                    config.ini
+    estatico/                  panel de la PC, menú y módulos para el celular
+  config.py                    config.ini y carpetas
   credenciales.py              token de Tango cifrado (DPAPI)
   actualizador.py              actualización automática desde los Releases
   contexto.py                  estado del programa y acciones del panel
-  sistema.py                   Windows: inicio automático, avisos, red
-  app.py                       arranque
+  sistema.py                   Windows: instalación, inicio automático, accesos directos, avisos
+recursos/icono.ico             ícono de los accesos directos
+scripts/armar_paquete.ps1      arma el paquete para Windows (lo usa el workflow)
 tests/                         pruebas (sin Tango real)
 ```
 
-Para agregar algo nuevo: el dato se pide a `ServicioTango`, nunca directo a la API de Tango. Si Tango no lo trae todavía, se agrega primero el proceso en `procesos.py`, el modelo en `modelos.py` y el método en `servicio.py`.
+Para agregar algo nuevo: el dato se pide a `ServicioTango`, nunca directo a la API de Tango. Si Tango no lo trae todavía, se agrega primero el proceso en `procesos.py`, el modelo en `modelos.py` y el método en `servicio.py`. Cada módulo nuevo se suma a la lista `MODULOS` del menú (`web/estatico/index.html`).
 
 ## API propia (red local)
 
@@ -49,51 +64,37 @@ Todas responden `{"ok": true, "actualizado": "...", "datos": [...]}`. Con `?refr
 | `/api/listas-precios` | Listas de precios |
 | `/api/ventas?desde=AAAA-MM-DD&hasta=AAAA-MM-DD` | Renglones de comprobantes de venta (máx. 366 días) |
 
-## Cómo se genera el .exe
+## Cómo se genera el paquete
 
-Cada vez que se sube un cambio a `main`, GitHub Actions corre las pruebas, genera `HerramientaTango.exe` en una máquina Windows y lo publica en **Releases** con un número de versión nuevo.
+Cada vez que se sube un cambio a `main`, GitHub Actions corre las pruebas, arma el paquete en una máquina Windows (bajando el Python embebido oficial y verificando su firma), prueba que arranque, que cree los accesos directos y que se actualice solo, y lo publica en **Releases** con un número de versión nuevo.
 
-- Última versión: pestaña **Releases**, archivo `HerramientaTango.zip` (trae el `.exe` y este README). El release también publica el `.exe` suelto y su `.sha256`, que usa el actualizador.
-- Para generar de nuevo sin cambiar código: **Actions** > "Generar exe" > **Run workflow**.
-
-Si el antivirus marca el .exe como sospechoso (pasa a veces con los .exe hechos con PyInstaller), hay que agregarlo como excepción.
+- Primera instalación: pestaña **Releases**, archivo `HerramientaTango.zip`.
+- Para generar de nuevo sin cambiar código: **Actions** > "Generar paquete" > **Run workflow**.
 
 ## Instalarlo en la PC de la oficina
 
-1. Descomprimí el zip en una carpeta fija, por ejemplo `C:\HerramientaTango`, y abrí `HerramientaTango.exe`. No abre ninguna ventana negra: se abre el **panel** en el navegador.
-2. La primera vez, el panel pide dos datos y los prueba contra Tango antes de guardarlos:
+1. Bajá `HerramientaTango.zip` de la última versión. Antes de descomprimirlo: clic derecho > Propiedades > tildá **Desbloquear** > Aceptar (así Windows no avisa por cada archivo).
+2. Descomprimilo en `C:\` (queda `C:\HerramientaTango`) y abrí **Abrir Herramienta Tango**. No aparece ninguna ventana negra: se abre el **panel** en el navegador, y se crea el acceso directo **Herramienta Tango** en el escritorio y en el menú Inicio. De ahí en adelante se abre desde ese acceso directo.
+3. La primera vez, el panel pide dos datos y los prueba contra Tango antes de guardarlos:
    - **Dirección del servidor de Tango**: la que se ve en el navegador al abrir el Tango web (se puede pegar entera).
    - **Token de Tango**: en el Tango web, menú de usuario > Desarrollador > Generar > **Aceptar**.
    - Dejá marcada la opción **Abrir el programa solo al prender la PC**.
-3. Si Windows pregunta si permite el acceso a la red, elegí **Permitir** (si la red figura como "Pública", marcá también esa opción).
-4. En el panel aparece un **código QR**: se escanea con el celular (conectado al Wi-Fi de la oficina) y abre la consulta de stock.
+4. Si Windows pregunta si permite el acceso a la red (aparece como "Python"), elegí **Permitir**. Si la red figura como "Pública", marcá también esa opción.
+5. En el panel aparece un **código QR**: se escanea con el celular (conectado al Wi-Fi de la oficina) y abre el menú.
 
-Si se vuelve a abrir el `.exe` con el programa ya funcionando, solo abre el panel. El panel (`http://127.0.0.1:8085/panel`) solo funciona desde la misma PC: desde otro equipo no se puede cambiar la configuración.
-
-Junto al .exe se crean (y **no** se suben al repositorio):
-- `config.ini`: ajustes finos (puerto, actualizaciones). La empresa viene fija en 3.
-- `token.dat`: el token de Tango **cifrado**. Solo lo puede leer el mismo usuario de Windows en la misma PC.
-- `herramienta_tango.log`: registro, por si algo falla.
+Si se vuelve a abrir con el programa ya funcionando, solo abre el panel. El panel (`http://127.0.0.1:8085/panel`) solo funciona desde la misma PC.
 
 ## Actualizaciones automáticas
 
-El programa se actualiza solo. Cada 15 minutos consulta los Releases de este repositorio y, si hay una versión nueva:
+El programa se actualiza solo. Cada 15 minutos consulta los Releases de este repositorio (o en el momento, con **Buscar actualizaciones** en el panel) y, si hay una versión nueva:
 
-1. Descarga `HerramientaTango.exe` y verifica su SHA-256 contra `HerramientaTango.exe.sha256`. Si no coincide, no instala nada.
-2. Aparta el `.exe` en uso como `HerramientaTango.old.exe` y pone el nuevo en su lugar. Si algo falla, vuelve todo como estaba.
-3. Se reinicia con la versión nueva (se abre una ventana nueva y se cierra la vieja). El corte dura unos segundos.
+1. Descarga `HerramientaTango-app.zip` (solo el código, unos cientos de KB) y verifica su SHA-256 contra `HerramientaTango-app.zip.sha256`. Si no coincide, no instala nada.
+2. Lo descomprime aparte, comprueba que esté completo y cambia la carpeta `app` por la nueva (la anterior queda como `app.old` hasta el próximo arranque). Si algo falla, vuelve todo como estaba.
+3. Se reinicia solo. El corte dura unos segundos y el panel y el celular se recargan solos.
 
-La página del celular muestra un aviso mientras se instala y se recarga sola con la versión nueva. `config.ini` y `token.dat` no se tocan.
-
-En `config.ini`, sección `[actualizaciones]`: `automatica = no` hace que solo avise sin instalar, y `cada_minutos` cambia la frecuencia. La PC necesita salida a internet hacia github.com.
-
-Antes de publicar cada versión, el workflow prueba en Windows la actualización de punta a punta: arranca el `.exe`, le anuncia una versión nueva y verifica que se reemplace, se reinicie y vuelva a responder.
+`config.ini`, `token.dat` y el Python embebido no se tocan. En `config.ini`, sección `[actualizaciones]`: `automatica = no` hace que solo avise, y `cada_minutos` cambia la frecuencia. La PC necesita salida a internet hacia github.com.
 
 Ojo: cualquiera con permiso de escritura en este repositorio puede publicar una versión que la PC de la oficina va a instalar sola. Conviene tener activada la verificación en dos pasos en las cuentas de GitHub que tienen acceso.
-
-### Primera instalación o actualización a mano
-
-Cerrá el programa, reemplazá el `.exe` por el de la última versión y abrilo. No borres `config.ini` ni `token.dat`.
 
 ## Si algo falla
 
@@ -103,6 +104,7 @@ Cerrá el programa, reemplazá el `.exe` por el de la última versión y abrilo.
 | El panel dice "Sin conexión con Tango" | Revisá que el servidor de Tango esté prendido y la dirección en Ajustes > Servidor y token. |
 | El celular no abre la página | El celular tiene que estar en el Wi-Fi de la oficina. Revisá el permiso del firewall. Si el panel muestra otras direcciones, probá con esas. |
 | Aviso "el puerto 8085 está ocupado" | Otro programa usa ese puerto: cambiá `puerto` en `config.ini`. |
+| El antivirus bloquea algo | Agregá `C:\HerramientaTango` como excepción en el antivirus. |
 | Algo no funciona y no se ve por qué | Mirá `herramienta_tango.log` en la carpeta del programa. |
 
 ## Límites actuales
@@ -115,7 +117,7 @@ Cerrá el programa, reemplazá el `.exe` por el de la última versión y abrilo.
 
 ```
 python -m unittest discover -s tests      # pruebas
-python HerramientaTango.py                # correrlo sin generar el .exe (abre el panel)
+python HerramientaTango.pyw               # correrlo desde el código (abre el panel)
 ```
 
 Solo usa la librería estándar de Python 3.10 o superior.

@@ -114,6 +114,6 @@ class Contexto:
             "puerto": self.cfg.puerto,
             "direcciones": sistema.direcciones_locales(),
             "inicio_automatico": sistema.inicio_automatico_activo(),
-            "inicio_automatico_disponible": sistema.es_windows() and sistema.ruta_exe() is not None,
+            "inicio_automatico_disponible": sistema.es_windows() and sistema.instalacion() is not None,
             "actualizacion": act,
         }

@@ -1,9 +1,10 @@
 """
 Arranque de Herramienta Tango.
 
-El .exe no abre consola: al iniciarse abre el panel en el navegador. Si ya hay
-una copia corriendo, solo abre su panel. Los errores graves se muestran en una
-ventana de aviso de Windows y todo queda registrado en herramienta_tango.log.
+Corre con pythonw.exe (sin consola): al iniciarse abre el panel en el navegador.
+Si ya hay una copia corriendo, solo abre su panel. La primera vez crea los
+accesos directos. Los errores graves se muestran en una ventana de aviso de
+Windows y todo queda registrado en herramienta_tango.log.
 """
 
 from __future__ import annotations
@@ -20,15 +21,18 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from . import NOMBRE, VERSION, config, sistema
-from .actualizador import Actualizador, reiniciar_con
+from .actualizador import Actualizador, reiniciar
 from .contexto import Contexto
 from .web.servidor import CARPETA_ESTATICA, crear_servidor
 
 log = logging.getLogger("herramienta_tango")
 
 
+_HAY_CONSOLA = sys.stdout is not None
+
+
 def _configurar_salida() -> None:
-    # Sin consola (exe con --noconsole) stdout y stderr no existen: se descartan
+    # Con pythonw.exe no hay consola: stdout y stderr no existen y se descartan
     if sys.stdout is None:
         sys.stdout = open(os.devnull, "w", encoding="utf-8")
     if sys.stderr is None:
@@ -44,7 +48,7 @@ def _configurar_log() -> None:
         log.addHandler(archivo)
     except OSError:
         pass
-    if not getattr(sys, "frozen", False):
+    if _HAY_CONSOLA:
         consola = logging.StreamHandler(sys.stdout)
         consola.setFormatter(formato)
         log.addHandler(consola)
@@ -80,6 +84,10 @@ def main(argv: list[str] | None = None) -> int:
         sistema.aviso(NOMBRE, "El programa está incompleto: faltan las páginas web. Volvé a descargarlo.")
         return 1
 
+    inst = sistema.instalacion()
+    if inst:
+        os.chdir(inst.raiz)   # que la carpeta app no quede "en uso" y se pueda reemplazar al actualizar
+    primera_vez = not config.RUTA_CONFIG.exists()
     cfg = config.cargar()
 
     if _instancia_activa(cfg.puerto):
@@ -102,14 +110,22 @@ def main(argv: list[str] | None = None) -> int:
     def detener():
         threading.Thread(target=servidor.shutdown, daemon=True).start()
 
-    def al_instalar(ruta_exe: Path):
-        reinicio["exe"] = ruta_exe
+    def al_instalar():
+        reinicio["pedido"] = True
         detener()
 
     contexto.al_cerrar = detener
     actualizador = Actualizador(VERSION, cfg.repo_actualizaciones, cfg.actualizacion_cada_minutos,
-                                cfg.actualizacion_automatica, al_instalar)
+                                cfg.actualizacion_automatica, al_instalar,
+                                raiz=inst.raiz if inst else None)
     contexto.actualizador = actualizador
+
+    if primera_vez and inst:
+        try:
+            lugares = sistema.crear_accesos_directos()
+            log.info(f"Accesos directos creados en: {', '.join(lugares)}")
+        except Exception as e:
+            log.warning(f"No se pudieron crear los accesos directos: {e}")
 
     configurado = contexto.cargar_guardado()
     if configurado:
@@ -132,13 +148,13 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         servidor.server_close()
 
-    if reinicio.get("exe"):
+    if reinicio.get("pedido") and inst:
         log.info("Abriendo la versión nueva...")
         try:
-            reiniciar_con(reinicio["exe"], ["--no-abrir"])
+            reiniciar(inst.comando + ["--no-abrir"], inst.raiz)
         except OSError as e:
             log.error(f"No se pudo abrir la versión nueva: {e}")
             sistema.aviso(NOMBRE, "Se instaló una versión nueva pero no se pudo abrir sola.\n"
-                                  "Abrí HerramientaTango.exe de nuevo.")
+                                  "Abrí Herramienta Tango desde el acceso directo del escritorio.")
     log.info("Programa cerrado.")
     return 0

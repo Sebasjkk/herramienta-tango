@@ -3,22 +3,26 @@
 from __future__ import annotations
 
 import configparser
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 
+# Estructura instalada:
+#   <raiz>\python\        Python oficial (pythonw.exe, firmado)
+#   <raiz>\app\           codigo del programa (se reemplaza en cada actualizacion)
+#   <raiz>\config.ini, token.dat, herramienta_tango.log   datos (no se tocan al actualizar)
+# En desarrollo (sin carpeta app) todo vive en la carpeta del repositorio.
+CARPETA_CODIGO = Path(__file__).resolve().parent.parent
+
+
 def carpeta_programa() -> Path:
-    """Carpeta donde viven config.ini, token.dat y el log (junto al .exe)."""
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable).resolve().parent
-    return Path(__file__).resolve().parent.parent
+    """Carpeta donde viven config.ini, token.dat y el log."""
+    return CARPETA_CODIGO.parent if CARPETA_CODIGO.name == "app" else CARPETA_CODIGO
 
 
 def ruta_recurso(relativa: str) -> Path:
-    """Archivos empaquetados con el programa (paginas web)."""
-    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
-    return base / relativa
+    """Archivos que vienen con el codigo (paginas web, icono)."""
+    return CARPETA_CODIGO / relativa
 
 
 CARPETA = carpeta_programa()

@@ -186,6 +186,13 @@
             </div>
             <button type="button" class="boton" id="buscar-act">Buscar actualizaciones</button>
           </div>
+          <div class="fila" id="fila-accesos">
+            <div class="fila-texto">
+              <strong>Acceso directo</strong>
+              <span id="accesos-detalle">En el escritorio y en el menú Inicio. Si lo borraste, se crea de nuevo.</span>
+            </div>
+            <button type="button" class="boton" id="accesos">Crear</button>
+          </div>
           <div class="fila">
             <div class="fila-texto">
               <strong>Servidor y token</strong>
@@ -221,7 +228,7 @@
 
   <section id="vista-cerrado" class="cerrado" hidden>
     <h2>El programa está cerrado</h2>
-    <p class="chico">Para volver a abrirlo, abrí <strong>HerramientaTango.exe</strong> desde su carpeta.</p>
+    <p class="chico">Para volver a abrirlo, usá el acceso directo <strong>Herramienta Tango</strong> del escritorio.</p>
   </section>
 </div>
 
@@ -315,6 +322,7 @@
 
     // Ajustes
     $("fila-inicio").hidden = !sis.inicio_automatico_disponible;
+    $("fila-accesos").hidden = !sis.inicio_automatico_disponible;
     $("inicio").checked = !!sis.inicio_automatico;
     $("servidor-actual").textContent = sis.servidor || "Sin configurar";
 
@@ -361,7 +369,7 @@
       const instalando = sis && sis.actualizacion && ["instalando", "reiniciando"].includes(sis.actualizacion.estado);
       mensaje($("aviso-global"), "info", instalando
         ? "Reiniciando con la versión nueva… la página vuelve sola."
-        : "El programa no responde. Si lo cerraste, volvé a abrir HerramientaTango.exe.");
+        : "El programa no responde. Si lo cerraste, abrilo desde el acceso directo Herramienta Tango del escritorio.");
     }
   }
 
@@ -432,6 +440,13 @@
       }
     }
     buscando = false; dibujar();
+  });
+
+  $("accesos").addEventListener("click", async e => {
+    const b = e.currentTarget; b.disabled = true;
+    const d = await api("/api/sistema/accesos-directos", {});
+    $("accesos-detalle").textContent = d.mensaje || d.error;
+    b.disabled = false;
   });
 
   let confirmarHasta = 0;

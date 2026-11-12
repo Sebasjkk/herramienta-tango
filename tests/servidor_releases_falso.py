@@ -1,11 +1,11 @@
 """
-GitHub falso para probar la actualizacion automatica del .exe en el workflow.
+GitHub falso para probar la actualizacion automatica en el workflow.
 
 La primera consulta de "ultima version" anuncia la v99.0 (siempre mas nueva);
 las siguientes anuncian la v0.1, para que el programa reiniciado quede al dia
 y no entre en un ciclo de actualizaciones. Registra lo que le piden en un log.
 
-Uso: python servidor_releases_falso.py RUTA_EXE PUERTO RUTA_LOG
+Uso: python servidor_releases_falso.py RUTA_PAQUETE_ZIP PUERTO RUTA_LOG
 """
 
 import hashlib
@@ -14,11 +14,12 @@ import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-exe = Path(sys.argv[1]).read_bytes()
+paquete = Path(sys.argv[1]).read_bytes()
 puerto = int(sys.argv[2])
 log = Path(sys.argv[3])
-sha = hashlib.sha256(exe).hexdigest()
+sha = hashlib.sha256(paquete).hexdigest()
 consultas = {"n": 0}
+NOMBRE = "HerramientaTango-app.zip"
 
 
 class H(BaseHTTPRequestHandler):
@@ -40,14 +41,14 @@ class H(BaseHTTPRequestHandler):
             consultas["n"] += 1
             version = "v99.0" if consultas["n"] == 1 else "v0.1"
             datos = {"tag_name": version, "assets": [
-                {"name": "HerramientaTango.exe", "browser_download_url": base + "/exe"},
-                {"name": "HerramientaTango.exe.sha256", "browser_download_url": base + "/sha"},
+                {"name": NOMBRE, "browser_download_url": base + "/paquete"},
+                {"name": NOMBRE + ".sha256", "browser_download_url": base + "/sha"},
             ]}
             self._enviar(json.dumps(datos).encode(), "application/json")
-        elif self.path == "/exe":
-            self._enviar(exe)
+        elif self.path == "/paquete":
+            self._enviar(paquete)
         elif self.path == "/sha":
-            self._enviar(f"{sha}  HerramientaTango.exe".encode())
+            self._enviar(f"{sha}  {NOMBRE}".encode())
         else:
             self.send_response(404)
             self.end_headers()

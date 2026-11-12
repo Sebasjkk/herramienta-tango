@@ -1,0 +1,84 @@
+# Prueba el codigo, arma el paquete para Windows y lo publica como Release
+# cada vez que se sube un cambio a la rama main.
+#
+# El programa corre con el Python oficial embebido (pythonw.exe, firmado por la
+# Python Software Foundation). No hay un .exe propio: asi los antivirus no lo
+# confunden con algo peligroso.
+#
+# El release trae:
+#   HerramientaTango.zip                  todo, para la primera instalacion
+#   HerramientaTango-app.zip              solo el codigo: lo que baja el actualizador
+#   HerramientaTango-app.zip.sha256       para que el actualizador verifique la descarga
+name: Generar paquete
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: generar-paquete
+  cancel-in-progress: false
+
+env:
+  PYTHON_EMBEBIDO: "3.12.10"
+
+jobs:
+  generar:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Pruebas
+        run: python -m unittest discover -s tests -v
+
+      - name: Poner numero de version
+        shell: pwsh
+        run: |
+          $v = "1.${{ github.run_number }}"
+          $ruta = "herramienta_tango/__init__.py"
+          $codigo = Get-Content $ruta -Raw -Encoding utf8
+          $codigo = $codigo -replace 'VERSION = "[^"]*"', "VERSION = `"$v`""
+          Set-Content $ruta $codigo -Encoding utf8 -NoNewline
+          "VERSION=$v" >> $env:GITHUB_ENV
+
+      - name: Armar el paquete
+        shell: pwsh
+        run: ./scripts/armar_paquete.ps1 -PythonVersion $env:PYTHON_EMBEBIDO
+
+      - name: Probar que arranca con el Python embebido
+        shell: pwsh
+        run: |
+          $archivo = Join-Path $env:RUNNER_TEMP 'version.txt'
+          & dist\HerramientaTango\python\python.exe dist\HerramientaTango\app\HerramientaTango.pyw --escribir-version $archivo
+          if ($LASTEXITCODE -ne 0) { throw "No arranca (codigo $LASTEXITCODE)" }
+          $salida = Get-Content $archivo -Raw
+          if ($salida -ne $env:VERSION) { throw "Version incorrecta: $salida" }
+          Write-Output "Version: $salida"
+
+      - name: Probar instalacion y actualizacion automatica
+        shell: pwsh
+        run: ./tests/probar_actualizacion.ps1
+
+      - name: Publicar version
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION }}
+          name: Version ${{ env.VERSION }}
+          body: |
+            Generado desde el commit ${{ github.sha }}.
+
+            Primera instalacion: descargar HerramientaTango.zip, descomprimirlo y abrir "Abrir Herramienta Tango".
+            Las instalaciones existentes se actualizan solas con HerramientaTango-app.zip.
+          files: |
+            dist/HerramientaTango.zip
+            dist/HerramientaTango-app.zip
+            dist/HerramientaTango-app.zip.sha256
+          make_latest: true

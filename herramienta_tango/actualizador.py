@@ -1,21 +1,25 @@
 """
 Actualizacion automatica desde los Releases de GitHub.
 
+El programa instalado tiene esta forma:
+    <raiz>\\python\\   Python oficial (no cambia)
+    <raiz>\\app\\      codigo del programa (es lo que se actualiza)
+
 Cada cierto tiempo consulta la ultima version publicada. Si es mas nueva que
 la que esta corriendo:
 
-1. Descarga el .exe nuevo a "HerramientaTango.new.exe".
-2. Verifica su SHA-256 contra el archivo .sha256 publicado junto al release.
+1. Descarga "HerramientaTango-app.zip" (solo el codigo) a <raiz>\\app.new.zip.
+2. Verifica su SHA-256 contra el .sha256 publicado junto al release.
    Si no coincide, lo borra y no instala nada.
-3. Renombra el .exe en uso a "HerramientaTango.old.exe" (Windows permite
-   renombrar un .exe que esta corriendo, aunque no sobrescribirlo) y pone el
-   nuevo en su lugar. Si algo falla en este paso, vuelve todo como estaba.
-4. Avisa al programa para que se reinicie con el .exe nuevo.
+3. Lo descomprime en <raiz>\\app.new y comprueba que este completo.
+4. Renombra app -> app.old y app.new -> app. Si algo falla en este paso,
+   vuelve todo como estaba.
+5. Avisa al programa para que se reinicie con el codigo nuevo.
 
-Al arrancar, el programa borra el .old.exe que haya quedado.
+Al arrancar, el programa borra los restos (app.old, app.new, app.new.zip).
 
-Solo actua cuando corre como .exe (PyInstaller). Corriendo desde el codigo
-fuente informa si hay version nueva, pero no instala nada.
+Solo instala cuando corre instalado (con la carpeta app). Corriendo desde el
+codigo fuente informa si hay version nueva, pero no instala nada.
 """
 
 from __future__ import annotations
@@ -25,19 +29,23 @@ import json
 import logging
 import os
 import re
-import sys
+import shutil
+import subprocess
 import threading
 import time
 import urllib.request
-from dataclasses import dataclass, field
+import zipfile
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
 log = logging.getLogger("herramienta_tango")
 
-NOMBRE_EXE = "HerramientaTango.exe"
+NOMBRE_PAQUETE = "HerramientaTango-app.zip"
+ARCHIVO_ENTRADA = "HerramientaTango.pyw"
 TIMEOUT = 60
+MAX_TAMANO = 50 * 1024 * 1024   # el zip de codigo pesa unos cientos de KB
 
 
 def version_a_tupla(texto: str) -> tuple[int, ...] | None:
@@ -60,22 +68,42 @@ def sha256_de(ruta: Path) -> str:
 
 
 def _get(url: str, aceptar: str = "application/json") -> bytes:
-    pedido = urllib.request.Request(url, headers={
-        "Accept": aceptar,
-        "User-Agent": "HerramientaTango-actualizador",
-    })
+    pedido = urllib.request.Request(url, headers={"Accept": aceptar, "User-Agent": "HerramientaTango-actualizador"})
     with urllib.request.urlopen(pedido, timeout=TIMEOUT) as r:
         return r.read()
 
 
 def _descargar(url: str, destino: Path) -> None:
     pedido = urllib.request.Request(url, headers={"User-Agent": "HerramientaTango-actualizador"})
+    total = 0
     with urllib.request.urlopen(pedido, timeout=TIMEOUT) as r, open(destino, "wb") as f:
         while True:
             bloque = r.read(1 << 20)
             if not bloque:
                 break
+            total += len(bloque)
+            if total > MAX_TAMANO:
+                raise ValueError("la descarga es más grande de lo esperado")
             f.write(bloque)
+
+
+def _borrar(ruta: Path) -> None:
+    if ruta.is_dir():
+        shutil.rmtree(ruta)
+    elif ruta.exists():
+        ruta.unlink()
+
+
+def extraer_seguro(zip_path: Path, destino: Path) -> None:
+    """Descomprime sin permitir rutas que salgan de la carpeta destino."""
+    destino.mkdir(parents=True)
+    raiz = destino.resolve()
+    with zipfile.ZipFile(zip_path) as z:
+        for nombre in z.namelist():
+            final = (raiz / nombre).resolve()
+            if final != raiz and raiz not in final.parents:
+                raise ValueError(f"el paquete tiene una ruta inválida: {nombre}")
+        z.extractall(raiz)
 
 
 @dataclass
@@ -94,21 +122,20 @@ class EstadoActualizacion:
 @dataclass
 class Release:
     version: str
-    url_exe: str
+    url_paquete: str
     url_sha256: str
 
 
 class Actualizador:
     def __init__(self, version_actual: str, repo: str, cada_minutos: int, automatica: bool,
-                 al_instalar: Callable[[Path], None], ruta_exe: Path | None = None,
+                 al_instalar: Callable[[], None], raiz: Path | None = None,
                  obtener_json: Callable[[str], dict] | None = None,
                  descargar: Callable[[str, Path], None] | None = None,
                  obtener_texto: Callable[[str], str] | None = None):
         self.repo = repo.strip().strip("/")
         self.cada_segundos = max(5, cada_minutos) * 60
         self.al_instalar = al_instalar
-        self.empaquetado = getattr(sys, "frozen", False) or ruta_exe is not None
-        self.ruta_exe = ruta_exe or Path(sys.executable).resolve()
+        self.raiz = raiz                 # None = corriendo desde el codigo fuente: no instala
         self.estado = EstadoActualizacion(version_actual=version_actual, automatica=automatica)
         self._obtener_json = obtener_json or (lambda url: json.loads(_get(url)))
         self._obtener_texto = obtener_texto or (lambda url: _get(url, "application/octet-stream").decode("utf-8", "replace"))
@@ -117,24 +144,24 @@ class Actualizador:
         self._parar = threading.Event()
 
     # ------------------------------------------------------------- rutas
-    @property
-    def ruta_nueva(self) -> Path:
-        return self.ruta_exe.with_name(self.ruta_exe.stem + ".new.exe")
+    def _ruta(self, nombre: str) -> Path:
+        return self.raiz / nombre
 
     @property
-    def ruta_vieja(self) -> Path:
-        return self.ruta_exe.with_name(self.ruta_exe.stem + ".old.exe")
+    def app(self) -> Path:
+        return self._ruta("app")
 
     def limpiar_restos(self) -> None:
-        """Borra el .old.exe de una actualizacion anterior (reintenta si sigue bloqueado)."""
-        for _ in range(10):
-            try:
-                for ruta in (self.ruta_vieja, self.ruta_nueva):
-                    if ruta.exists():
-                        ruta.unlink()
-                return
-            except OSError:
-                time.sleep(3)
+        """Borra lo que haya quedado de una actualizacion anterior."""
+        if not self.raiz:
+            return
+        for nombre in ("app.old", "app.new", "app.new.zip"):
+            for _ in range(5):
+                try:
+                    _borrar(self._ruta(nombre))
+                    break
+                except OSError:
+                    time.sleep(2)
 
     # ------------------------------------------------------------- consulta
     def ultima_release(self) -> Release:
@@ -144,11 +171,11 @@ class Actualizador:
         datos = self._obtener_json(url)
         version = (datos.get("tag_name") or "").lstrip("v")
         activos = {a.get("name"): a.get("browser_download_url") for a in datos.get("assets") or []}
-        url_exe = activos.get(NOMBRE_EXE)
-        url_sha = activos.get(NOMBRE_EXE + ".sha256")
-        if not version or not url_exe or not url_sha:
-            raise ValueError("La última versión publicada no trae el .exe y su .sha256.")
-        return Release(version, url_exe, url_sha)
+        url_paquete = activos.get(NOMBRE_PAQUETE)
+        url_sha = activos.get(NOMBRE_PAQUETE + ".sha256")
+        if not version or not url_paquete or not url_sha:
+            raise ValueError("La última versión publicada todavía no trae el paquete y su .sha256.")
+        return Release(version, url_paquete, url_sha)
 
     def revisar(self, instalar: bool | None = None) -> None:
         """Consulta GitHub y, si corresponde, instala. No lanza excepciones."""
@@ -171,9 +198,9 @@ class Actualizador:
             log.info(e.mensaje)
             if instalar is None:
                 instalar = e.automatica
-            if instalar and self.empaquetado:
+            if instalar and self.raiz:
                 self._instalar(release)
-            elif not self.empaquetado:
+            elif not self.raiz:
                 e.mensaje += " (corriendo desde el código fuente: no se instala sola)"
         finally:
             self._lock.release()
@@ -183,29 +210,42 @@ class Actualizador:
         e = self.estado
         e.estado, e.mensaje = "instalando", f"Descargando la versión {release.version}..."
         log.info(e.mensaje)
-        nueva, vieja, actual = self.ruta_nueva, self.ruta_vieja, self.ruta_exe
+        zip_nuevo, nueva, vieja, actual = (self._ruta("app.new.zip"), self._ruta("app.new"),
+                                           self._ruta("app.old"), self.app)
+
+        def fallar(texto: str) -> None:
+            for r in (zip_nuevo, nueva):
+                try:
+                    _borrar(r)
+                except OSError:
+                    pass
+            e.estado, e.mensaje = "error", f"No se instaló la versión {release.version}: {texto}"
+            log.error(e.mensaje)
+
+        # 1-3: descargar, verificar y descomprimir aparte
         try:
+            for r in (zip_nuevo, nueva):
+                _borrar(r)
             esperado = self._obtener_texto(release.url_sha256).split()[0].lower()
             if not re.fullmatch(r"[0-9a-f]{64}", esperado):
                 raise ValueError("el archivo .sha256 publicado no es válido")
-            self._descargar(release.url_exe, nueva)
-            obtenido = sha256_de(nueva)
-            if obtenido != esperado:
+            self._descargar(release.url_paquete, zip_nuevo)
+            if sha256_de(zip_nuevo) != esperado:
                 raise ValueError("el archivo descargado no coincide con el publicado (SHA-256 distinto)")
+            extraer_seguro(zip_nuevo, nueva)
+            if not (nueva / ARCHIVO_ENTRADA).is_file() or not (nueva / "herramienta_tango").is_dir():
+                raise ValueError("el paquete descargado está incompleto")
+            _borrar(zip_nuevo)
         except Exception as ex:
-            nueva.unlink(missing_ok=True)
-            e.estado, e.mensaje = "error", f"No se instaló la versión {release.version}: {ex}"
-            log.error(e.mensaje)
+            fallar(str(ex))
             return
 
-        # Cambio de archivos, con vuelta atras si algo falla
+        # 4: cambiar carpetas, con vuelta atras si algo falla
         try:
-            vieja.unlink(missing_ok=True)
+            _borrar(vieja)
             os.replace(actual, vieja)
         except OSError as ex:
-            nueva.unlink(missing_ok=True)
-            e.estado, e.mensaje = "error", f"No se pudo apartar el .exe en uso: {ex}"
-            log.error(e.mensaje)
+            fallar(f"no se pudo apartar la versión en uso ({ex})")
             return
         try:
             os.replace(nueva, actual)
@@ -214,14 +254,12 @@ class Actualizador:
                 os.replace(vieja, actual)
             except OSError:
                 pass
-            nueva.unlink(missing_ok=True)
-            e.estado, e.mensaje = "error", f"No se pudo poner el .exe nuevo en su lugar: {ex}"
-            log.error(e.mensaje)
+            fallar(f"no se pudo poner la versión nueva en su lugar ({ex})")
             return
 
         e.estado, e.mensaje = "reiniciando", f"Versión {release.version} instalada. Reiniciando..."
         log.info(e.mensaje)
-        self.al_instalar(actual)
+        self.al_instalar()
 
     # ------------------------------------------------------------- ciclo
     def iniciar(self) -> None:
@@ -238,13 +276,7 @@ class Actualizador:
         self._parar.set()
 
 
-def reiniciar_con(ruta_exe: Path, argumentos: list[str]) -> None:
-    """Abre el .exe nuevo como un proceso independiente."""
-    import subprocess
-
-    entorno = {k: v for k, v in os.environ.items() if not k.startswith(("_PYI", "_MEI"))}
-    entorno["PYINSTALLER_RESET_ENVIRONMENT"] = "1"  # que no reuse la carpeta temporal del proceso viejo
-    # Proceso independiente y sin ventana (el .exe no usa consola)
+def reiniciar(comando: list[str], carpeta: Path) -> None:
+    """Abre el programa de nuevo como un proceso independiente y sin ventana."""
     flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-    subprocess.Popen([str(ruta_exe), *argumentos], cwd=str(ruta_exe.parent), env=entorno,
-                     creationflags=flags, close_fds=True)
+    subprocess.Popen(comando, cwd=str(carpeta), creationflags=flags, close_fds=True)
