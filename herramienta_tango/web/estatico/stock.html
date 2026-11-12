@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0B6E69">
+<title>Stock por partida | Herramienta Tango</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --zinc: #E6EAED;      /* fondo */
+    --papel: #FFFFFF;     /* superficies */
+    --grafito: #1B242C;   /* texto */
+    --plomo: #5E6B76;     /* texto secundario */
+    --linea: #CBD3D9;     /* bordes */
+    --patina: #0B6E69;    /* interaccion */
+    --patina-suave: #DCEFED;
+    --oxido: #B3261E;     /* negativos */
+    --oxido-suave: #FBE9E7;
+    --radio: 10px;
+    --fuente: "Segoe UI Variable Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--zinc); color: var(--grafito);
+    font: 16px/1.45 var(--fuente);
+  }
+  .art-total, .lote-saldo, .estado { font-variant-numeric: tabular-nums; }
+  .contenedor { max-width: 720px; margin: 0 auto; padding: 0 14px 48px; }
+
+  /* Barra superior fija */
+  .barra {
+    position: sticky; top: 0; z-index: 5;
+    background: var(--zinc);
+    padding: 12px 0 10px;
+    border-bottom: 1px solid var(--linea);
+  }
+  .barra-sup { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+  h1 { font-size: 1.15rem; font-weight: 650; margin: 0; letter-spacing: -0.01em; white-space: nowrap; line-height: 1.2; }
+  h1 .marca { display: block; font-size: .75rem; font-weight: 600; color: var(--patina); letter-spacing: 0; text-decoration: none; }
+  h1 .marca:hover { text-decoration: underline; }
+  .estado { font-size: .82rem; color: var(--plomo); text-align: right; }
+  .estado button { margin-left: 6px; }
+
+  .buscador { position: relative; }
+  .buscador input {
+    width: 100%; font: inherit; font-size: 1.15rem;
+    padding: 14px 44px 14px 14px;
+    border: 2px solid var(--linea); border-radius: var(--radio);
+    background: var(--papel); color: var(--grafito);
+    -webkit-appearance: none; appearance: none;
+  }
+  .buscador input::-webkit-search-cancel-button, .buscador input::-webkit-search-decoration { -webkit-appearance: none; display: none; }
+  .buscador input:focus { outline: none; border-color: var(--patina); box-shadow: 0 0 0 3px var(--patina-suave); }
+  .limpiar {
+    position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+    width: 36px; height: 36px; border: 0; border-radius: 50%;
+    background: transparent; color: var(--plomo); font-size: 1.4rem; line-height: 1; cursor: pointer;
+  }
+  .limpiar[hidden] { display: none; }
+
+  .filtros { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }
+  select, .boton, .chip {
+    font: inherit; font-size: .9rem; min-height: 40px;
+    border-radius: 999px; border: 1px solid var(--linea);
+    background: var(--papel); color: var(--grafito); padding: 6px 14px; cursor: pointer;
+  }
+  select { padding-right: 30px; -webkit-appearance: none; appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, var(--plomo) 50%), linear-gradient(135deg, var(--plomo) 50%, transparent 50%);
+    background-position: calc(100% - 16px) 50%, calc(100% - 11px) 50%; background-size: 5px 5px; background-repeat: no-repeat; }
+  .chip { display: inline-flex; align-items: center; gap: 8px; user-select: none; }
+  .chip input { width: 18px; height: 18px; accent-color: var(--patina); margin: 0; }
+  .chip-neg[aria-pressed="true"] { background: var(--oxido); border-color: var(--oxido); color: #fff; }
+  .chip-neg .cant { font-weight: 650; }
+  .boton-texto { border: 0; background: none; color: var(--patina); font: inherit; font-size: .82rem; font-weight: 600; padding: 4px 2px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+  :is(button, select, input, .chip):focus-visible { outline: 3px solid var(--patina); outline-offset: 2px; }
+
+  /* Mensajes */
+  .aviso { margin: 22px 2px; color: var(--plomo); }
+  .aviso strong { color: var(--grafito); }
+  .aviso p { margin: 0 0 8px; }
+  .error { background: var(--oxido-suave); color: var(--oxido); border: 1px solid #F1C4BF; border-radius: var(--radio); padding: 12px 14px; margin-top: 16px; }
+  .resumen { font-size: .85rem; color: var(--plomo); margin: 14px 2px 8px; }
+
+  /* Articulo */
+  .articulo {
+    background: var(--papel); border: 1px solid var(--linea); border-radius: var(--radio);
+    margin-top: 12px; overflow: hidden;
+  }
+  .art-cab { display: grid; grid-template-columns: 1fr auto; gap: 4px 14px; padding: 14px 14px 10px; align-items: end; }
+  .art-cod { font-size: .82rem; color: var(--plomo); }
+  .art-desc { font-weight: 650; font-size: 1.05rem; line-height: 1.25; overflow-wrap: anywhere; }
+  .art-total { grid-row: 1 / span 2; grid-column: 2; text-align: right; line-height: 1; }
+  .art-total .num { font-size: 2rem; font-weight: 700; letter-spacing: -0.02em; }
+  .art-total .um { font-size: .95rem; color: var(--plomo); margin-left: 3px; }
+  .art-total.neg .num { color: var(--oxido); }
+  .art-nota { grid-column: 1 / -1; font-size: .82rem; color: var(--plomo); }
+  .art-nota.alerta { color: var(--oxido); }
+
+  /* Lotes: la barra muestra cuanto del stock del articulo esta en cada lote */
+  .lotes { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--linea); }
+  .lote { position: relative; padding: 10px 14px 12px; display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; }
+  .lote + .lote { border-top: 1px solid #E3E8EB; }
+  .lote-num { font-weight: 600; overflow-wrap: anywhere; }
+  .lote-saldo { text-align: right; font-weight: 600; white-space: nowrap; }
+  .lote-meta { grid-column: 1 / -1; font-size: .8rem; color: var(--plomo); display: flex; flex-wrap: wrap; gap: 2px 14px; }
+  .lote-meta .vencida { color: var(--oxido); }
+  .nivel { grid-column: 1 / -1; height: 6px; border-radius: 3px; background: #EDF1F3; margin-top: 6px; overflow: hidden; }
+  .nivel span { display: block; height: 100%; background: var(--patina); border-radius: 3px; }
+  .lote.vacio { color: var(--plomo); }
+  .lote.vacio .nivel { display: none; }
+  .lote.neg { background: var(--oxido-suave); }
+  .lote.neg .lote-saldo, .lote.neg .lote-num { color: var(--oxido); }
+  .lote.neg .nivel { display: none; }
+  .lote-dep { font-size: .8rem; color: var(--grafito); font-weight: 600; }
+
+  .mas { text-align: center; color: var(--plomo); font-size: .85rem; margin: 18px 0; }
+  .pie { margin-top: 28px; font-size: .78rem; color: var(--plomo); }
+  .actualizando { background: var(--patina-suave); color: var(--patina); border: 1px solid #B9DDD9;
+    border-radius: var(--radio); padding: 10px 14px; margin-top: 10px; font-size: .9rem; font-weight: 600; }
+  .actualizando[hidden] { display: none; }
+  .cargando { opacity: .55; transition: opacity .2s; }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  @media (min-width: 560px) { .art-total .num { font-size: 2.3rem; } }
+</style>
+</head>
+<body>
+<div class="contenedor">
+  <header class="barra">
+    <div class="barra-sup">
+      <h1><a class="marca" href="/">‹ Menú</a>Stock por partida</h1>
+      <div class="estado"><span id="estado">Consultando Tango…</span><button type="button" class="boton-texto" id="actualizar">Actualizar</button></div>
+    </div>
+    <div class="buscador">
+      <label for="q" class="sr" style="position:absolute;left:-9999px">Buscar artículo</label>
+      <input id="q" type="search" inputmode="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+             placeholder="Código, descripción, lote o despacho" enterkeyhint="search">
+      <button type="button" class="limpiar" id="limpiar" aria-label="Borrar búsqueda" hidden>×</button>
+    </div>
+    <div class="filtros">
+      <select id="deposito" aria-label="Depósito">
+        <option value="CENTRAL">Central</option>
+        <option value="">Todos los depósitos</option>
+      </select>
+      <label class="chip"><input type="checkbox" id="vacios"> Mostrar lotes vacíos</label>
+      <button type="button" class="chip chip-neg" id="negativos" aria-pressed="false">Ver negativos <span class="cant" id="cantNeg"></span></button>
+    </div>
+  </header>
+
+  <div class="actualizando" id="actualizando" role="status" hidden></div>
+  <main id="resultados" aria-live="polite"></main>
+
+  <p class="pie">Solo lectura: los datos salen de Tango y no se modifica nada. Los artículos que no llevan partidas todavía no aparecen acá. Los lotes de cada artículo están en el orden en que se dieron de alta en Tango. <span id="version"></span></p>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const ui = {
+    q: $("q"), limpiar: $("limpiar"), deposito: $("deposito"), vacios: $("vacios"),
+    negativos: $("negativos"), cantNeg: $("cantNeg"), resultados: $("resultados"),
+    estado: $("estado"), actualizar: $("actualizar"),
+  };
+  const EPS = 0.0001;
+  const MAX_ARTICULOS = 30;
+  const fmt = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 });
+  const fmtHora = d => d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hour12: false });
+  const num = n => fmt.format(n).replace("-", "\u2212");
+
+  let filas = [];          // partidas tal como vienen de Tango
+  let modoNegativos = false;
+
+  const norm = s => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+  const sinCeros = s => s.replace(/^0+/, "");
+  const unidad = um => ({ KG: "kg", KGR: "kg", UNI: "u.", "C/U": "u." })[um.toUpperCase()] || um.toLowerCase();
+
+  function el(tag, clase, texto) {
+    const e = document.createElement(tag);
+    if (clase) e.className = clase;
+    if (texto !== undefined) e.textContent = texto;
+    return e;
+  }
+
+  // ---------------------------------------------------------------- datos
+  async function cargar(forzar) {
+    ui.resultados.classList.add("cargando");
+    ui.estado.textContent = "Consultando Tango…";
+    try {
+      const r = await fetch("/api/stock/partidas" + (forzar ? "?refrescar=1" : ""), { cache: "no-store" });
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error || "Error al consultar Tango.");
+      // La API de la herramienta usa nombres claros; aca se pasan a nombres cortos de trabajo
+      filas = d.datos.map(x => {
+        const f = { id: x.id_partida, art: x.codigo_articulo, desc: x.descripcion, dep: x.deposito,
+                    part: x.partida, desp: x.despacho, venc: x.vencimiento, um: x.unidad, s: x.saldo };
+        f._txt = norm([f.art, f.desc, f.part, f.desp].join(" "));
+        f._art = sinCeros(norm(f.art));
+        return f;
+      });
+      ui.estado.textContent = "Tango, " + fmtHora(new Date(d.actualizado)) + " h";
+      render();
+    } catch (e) {
+      ui.estado.textContent = "Sin datos";
+      ui.resultados.replaceChildren(mensajeError(e.message === "Failed to fetch"
+        ? "No hay conexión con el programa de la PC. Revisá que el celular esté en el Wi-Fi de la oficina y que la ventana del programa siga abierta."
+        : e.message));
+    } finally {
+      ui.resultados.classList.remove("cargando");
+    }
+  }
+
+  function mensajeError(texto) {
+    const d = el("div", "error");
+    d.append(el("p", "", texto));
+    const b = el("button", "boton-texto", "Volver a intentar");
+    b.type = "button"; b.addEventListener("click", () => cargar(true));
+    d.append(b);
+    return d;
+  }
+
+  // ---------------------------------------------------------------- filtros
+  function filasDelDeposito() {
+    const dep = ui.deposito.value;
+    return dep ? filas.filter(f => f.dep.toUpperCase() === dep) : filas;
+  }
+
+  function agrupar(lista) {
+    const grupos = new Map();
+    for (const f of lista) {
+      if (!grupos.has(f.art)) grupos.set(f.art, { art: f.art, desc: f.desc, um: f.um, lotes: [] });
+      grupos.get(f.art).lotes.push(f);
+    }
+    for (const g of grupos.values()) {
+      g.lotes.sort((a, b) => (a.id ?? 0) - (b.id ?? 0));
+      g.total = g.lotes.reduce((a, f) => a + f.s, 0);
+      g.conSaldo = g.lotes.filter(f => Math.abs(f.s) > EPS);
+      g.negativos = g.lotes.filter(f => f.s < -EPS);
+      // Un negativo solo se compensa con stock del mismo deposito
+      const porDep = {};
+      for (const f of g.lotes) porDep[f.dep] = (porDep[f.dep] || 0) + f.s;
+      g.depsEnNegativo = [...new Set(g.negativos.map(f => f.dep))].filter(d => porDep[d] < -EPS);
+    }
+    return [...grupos.values()];
+  }
+
+  function buscar(texto) {
+    const base = filasDelDeposito();
+    const tokens = norm(texto).split(/\s+/).filter(Boolean);
+    const coinciden = base.filter(f => tokens.every(t => f._txt.includes(t) || f._art.includes(sinCeros(t))));
+    const q = sinCeros(norm(texto));
+    const arts = new Set(coinciden.map(c => c.art));
+    return agrupar(base.filter(f => arts.has(f.art)))
+      .filter(g => g.conSaldo.length || ui.vacios.checked)
+      .sort((a, b) => {
+        const ea = sinCeros(norm(a.art)) === q ? 0 : 1, eb = sinCeros(norm(b.art)) === q ? 0 : 1;
+        return ea - eb || a.desc.localeCompare(b.desc, "es");
+      });
+  }
+
+  function gruposNegativos() {
+    return agrupar(filasDelDeposito())
+      .filter(g => g.negativos.length)
+      .sort((a, b) => Math.min(...a.negativos.map(f => f.s)) - Math.min(...b.negativos.map(f => f.s)));
+  }
+
+  // ---------------------------------------------------------------- dibujo
+  function render() {
+    const texto = ui.q.value;
+    ui.limpiar.hidden = !texto;
+    const negs = agrupar(filasDelDeposito()).reduce((a, g) => a + g.negativos.length, 0);
+    ui.cantNeg.textContent = negs ? `(${negs})` : "";
+    ui.negativos.hidden = !negs && !modoNegativos;
+    ui.negativos.setAttribute("aria-pressed", String(modoNegativos));
+    if (!filas.length) return;
+
+    const nombreDep = ui.deposito.value ? "Central" : "todos los depósitos";
+    let grupos;
+    const frag = document.createDocumentFragment();
+
+    if (modoNegativos) {
+      grupos = gruposNegativos();
+      frag.append(el("p", "resumen",
+        `${negs} lotes en negativo en ${grupos.length} artículos (${nombreDep}). Un lote negativo quiere decir que salió más de lo que entró en ese lote.`));
+    } else if (!norm(texto)) {
+      const conSaldo = filasDelDeposito().filter(f => Math.abs(f.s) > EPS);
+      const arts = new Set(conSaldo.map(f => f.art)).size;
+      const a = el("div", "aviso");
+      const p = el("p");
+      p.append("Hay ", el("strong", "", fmt.format(conSaldo.length) + " lotes con stock"),
+        ` de ${fmt.format(arts)} artículos en ${nombreDep}.`);
+      a.append(p, el("p", "", "Buscá por código, descripción, número de lote o despacho."));
+      ui.resultados.replaceChildren(a);
+      return;
+    } else {
+      grupos = buscar(texto);
+      if (!grupos.length) {
+        const a = el("div", "aviso");
+        const p = el("p");
+        p.append("Nada coincide con ", el("strong", "", `«${texto.trim()}»`), ` en ${nombreDep}.`);
+        a.append(p, el("p", "", ui.deposito.value
+          ? "Probá con menos palabras o elegí Todos los depósitos."
+          : "Probá con menos palabras o con parte del código."));
+        ui.resultados.replaceChildren(a);
+        return;
+      }
+      frag.append(el("p", "resumen", grupos.length === 1 ? "1 artículo" : `${grupos.length} artículos`));
+    }
+
+    for (const g of grupos.slice(0, MAX_ARTICULOS)) frag.append(tarjeta(g));
+    if (grupos.length > MAX_ARTICULOS) {
+      frag.append(el("p", "mas", `Se muestran ${MAX_ARTICULOS} de ${grupos.length}. Escribí más para achicar la búsqueda.`));
+    }
+    ui.resultados.replaceChildren(frag);
+  }
+
+  function tarjeta(g) {
+    const art = el("article", "articulo");
+    const cab = el("div", "art-cab");
+    cab.append(el("div", "art-cod", g.art), el("div", "art-desc", g.desc));
+    const tot = el("div", "art-total" + (g.total < -EPS ? " neg" : ""));
+    tot.append(el("span", "num", num(g.total)), el("span", "um", unidad(g.um)));
+    cab.append(tot);
+
+    const n = g.lotes.filter(f => f.s > EPS).length;
+    let nota = n === 0 ? "Sin stock" : n === 1 ? "1 lote con stock" : `${n} lotes con stock`;
+    const notaEl = el("div", "art-nota");
+    if (g.negativos.length) {
+      notaEl.classList.add("alerta");
+      const deps = g.depsEnNegativo;
+      nota += !deps.length
+        ? ". Hay lotes en negativo pero el depósito tiene stock en otros lotes: probablemente se descontó del lote equivocado."
+        : ". El artículo queda en negativo en " + deps.map(d => d.charAt(0) + d.slice(1).toLowerCase()).join(" y ") + ": falta registrar mercadería en Tango.";
+    }
+    notaEl.textContent = nota;
+    cab.append(notaEl);
+    art.append(cab);
+
+    const mostrar = (ui.vacios.checked ? g.lotes : g.conSaldo);
+    if (mostrar.length) {
+      const positivos = g.lotes.filter(f => f.s > EPS).reduce((a, f) => a + f.s, 0);
+      const ul = el("ul", "lotes");
+      const todos = !ui.deposito.value;
+      for (const f of mostrar) {
+        const li = el("li", "lote" + (f.s < -EPS ? " neg" : Math.abs(f.s) <= EPS ? " vacio" : ""));
+        li.append(el("div", "lote-num", "Lote " + (f.part || "sin número")),
+                  el("div", "lote-saldo", num(f.s) + " " + unidad(f.um)));
+        const meta = el("div", "lote-meta");
+        if (todos) meta.append(el("span", "lote-dep", f.dep));
+        if (f.desp) meta.append(el("span", "", "Despacho " + f.desp));
+        if (f.venc) {
+          const v = new Date(f.venc + "T00:00:00");
+          const vencida = v < new Date();
+          meta.append(el("span", vencida ? "vencida" : "",
+            (vencida ? "Venció " : "Vence ") + v.toLocaleDateString("es-AR")));
+        }
+        if (meta.childNodes.length) li.append(meta);
+        if (f.s > EPS && positivos > 0) {
+          const nivel = el("div", "nivel");
+          nivel.setAttribute("aria-hidden", "true");
+          const barra = el("span");
+          barra.style.width = Math.max(2, Math.round(f.s / positivos * 100)) + "%";
+          nivel.append(barra);
+          li.append(nivel);
+        }
+        ul.append(li);
+      }
+      art.append(ul);
+    }
+    return art;
+  }
+
+  // ---------------------------------------------------------------- eventos
+  let espera;
+  ui.q.addEventListener("input", () => {
+    if (modoNegativos && ui.q.value) modoNegativos = false;
+    clearTimeout(espera); espera = setTimeout(render, 120);
+  });
+  ui.limpiar.addEventListener("click", () => { ui.q.value = ""; render(); ui.q.focus(); });
+  ui.deposito.addEventListener("change", render);
+  ui.vacios.addEventListener("change", render);
+  ui.negativos.addEventListener("click", () => {
+    modoNegativos = !modoNegativos;
+    if (modoNegativos) ui.q.value = "";
+    render();
+  });
+  ui.actualizar.addEventListener("click", () => cargar(true));
+
+  // ---------------------------------------------------------------- actualizaciones
+  // Si el programa de la PC se actualiza, muestra un aviso y recarga la pagina con la version nueva.
+  let versionInicial = null;
+  async function revisarVersion() {
+    const aviso = $("actualizando");
+    try {
+      const r = await fetch("/api/estado", { cache: "no-store" });
+      const e = await r.json();
+      if (!versionInicial) {
+        versionInicial = e.version;
+        $("version").textContent = "Versión " + e.version + ".";
+      } else if (e.version !== versionInicial) {
+        location.reload();
+        return;
+      }
+      const a = e.actualizacion || {};
+      if (a.estado === "instalando" || a.estado === "reiniciando") {
+        aviso.textContent = `Instalando la versión ${a.version_disponible}. La página vuelve sola en unos segundos.`;
+        aviso.hidden = false;
+      } else {
+        aviso.hidden = true;
+      }
+    } catch {
+      // Durante el reinicio el programa no responde unos segundos: se reintenta
+      if (!aviso.hidden) aviso.textContent = "Reiniciando el programa con la versión nueva…";
+    }
+  }
+
+  cargar(false);
+  revisarVersion();
+  setInterval(revisarVersion, 15000);
+})();
+</script>
+</body>
+</html>

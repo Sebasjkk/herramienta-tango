@@ -183,7 +183,7 @@ def crear_manejador(contexto):
                 if url.path == "/api/estado":
                     act = contexto.actualizador.estado.como_dict() if contexto.actualizador else None
                     self._json(200, {"ok": True, "version": VERSION, "configurado": contexto.configurado,
-                                     "actualizacion": act})
+                                     "tango": contexto.estado_tango.get("estado"), "actualizacion": act})
                 elif url.path == "/api/sistema":
                     if not self._es_local():
                         self._json(403, {"ok": False, "error": "Solo desde la PC donde está instalado el programa."})
@@ -207,7 +207,10 @@ def crear_manejador(contexto):
                 elif url.path in ("", "/"):
                     self._estatico("index.html")
                 else:
-                    self._estatico(url.path.lstrip("/"))
+                    relativa = url.path.strip("/")
+                    if "." not in relativa.rsplit("/", 1)[-1]:
+                        relativa += ".html"   # /stock -> stock.html
+                    self._estatico(relativa)
             except PedidoInvalido as e:
                 self._json(400, {"ok": False, "error": str(e)})
             except NoConfigurado as e:

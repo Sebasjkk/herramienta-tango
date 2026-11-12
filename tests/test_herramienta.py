@@ -203,6 +203,10 @@ class TestServidor(unittest.TestCase):
     def test_pagina(self):
         estado, cuerpo = self._get("/")
         self.assertEqual(estado, 200)
+        self.assertIn(b'id="modulos"', cuerpo)          # menu de inicio
+        self.assertIn(b"/stock", cuerpo)
+        estado, cuerpo = self._get("/stock")
+        self.assertEqual(estado, 200)
         self.assertIn(b"Stock por partida", cuerpo)
 
     def test_no_sale_de_la_carpeta_estatica(self):
