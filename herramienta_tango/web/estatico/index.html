@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0B6E69">
-<title>Stock por partida | Sianco</title>
+<title>Stock por partida | Herramienta Tango</title>
 <link rel="icon" href="data:,">
 <style>
   :root {
@@ -37,7 +37,8 @@
     border-bottom: 1px solid var(--linea);
   }
   .barra-sup { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
-  h1 { font-size: 1.15rem; font-weight: 650; margin: 0; letter-spacing: -0.01em; white-space: nowrap; }
+  h1 { font-size: 1.15rem; font-weight: 650; margin: 0; letter-spacing: -0.01em; white-space: nowrap; line-height: 1.2; }
+  h1 .marca { display: block; font-size: .72rem; font-weight: 600; color: var(--patina); letter-spacing: 0; }
   .estado { font-size: .82rem; color: var(--plomo); text-align: right; }
   .estado button { margin-left: 6px; }
 
@@ -125,7 +126,7 @@
 <div class="contenedor">
   <header class="barra">
     <div class="barra-sup">
-      <h1>Stock por partida</h1>
+      <h1><span class="marca">Herramienta Tango</span>Stock por partida</h1>
       <div class="estado"><span id="estado">Consultando Tango…</span><button type="button" class="boton-texto" id="actualizar">Actualizar</button></div>
     </div>
     <div class="buscador">
@@ -183,14 +184,17 @@
     ui.resultados.classList.add("cargando");
     ui.estado.textContent = "Consultando Tango…";
     try {
-      const r = await fetch("/api/saldos" + (forzar ? "?refrescar=1" : ""), { cache: "no-store" });
+      const r = await fetch("/api/stock/partidas" + (forzar ? "?refrescar=1" : ""), { cache: "no-store" });
       const d = await r.json();
       if (!d.ok) throw new Error(d.error || "Error al consultar Tango.");
-      filas = (d.filas.value || d.filas).map(f => ({
-        ...f,
-        _txt: norm([f.art, f.desc, f.part, f.desp].join(" ")),
-        _art: sinCeros(norm(f.art)),
-      }));
+      // La API de la herramienta usa nombres claros; aca se pasan a nombres cortos de trabajo
+      filas = d.datos.map(x => {
+        const f = { id: x.id_partida, art: x.codigo_articulo, desc: x.descripcion, dep: x.deposito,
+                    part: x.partida, desp: x.despacho, venc: x.vencimiento, um: x.unidad, s: x.saldo };
+        f._txt = norm([f.art, f.desc, f.part, f.desp].join(" "));
+        f._art = sinCeros(norm(f.art));
+        return f;
+      });
       ui.estado.textContent = "Tango, " + fmtHora(new Date(d.actualizado)) + " h";
       render();
     } catch (e) {

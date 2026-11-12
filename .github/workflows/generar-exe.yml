@@ -1,5 +1,5 @@
-# Genera ConsultaStockSianco.exe en una maquina Windows de GitHub
-# cada vez que se sube un cambio a la rama main, y lo publica como Release.
+# Prueba el codigo y genera HerramientaTango.exe en una maquina Windows de GitHub
+# cada vez que se sube un cambio a la rama main. Lo publica como Release.
 name: Generar exe
 
 on:
@@ -20,30 +20,39 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Pruebas
+        run: python -m unittest discover -s tests -v
+
       - name: Poner numero de version
         shell: pwsh
         run: |
           $v = "1.${{ github.run_number }}"
-          $codigo = Get-Content consulta_stock.py -Raw -Encoding utf8
+          $ruta = "herramienta_tango/__init__.py"
+          $codigo = Get-Content $ruta -Raw -Encoding utf8
           $codigo = $codigo -replace 'VERSION = "[^"]*"', "VERSION = `"$v`""
-          Set-Content consulta_stock.py $codigo -Encoding utf8 -NoNewline
+          Set-Content $ruta $codigo -Encoding utf8 -NoNewline
           "VERSION=$v" >> $env:GITHUB_ENV
 
       - name: Instalar PyInstaller
         run: python -m pip install "pyinstaller==6.*"
 
       - name: Generar el exe
-        run: python -m PyInstaller --onefile --name ConsultaStockSianco --add-data "web;web" consulta_stock.py
+        run: >
+          python -m PyInstaller --onefile --name HerramientaTango
+          --add-data "herramienta_tango/web/estatico;herramienta_tango/web/estatico"
+          HerramientaTango.py
 
       - name: Probar que el exe arranca
         shell: pwsh
         run: |
-          $p = Start-Process dist\ConsultaStockSianco.exe -ArgumentList '--help' -NoNewWindow -Wait -PassThru
-          if ($p.ExitCode -ne 0) { throw "El exe no arranca (codigo $($p.ExitCode))" }
+          $salida = & dist\HerramientaTango.exe --version
+          if ($LASTEXITCODE -ne 0) { throw "El exe no arranca (codigo $LASTEXITCODE)" }
+          if ($salida -notmatch [regex]::Escape($env:VERSION)) { throw "Version incorrecta: $salida" }
+          Write-Output $salida
 
       - name: Empaquetar
         shell: pwsh
-        run: Compress-Archive -Path dist\ConsultaStockSianco.exe, LEEME.md -DestinationPath ConsultaStockSianco.zip
+        run: Compress-Archive -Path dist\HerramientaTango.exe, README.md -DestinationPath HerramientaTango.zip
 
       - name: Publicar version
         uses: softprops/action-gh-release@v2
@@ -51,5 +60,5 @@ jobs:
           tag_name: v${{ env.VERSION }}
           name: Version ${{ env.VERSION }}
           body: "Generado desde el commit ${{ github.sha }}."
-          files: ConsultaStockSianco.zip
+          files: HerramientaTango.zip
           make_latest: true
