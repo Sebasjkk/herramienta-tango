@@ -17,7 +17,7 @@ import tempfile
 from pathlib import Path
 from unittest import mock
 
-from herramienta_tango import config
+from herramienta_tango import config, credenciales
 from herramienta_tango.contexto import Contexto
 from herramienta_tango.tango import TokenInvalido, procesos
 from herramienta_tango.tango.modelos import Articulo, Pedido, SaldoPartida
@@ -178,7 +178,7 @@ class TestServidor(unittest.TestCase):
         self.assertIn("rechazó", datos["mensaje"])
         # No se guarda un token rechazado (si hay uno guardado, es el bueno de otra prueba)
         if config.RUTA_TOKEN.exists():
-            self.assertEqual(config.RUTA_TOKEN.read_text().strip(), TOKEN_OK)
+            self.assertEqual(credenciales.leer_token(), TOKEN_OK)  # en Windows esta cifrado
 
     def test_configurar_sin_puerto(self):
         estado, datos = self._post("/api/sistema/configurar", {"servidor": "tango-prueba", "token": TOKEN_OK})
@@ -190,7 +190,7 @@ class TestServidor(unittest.TestCase):
                                    {"servidor": "http://tango-prueba:17000/company/3/menu", "token": TOKEN_OK})
         self.assertEqual(estado, 200, datos)
         self.assertEqual(datos["sistema"]["servidor"], "http://tango-prueba:17000")
-        self.assertTrue(config.RUTA_TOKEN.exists())
+        self.assertEqual(credenciales.leer_token(), TOKEN_OK)
         self.assertIn("tango-prueba:17000", config.RUTA_CONFIG.read_text(encoding="utf-8"))
 
     def test_partidas(self):
