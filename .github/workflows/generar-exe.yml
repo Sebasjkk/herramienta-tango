@@ -1,0 +1,55 @@
+# Genera ConsultaStockSianco.exe en una maquina Windows de GitHub
+# cada vez que se sube un cambio a la rama main, y lo publica como Release.
+name: Generar exe
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  generar:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Poner numero de version
+        shell: pwsh
+        run: |
+          $v = "1.${{ github.run_number }}"
+          $codigo = Get-Content consulta_stock.py -Raw -Encoding utf8
+          $codigo = $codigo -replace 'VERSION = "[^"]*"', "VERSION = `"$v`""
+          Set-Content consulta_stock.py $codigo -Encoding utf8 -NoNewline
+          "VERSION=$v" >> $env:GITHUB_ENV
+
+      - name: Instalar PyInstaller
+        run: python -m pip install "pyinstaller==6.*"
+
+      - name: Generar el exe
+        run: python -m PyInstaller --onefile --name ConsultaStockSianco --add-data "web;web" consulta_stock.py
+
+      - name: Probar que el exe arranca
+        shell: pwsh
+        run: |
+          $p = Start-Process dist\ConsultaStockSianco.exe -ArgumentList '--help' -NoNewWindow -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "El exe no arranca (codigo $($p.ExitCode))" }
+
+      - name: Empaquetar
+        shell: pwsh
+        run: Compress-Archive -Path dist\ConsultaStockSianco.exe, LEEME.md -DestinationPath ConsultaStockSianco.zip
+
+      - name: Publicar version
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION }}
+          name: Version ${{ env.VERSION }}
+          body: "Generado desde el commit ${{ github.sha }}."
+          files: ConsultaStockSianco.zip
+          make_latest: true

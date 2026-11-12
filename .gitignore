@@ -1,0 +1,12 @@
+# Archivos que crea el programa al correr: nunca se suben
+config.ini
+token.dat
+*.log
+*.log.*
+# Salidas de PyInstaller y Python
+build/
+dist/
+*.spec
+__pycache__/
+*.pyc
+*.zip
