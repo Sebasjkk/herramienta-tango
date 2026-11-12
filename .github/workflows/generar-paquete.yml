@@ -42,7 +42,7 @@ jobs:
       - name: Poner numero de version
         shell: pwsh
         run: |
-          $v = "1.${{ github.run_number }}"
+          $v = "2.${{ github.run_number }}"   # 2.x: empaquetado con Python oficial (1.x eran .exe)
           $ruta = "herramienta_tango/__init__.py"
           $codigo = Get-Content $ruta -Raw -Encoding utf8
           $codigo = $codigo -replace 'VERSION = "[^"]*"', "VERSION = `"$v`""
