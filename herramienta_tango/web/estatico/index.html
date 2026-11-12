@@ -116,6 +116,9 @@
 
   .mas { text-align: center; color: var(--plomo); font-size: .85rem; margin: 18px 0; }
   .pie { margin-top: 28px; font-size: .78rem; color: var(--plomo); }
+  .actualizando { background: var(--patina-suave); color: var(--patina); border: 1px solid #B9DDD9;
+    border-radius: var(--radio); padding: 10px 14px; margin-top: 10px; font-size: .9rem; font-weight: 600; }
+  .actualizando[hidden] { display: none; }
   .cargando { opacity: .55; transition: opacity .2s; }
 
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
@@ -145,9 +148,10 @@
     </div>
   </header>
 
+  <div class="actualizando" id="actualizando" role="status" hidden></div>
   <main id="resultados" aria-live="polite"></main>
 
-  <p class="pie">Solo lectura: los datos salen de Tango y no se modifica nada. Los artículos que no llevan partidas todavía no aparecen acá. Los lotes de cada artículo están en el orden en que se dieron de alta en Tango.</p>
+  <p class="pie">Solo lectura: los datos salen de Tango y no se modifica nada. Los artículos que no llevan partidas todavía no aparecen acá. Los lotes de cada artículo están en el orden en que se dieron de alta en Tango. <span id="version"></span></p>
 </div>
 
 <script>
@@ -383,7 +387,37 @@
   });
   ui.actualizar.addEventListener("click", () => cargar(true));
 
+  // ---------------------------------------------------------------- actualizaciones
+  // Si el programa de la PC se actualiza, muestra un aviso y recarga la pagina con la version nueva.
+  let versionInicial = null;
+  async function revisarVersion() {
+    const aviso = $("actualizando");
+    try {
+      const r = await fetch("/api/estado", { cache: "no-store" });
+      const e = await r.json();
+      if (!versionInicial) {
+        versionInicial = e.version;
+        $("version").textContent = "Versión " + e.version + ".";
+      } else if (e.version !== versionInicial) {
+        location.reload();
+        return;
+      }
+      const a = e.actualizacion || {};
+      if (a.estado === "instalando" || a.estado === "reiniciando") {
+        aviso.textContent = `Instalando la versión ${a.version_disponible}. La página vuelve sola en unos segundos.`;
+        aviso.hidden = false;
+      } else {
+        aviso.hidden = true;
+      }
+    } catch {
+      // Durante el reinicio el programa no responde unos segundos: se reintenta
+      if (!aviso.hidden) aviso.textContent = "Reiniciando el programa con la versión nueva…";
+    }
+  }
+
   cargar(false);
+  revisarVersion();
+  setInterval(revisarVersion, 15000);
 })();
 </script>
 </body>

@@ -36,6 +36,11 @@ DEFECTO = {
         "puerto": "8085",
         "vigencia_saldos_segundos": "60",
     },
+    "actualizaciones": {
+        "repositorio": "Sebasjkk/herramienta-tango",
+        "automatica": "si",
+        "cada_minutos": "15",
+    },
 }
 
 COMENTARIO = """\
@@ -44,6 +49,8 @@ COMENTARIO = """\
 ; company: ID interno de la empresa (se ve en la URL del Tango web: /company/NUMERO/...).
 ; puerto: puerto donde se abre la pagina para el celular.
 ; vigencia_saldos_segundos: cuanto tiempo se reutiliza la consulta de saldos.
+; actualizaciones: de que repositorio de GitHub se bajan las versiones nuevas,
+;   si se instalan solas (si / no) y cada cuantos minutos se revisa.
 
 """
 
@@ -55,6 +62,9 @@ class Config:
     timeout: int
     puerto: int
     vigencia_saldos: int
+    repo_actualizaciones: str
+    actualizacion_automatica: bool
+    actualizacion_cada_minutos: int
 
 
 def _preguntar_servidor() -> str:
@@ -110,4 +120,7 @@ def cargar() -> Config:
         timeout=cfg.getint("tango", "timeout_segundos"),
         puerto=cfg.getint("programa", "puerto"),
         vigencia_saldos=cfg.getint("programa", "vigencia_saldos_segundos"),
+        repo_actualizaciones=cfg.get("actualizaciones", "repositorio"),
+        actualizacion_automatica=cfg.get("actualizaciones", "automatica").strip().lower() in ("si", "sí", "s", "true", "1"),
+        actualizacion_cada_minutos=cfg.getint("actualizaciones", "cada_minutos"),
     )

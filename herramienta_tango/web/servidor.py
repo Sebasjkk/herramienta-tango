@@ -4,7 +4,7 @@ Servidor web de la herramienta (red local, solo lectura).
 Expone una API propia con nombres claros, para que cualquier pagina o programa
 de la empresa consulte Tango sin conocer su API:
 
-    GET /api/estado
+    GET /api/estado                  version y estado de las actualizaciones
     GET /api/stock/partidas          saldos por partida
     GET /api/articulos
     GET /api/depositos
@@ -85,7 +85,7 @@ def crear_rutas(servicio: ServicioTango) -> dict[str, Callable[[dict, bool], tup
     }
 
 
-def crear_manejador(servicio: ServicioTango):
+def crear_manejador(servicio: ServicioTango, estado_extra: Callable[[], dict] | None = None):
     rutas = crear_rutas(servicio)
     raiz_estatica = CARPETA_ESTATICA.resolve()
 
@@ -124,7 +124,10 @@ def crear_manejador(servicio: ServicioTango):
             qs = urllib.parse.parse_qs(url.query)
             try:
                 if url.path == "/api/estado":
-                    self._json(200, {"ok": True, "version": VERSION})
+                    estado = {"ok": True, "version": VERSION}
+                    if estado_extra:
+                        estado.update(estado_extra())
+                    self._json(200, estado)
                 elif url.path in rutas:
                     forzar = qs.get("refrescar") == ["1"]
                     datos, momento = rutas[url.path](qs, forzar)
@@ -156,7 +159,8 @@ def crear_manejador(servicio: ServicioTango):
     return Manejador
 
 
-def crear_servidor(servicio: ServicioTango, puerto: int) -> ThreadingHTTPServer:
-    servidor = ThreadingHTTPServer(("0.0.0.0", puerto), crear_manejador(servicio))
+def crear_servidor(servicio: ServicioTango, puerto: int,
+                   estado_extra: Callable[[], dict] | None = None) -> ThreadingHTTPServer:
+    servidor = ThreadingHTTPServer(("0.0.0.0", puerto), crear_manejador(servicio, estado_extra))
     servidor.daemon_threads = True
     return servidor

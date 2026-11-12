@@ -1,5 +1,10 @@
 # Prueba el codigo y genera HerramientaTango.exe en una maquina Windows de GitHub
 # cada vez que se sube un cambio a la rama main. Lo publica como Release.
+#
+# El release trae:
+#   HerramientaTango.exe         lo que baja el actualizador automatico
+#   HerramientaTango.exe.sha256  para que el actualizador verifique la descarga
+#   HerramientaTango.zip         el .exe + README, para la primera instalacion
 name: Generar exe
 
 on:
@@ -9,6 +14,10 @@ on:
 
 permissions:
   contents: write
+
+concurrency:
+  group: generar-exe
+  cancel-in-progress: false
 
 jobs:
   generar:
@@ -50,9 +59,18 @@ jobs:
           if ($salida -notmatch [regex]::Escape($env:VERSION)) { throw "Version incorrecta: $salida" }
           Write-Output $salida
 
+      - name: Probar la actualizacion automatica
+        shell: pwsh
+        run: ./tests/probar_actualizacion.ps1
+
       - name: Empaquetar
         shell: pwsh
-        run: Compress-Archive -Path dist\HerramientaTango.exe, README.md -DestinationPath HerramientaTango.zip
+        run: |
+          Copy-Item dist\HerramientaTango.exe HerramientaTango.exe
+          $hash = (Get-FileHash HerramientaTango.exe -Algorithm SHA256).Hash.ToLower()
+          Set-Content HerramientaTango.exe.sha256 "$hash  HerramientaTango.exe" -Encoding ascii -NoNewline
+          Compress-Archive -Path HerramientaTango.exe, README.md -DestinationPath HerramientaTango.zip
+          Write-Output "SHA-256: $hash"
 
       - name: Publicar version
         uses: softprops/action-gh-release@v2
@@ -60,5 +78,8 @@ jobs:
           tag_name: v${{ env.VERSION }}
           name: Version ${{ env.VERSION }}
           body: "Generado desde el commit ${{ github.sha }}."
-          files: HerramientaTango.zip
+          files: |
+            HerramientaTango.exe
+            HerramientaTango.exe.sha256
+            HerramientaTango.zip
           make_latest: true

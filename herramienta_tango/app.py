@@ -11,6 +11,7 @@ import webbrowser
 from logging.handlers import RotatingFileHandler
 
 from . import NOMBRE, VERSION, config, credenciales
+from .actualizador import Actualizador, reiniciar_con
 from .tango import ClienteTango, ServicioTango, TangoError
 from .web.servidor import CARPETA_ESTATICA, crear_servidor
 
@@ -75,8 +76,19 @@ def main(argv: list[str] | None = None) -> int:
         log.error(str(e))
         print("\nEl programa sigue abierto, pero las páginas van a mostrar este error hasta que se resuelva.")
 
+    reinicio: dict = {}
+
+    def al_instalar(ruta_exe):
+        # Lo llama el hilo del actualizador: frena el servidor para reiniciar con el .exe nuevo
+        reinicio["exe"] = ruta_exe
+        threading.Thread(target=servidor.shutdown, daemon=True).start()
+
+    actualizador = Actualizador(VERSION, cfg.repo_actualizaciones, cfg.actualizacion_cada_minutos,
+                                cfg.actualizacion_automatica, al_instalar)
+
     try:
-        servidor = crear_servidor(servicio, cfg.puerto)
+        servidor = crear_servidor(servicio, cfg.puerto,
+                                  estado_extra=lambda: {"actualizacion": actualizador.estado.como_dict()})
     except OSError as e:
         log.error(f"No se pudo abrir el puerto {cfg.puerto}: {e}. "
                   "Puede que el programa ya esté abierto en otra ventana.")
@@ -93,10 +105,23 @@ def main(argv: list[str] | None = None) -> int:
     if not args.no_abrir:
         threading.Timer(1.0, lambda: webbrowser.open(f"http://localhost:{cfg.puerto}")).start()
 
+    if cfg.repo_actualizaciones:
+        actualizador.iniciar()
+    else:
+        actualizador.estado.estado = "desactivado"
+
     try:
         servidor.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
         servidor.server_close()
+
+    if reinicio.get("exe"):
+        log.info("Abriendo la versión nueva...")
+        try:
+            reiniciar_con(reinicio["exe"], ["--no-abrir"])
+        except OSError as e:
+            log.error(f"No se pudo abrir la versión nueva ({e}). Abrí HerramientaTango.exe a mano.")
+            input("\nEnter para cerrar...")
     return 0

@@ -25,6 +25,7 @@ herramienta_tango/
     estatico/                  páginas para el celular
   config.py                    config.ini
   credenciales.py              token de Tango cifrado (DPAPI)
+  actualizador.py              actualización automática desde los Releases
   app.py                       arranque
 tests/                         pruebas (sin Tango real)
 ```
@@ -50,7 +51,7 @@ Todas responden `{"ok": true, "actualizado": "...", "datos": [...]}`. Con `?refr
 
 Cada vez que se sube un cambio a `main`, GitHub Actions corre las pruebas, genera `HerramientaTango.exe` en una máquina Windows y lo publica en **Releases** con un número de versión nuevo.
 
-- Última versión: pestaña **Releases**, archivo `HerramientaTango.zip` (trae el `.exe` y este README).
+- Última versión: pestaña **Releases**, archivo `HerramientaTango.zip` (trae el `.exe` y este README). El release también publica el `.exe` suelto y su `.sha256`, que usa el actualizador.
 - Para generar de nuevo sin cambiar código: **Actions** > "Generar exe" > **Run workflow**.
 
 Si el antivirus marca el .exe como sospechoso (pasa a veces con los .exe hechos con PyInstaller), hay que agregarlo como excepción.
@@ -72,7 +73,23 @@ Junto al .exe se crean (y **no** se suben al repositorio):
 - `token.dat`: el token de Tango **cifrado**. Solo lo puede leer el mismo usuario de Windows en la misma PC.
 - `herramienta_tango.log`: registro, por si algo falla.
 
-## Actualizar a una versión nueva
+## Actualizaciones automáticas
+
+El programa se actualiza solo. Cada 15 minutos consulta los Releases de este repositorio y, si hay una versión nueva:
+
+1. Descarga `HerramientaTango.exe` y verifica su SHA-256 contra `HerramientaTango.exe.sha256`. Si no coincide, no instala nada.
+2. Aparta el `.exe` en uso como `HerramientaTango.old.exe` y pone el nuevo en su lugar. Si algo falla, vuelve todo como estaba.
+3. Se reinicia con la versión nueva (se abre una ventana nueva y se cierra la vieja). El corte dura unos segundos.
+
+La página del celular muestra un aviso mientras se instala y se recarga sola con la versión nueva. `config.ini` y `token.dat` no se tocan.
+
+En `config.ini`, sección `[actualizaciones]`: `automatica = no` hace que solo avise sin instalar, y `cada_minutos` cambia la frecuencia. La PC necesita salida a internet hacia github.com.
+
+Antes de publicar cada versión, el workflow prueba en Windows la actualización de punta a punta: arranca el `.exe`, le anuncia una versión nueva y verifica que se reemplace, se reinicie y vuelva a responder.
+
+Ojo: cualquiera con permiso de escritura en este repositorio puede publicar una versión que la PC de la oficina va a instalar sola. Conviene tener activada la verificación en dos pasos en las cuentas de GitHub que tienen acceso.
+
+### Primera instalación o actualización a mano
 
 Cerrá el programa, reemplazá el `.exe` por el de la última versión y abrilo. No borres `config.ini` ni `token.dat`.
 
