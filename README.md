@@ -1,6 +1,6 @@
 # Herramienta Tango
 
-Capa intermedia entre Tango Gestión y las herramientas de Sianco. Habla con la API de Tango, traduce sus datos a nombres claros y los ofrece en la red de la oficina: como páginas para el celular y como una API propia que cualquier otro programa puede usar.
+Capa intermedia entre Tango Gestión y las herramientas internas de la empresa. Habla con la API de Tango, traduce sus datos a nombres claros y los ofrece en la red de la oficina: como páginas para el celular y como una API propia que cualquier otro programa puede usar.
 
 Hoy es **solo lectura**: no carga ni modifica nada en Tango.
 
@@ -58,8 +58,10 @@ Si el antivirus marca el .exe como sospechoso (pasa a veces con los .exe hechos 
 ## Instalarlo en la PC de la oficina
 
 1. Descomprimí el zip en una carpeta fija, por ejemplo `C:\HerramientaTango`.
-2. Abrí `HerramientaTango.exe`. Te va a pedir el token de Tango: pegalo y apretá Enter.
-   - Se genera en el Tango web: menú de usuario > Desarrollador > Generar > **Aceptar**.
+2. Abrí `HerramientaTango.exe`. La primera vez te pide tres datos y los guarda:
+   - **Dirección del servidor de Tango**: la misma que se ve en el navegador al abrir el Tango web (por ejemplo `http://NOMBRE-PC:17000`).
+   - **Número de empresa**: aparece en la dirección del Tango web, `.../company/NUMERO/...`.
+   - **Token de Tango**: se genera en el Tango web, menú de usuario > Desarrollador > Generar > **Aceptar**.
 3. La primera vez, Windows pregunta si permite el acceso a la red: elegí **Permitir**. Si la red de la oficina figura como "Pública", marcá también esa opción.
 4. La ventana muestra las direcciones para abrir desde el celular, por ejemplo `http://192.168.0.20:8085`. Guardala como acceso directo en la pantalla de inicio del celular.
 

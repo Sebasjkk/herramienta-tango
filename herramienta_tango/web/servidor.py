@@ -2,7 +2,7 @@
 Servidor web de la herramienta (red local, solo lectura).
 
 Expone una API propia con nombres claros, para que cualquier pagina o programa
-de Sianco consulte Tango sin conocer su API:
+de la empresa consulte Tango sin conocer su API:
 
     GET /api/estado
     GET /api/stock/partidas          saldos por partida

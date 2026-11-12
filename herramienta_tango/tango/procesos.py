@@ -2,8 +2,8 @@
 Numeros de proceso de Tango usados por la herramienta.
 
 En la API de Tango cada entidad o consulta se identifica con un numero de
-proceso interno. Estos son los que se probaron contra el Tango de Sianco
-(Tango Gestion 25.1) el 12/11/2026.
+proceso interno. Estos son los que se probaron contra Tango Gestion 25.1
+en noviembre de 2026.
 
 - Los de "Get" salen del ejemplo oficial de Axoft (TangoDeltaApi) y
   funcionaron tal cual.

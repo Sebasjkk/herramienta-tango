@@ -5,8 +5,8 @@ Tango devuelve campos como COD_STA11 o DESCRIPCIO. Aca se traducen una sola
 vez a nombres legibles; el resto del programa usa solo estos modelos y no
 conoce los nombres internos de Tango.
 
-Los nombres de campo de Tango salen de respuestas reales de la API de Sianco
-(Tango Gestion 25.1, 12/11/2026).
+Los nombres de campo de Tango salen de respuestas reales de la API de
+Tango Gestion 25.1 (noviembre de 2026).
 """
 
 from __future__ import annotations
