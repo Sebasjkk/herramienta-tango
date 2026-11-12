@@ -124,7 +124,8 @@ def crear_manejador(contexto):
     def accion_actualizacion(datos: dict) -> tuple[int, dict]:
         if not contexto.actualizador:
             return 400, {"ok": False, "mensaje": "Las actualizaciones están desactivadas."}
-        threading.Thread(target=contexto.actualizador.revisar, daemon=True).start()
+        # Pedido a mano desde el panel: si hay version nueva se instala aunque la automatica este apagada
+        threading.Thread(target=contexto.actualizador.revisar, kwargs={"instalar": True}, daemon=True).start()
         return 200, {"ok": True, "mensaje": "Buscando actualizaciones..."}
 
     def accion_cerrar(datos: dict) -> tuple[int, dict]:

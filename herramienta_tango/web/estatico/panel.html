@@ -53,7 +53,7 @@
   .boton {
     font: inherit; font-weight: 600; font-size: .95rem; border-radius: 10px; padding: 10px 18px; min-height: 44px;
     border: 1px solid var(--linea); background: var(--papel); color: var(--grafito); cursor: pointer;
-    text-decoration: none; display: inline-flex; align-items: center; justify-content: center;
+    text-decoration: none; display: inline-flex; align-items: center; justify-content: center; white-space: nowrap;
   }
   .boton:hover { border-color: var(--plomo); }
   .boton.primario { background: var(--patina); border-color: var(--patina); color: #fff; }
@@ -184,7 +184,7 @@
               <strong id="act-titulo">Actualizaciones</strong>
               <span id="act-detalle">Se instalan solas.</span>
             </div>
-            <button type="button" class="boton" id="buscar-act">Buscar ahora</button>
+            <button type="button" class="boton" id="buscar-act">Buscar actualizaciones</button>
           </div>
           <div class="fila">
             <div class="fila-texto">
@@ -231,6 +231,8 @@
   "use strict";
   const $ = id => document.getElementById(id);
   let sis = null;            // ultimo estado recibido
+  let buscando = false;      // busqueda de actualizacion pedida a mano, en curso
+  let resultadoBusqueda = "";
   let versionInicial = null;
   let editando = false;      // formulario de conexion abierto por el usuario
   let cerrado = false;
@@ -327,14 +329,20 @@
       const textos = {
         sin_revisar: ["Actualizaciones", "Todavía no se revisó."],
         al_dia: ["Al día", "Las versiones nuevas se instalan solas."],
-        disponible: [`Hay una versión nueva: ${a.version_disponible}`, a.automatica ? "Se instala sola en unos minutos." : "Se instala desde Buscar ahora."],
+        disponible: [`Hay una versión nueva: ${a.version_disponible}`, a.automatica ? "Se instala sola en unos minutos, o ahora con el botón." : "Se instala con el botón."],
         instalando: [`Instalando la versión ${a.version_disponible}`, "El programa se reinicia solo en unos segundos."],
         reiniciando: [`Reiniciando con la versión ${a.version_disponible}`, "La página vuelve sola."],
         error: ["No se pudo revisar", a.mensaje],
       };
       const [titulo, texto] = textos[a.estado] || ["Actualizaciones", a.mensaje || ""];
       $("act-titulo").textContent = titulo;
-      det.textContent = texto;
+      det.textContent = buscando ? "Buscando…" : (resultadoBusqueda || texto);
+      const boton = $("buscar-act");
+      const ocupado = buscando || ["instalando", "reiniciando"].includes(a.estado);
+      boton.disabled = ocupado;
+      boton.textContent = a.estado === "disponible" ? `Actualizar ahora a la ${a.version_disponible}`
+        : ocupado ? "Actualizando…" : "Buscar actualizaciones";
+      boton.classList.toggle("primario", a.estado === "disponible");
     }
   }
 
@@ -405,10 +413,25 @@
     if (!d.ok) { e.target.checked = !e.target.checked; alert(d.mensaje); }
   });
 
-  $("buscar-act").addEventListener("click", async e => {
-    const b = e.currentTarget; b.disabled = true; b.textContent = "Buscando…";
-    await api("/api/sistema/buscar-actualizacion", {});
-    setTimeout(async () => { await refrescar(); b.disabled = false; b.textContent = "Buscar ahora"; }, 2500);
+  $("buscar-act").addEventListener("click", async () => {
+    const antes = sis.actualizacion && sis.actualizacion.ultima_revision;
+    buscando = true; resultadoBusqueda = ""; dibujar();
+    const d = await api("/api/sistema/buscar-actualizacion", {});
+    if (!d.ok) { buscando = false; resultadoBusqueda = d.mensaje; dibujar(); return; }
+    // Esperar a que termine la revision (cambia la hora de la ultima revision)
+    for (let i = 0; i < 20; i++) {
+      await new Promise(r => setTimeout(r, 1000));
+      await refrescar();
+      const a = sis.actualizacion || {};
+      if (a.ultima_revision !== antes && a.estado !== "sin_revisar") {
+        buscando = false;
+        resultadoBusqueda = a.estado === "al_dia" ? "Ya tenés la última versión." : "";
+        dibujar();
+        setTimeout(() => { resultadoBusqueda = ""; dibujar(); }, 8000);
+        return;
+      }
+    }
+    buscando = false; dibujar();
   });
 
   let confirmarHasta = 0;
