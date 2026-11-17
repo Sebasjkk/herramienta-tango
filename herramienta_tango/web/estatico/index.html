@@ -4,149 +4,468 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0B6E69">
-<title>Herramienta Tango</title>
+<title>Buscar artículo | Herramienta Tango</title>
 <link rel="icon" href="/icono-192.png">
 <link rel="apple-touch-icon" href="/icono-192.png">
 <link rel="manifest" href="/manifest.json">
+<link rel="stylesheet" href="/comun.css">
 <style>
-  :root {
-    --zinc: #E6EAED;
-    --papel: #FFFFFF;
-    --grafito: #1B242C;
-    --plomo: #5E6B76;
-    --linea: #CBD3D9;
-    --patina: #0B6E69;
-    --patina-suave: #DCEFED;
-    --oxido: #B3261E;
-    --oxido-suave: #FBE9E7;
-    --radio: 12px;
-    --fuente: "Segoe UI Variable Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, system-ui, sans-serif;
+  /* Lista de resultados */
+  .resultados { list-style: none; margin: 0; padding: 0; }
+  .res { width: 100%; display: grid; grid-template-columns: 1fr auto; gap: 1px 14px; align-items: center; text-align: left;
+    font: inherit; color: inherit; background: var(--papel); border: 1px solid var(--linea); border-radius: var(--radio);
+    padding: 11px 14px; cursor: pointer; margin-bottom: 8px; }
+  .res:hover { border-color: var(--patina); }
+  .res[aria-pressed="true"] { border-color: var(--patina); box-shadow: inset 3px 0 0 var(--patina); background: #F6FBFA; }
+  .res-cod { font-size: .8rem; color: var(--plomo); font-variant-numeric: tabular-nums; }
+  .res-desc { font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+  .res-stock { grid-column: 2; grid-row: 1 / span 2; text-align: right; line-height: 1.15; white-space: nowrap; }
+  .res-stock b { display: block; font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+  .res-stock small { font-size: .78rem; color: var(--plomo); }
+  .res-stock.neg b { color: var(--oxido); }
+  .res-stock.nada b { color: var(--plomo); font-weight: 500; font-size: .9rem; }
+
+  /* Ficha del articulo */
+  .ficha { padding: 18px 18px 8px; }
+  .ficha-cod { font-size: .85rem; color: var(--plomo); font-variant-numeric: tabular-nums; }
+  .ficha h2 { font-size: 1.35rem; line-height: 1.25; margin: 2px 0 4px; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+  .ficha-adic { color: var(--plomo); margin: 0 0 6px; }
+  .datos-art { display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: .85rem; color: var(--plomo); margin: 8px 0 4px; }
+  .datos-art b { color: var(--grafito); font-weight: 600; }
+  .seccion { border-top: 1px solid var(--linea); margin: 14px -18px 0; padding: 14px 18px 6px; }
+  .seccion-cab { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; flex-wrap: wrap; }
+  .seccion h3 { font-size: .95rem; margin: 0; }
+  .seccion-cab a { font-size: .85rem; color: var(--patina); font-weight: 600; }
+  .total { display: flex; align-items: baseline; gap: 6px; margin: 2px 0 10px; }
+  .total b { font-size: 2.1rem; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; line-height: 1; }
+  .total span { color: var(--plomo); }
+  .total.neg b { color: var(--oxido); }
+  .nota { font-size: .88rem; color: var(--plomo); margin: 0 0 10px; }
+  .nota.alerta { color: var(--oxido); }
+  .tabla-envoltura { overflow-x: auto; margin: 0 -18px; padding: 0 6px; }
+  .volver { display: none; }
+
+  /* Inicio sin busqueda */
+  .bienvenida { display: grid; gap: 14px; margin-top: 8px; }
+  .bienvenida .tarjeta { padding: 16px 18px; }
+  .bienvenida h2 { font-size: 1rem; margin: 0 0 6px; }
+  .bienvenida p { margin: 0 0 6px; color: var(--plomo); font-size: .92rem; }
+  .bienvenida a { color: var(--patina); font-weight: 600; }
+  .ejemplos { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .revisar { list-style: none; margin: 0; padding: 0; }
+  .revisar li { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-top: 1px solid var(--linea-suave); font-size: .92rem; }
+  .revisar li:first-child { border-top: 0; }
+
+  @media (min-width: 960px) {
+    .busqueda.con-resultados { display: grid; grid-template-columns: minmax(300px, 400px) 1fr; gap: 20px; align-items: start; }
+    .detalle { position: sticky; top: 88px; max-height: calc(100vh - 104px); overflow-y: auto; }
+    .bienvenida { grid-template-columns: 1fr 1fr; }
   }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--zinc); color: var(--grafito); font: 16px/1.45 var(--fuente); }
-  .contenedor { max-width: 720px; margin: 0 auto; padding: 22px 16px 48px; }
-
-  header { margin-bottom: 18px; }
-  h1 { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.02em; margin: 0; }
-  h1 span { color: var(--patina); }
-  .estado { display: inline-flex; align-items: center; gap: 8px; margin-top: 8px; font-size: .9rem; color: var(--plomo); }
-  .estado::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--linea); }
-  .estado.ok::before { background: #1E8E5A; }
-  .estado.mal { color: var(--oxido); }
-  .estado.mal::before { background: var(--oxido); }
-
-  .modulos { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
-  .modulo a {
-    display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 16px;
-    background: var(--papel); border: 1px solid var(--linea); border-radius: var(--radio);
-    padding: 18px 18px; color: inherit; text-decoration: none; min-height: 76px;
+  @media (max-width: 959px) {
+    .busqueda.viendo-ficha .resultados-col { display: none; }
+    .busqueda:not(.viendo-ficha) .detalle { display: none; }
+    .volver { display: inline-flex; margin: 0 0 10px; }
   }
-  .modulo a:hover { border-color: var(--patina); }
-  .modulo a:active { background: var(--patina-suave); }
-  .modulo a:focus-visible { outline: 3px solid var(--patina); outline-offset: 2px; }
-  .modulo .titulo { font-size: 1.15rem; font-weight: 650; }
-  .modulo .desc { grid-column: 1; color: var(--plomo); font-size: .92rem; }
-  .modulo .ir { grid-column: 2; grid-row: 1 / span 2; width: 12px; height: 12px;
-    border-right: 2.5px solid var(--patina); border-top: 2.5px solid var(--patina); transform: rotate(45deg); margin-right: 4px; }
-
-  .aviso { background: var(--oxido-suave); color: var(--oxido); border: 1px solid #F1C4BF; border-radius: var(--radio); padding: 12px 14px; margin-bottom: 14px; }
-  .actualizando { background: var(--patina-suave); color: var(--patina); border: 1px solid #B9DDD9; border-radius: var(--radio); padding: 12px 14px; margin-bottom: 14px; font-weight: 600; }
-  [hidden] { display: none !important; }
-  .pie { margin-top: 26px; font-size: .8rem; color: var(--plomo); }
-  .guardar { margin-top: 26px; padding: 14px 16px; border: 1px dashed var(--linea); border-radius: 10px; font-size: .9rem; color: var(--plomo); }
-  .guardar p { margin: 0 0 6px; }
-  .guardar strong { color: var(--grafito); }
-  .boton-guardar { display: inline-block; margin-top: 4px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--linea);
-    background: #fff; color: var(--patina); font-weight: 600; text-decoration: none; }
-  .boton-guardar:focus-visible { outline: 3px solid var(--patina); outline-offset: 2px; }
-  [hidden] { display: none !important; }
 </style>
 </head>
 <body>
-<div class="contenedor">
-  <header>
-    <h1>Herramienta <span>Tango</span></h1>
-    <div class="estado" id="estado">Conectando…</div>
-  </header>
+<div class="app">
+  <nav class="app-nav" id="app-nav"></nav>
+  <div class="app-principal">
+    <div class="pagina">
+      <header class="cabecera">
+        <div class="cabecera-sup">
+          <h1>Buscar artículo</h1>
+          <div class="datos"><span id="datos">Consultando Tango…</span><button type="button" class="boton-texto" id="actualizar">Actualizar</button></div>
+        </div>
+      </header>
+      <div class="barra">
+        <div class="buscador">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>
+          <label for="q" style="position:absolute;left:-9999px">Buscar artículo</label>
+          <input id="q" type="search" inputmode="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                 placeholder="Código, descripción o código de barras" enterkeyhint="search" autofocus>
+          <button type="button" class="limpiar" id="limpiar" aria-label="Borrar búsqueda" hidden>×</button>
+        </div>
+      </div>
 
-  <div class="aviso" id="aviso" role="alert" hidden></div>
-  <div class="actualizando" id="actualizando" role="status" hidden></div>
+      <div class="busqueda" id="busqueda">
+        <div class="resultados-col" id="resultados-col" aria-live="polite"></div>
+        <section class="detalle" id="detalle" aria-live="polite"></section>
+      </div>
 
-  <nav aria-label="Módulos">
-    <ul class="modulos" id="modulos"></ul>
-  </nav>
-
-  <div class="guardar" id="guardar-pc" hidden>
-    <p><strong>Tenerlo a mano en esta PC</strong></p>
-    <p>Descargá el acceso directo y copialo al escritorio. Abre esta página con un doble clic.</p>
-    <a class="boton-guardar" href="/acceso-directo.url" download>Descargar acceso directo</a>
+      <p class="pie">Solo lectura: los datos salen de Tango y no se modifica nada. El stock sale de los saldos por partida: los artículos que no llevan partidas todavía no muestran stock acá.</p>
+    </div>
   </div>
-  <div class="guardar" id="guardar-celular" hidden>
-    <p><strong>Tenerlo como app en el celular</strong></p>
-    <p>En Chrome, tocá el menú ⋮ y elegí <strong>Agregar a la pantalla principal</strong>. En iPhone, en Safari: Compartir y <strong>Agregar a inicio</strong>.</p>
-  </div>
-
-  <p class="pie">Solo lectura: los datos salen de Tango y no se modifica nada. <span id="version"></span></p>
 </div>
 
+<script src="/comun.js"></script>
 <script>
 (() => {
   "use strict";
-  // Módulos disponibles. Para agregar uno nuevo, se suma acá su página.
-  const MODULOS = [
-    { titulo: "Stock por partida", desc: "Cuánto hay de cada artículo, en qué lote y despacho.", href: "/stock" },
-    { titulo: "Listas de precios", desc: "Qué listas hay, quién usa cada una y el precio de cada artículo.", href: "/precios" },
-  ];
+  const { $, el, norm, sinCeros, tokens, fmt, fmtPrecio, num, fecha, unidad, pedir, textoError, cajaError } = HT;
+  HT.iniciar("inicio");
 
-  const $ = id => document.getElementById(id);
-  const lista = $("modulos");
-  for (const m of MODULOS) {
-    const li = document.createElement("li"); li.className = "modulo";
-    const a = document.createElement("a"); a.href = m.href;
-    const t = document.createElement("span"); t.className = "titulo"; t.textContent = m.titulo;
-    const d = document.createElement("span"); d.className = "desc"; d.textContent = m.desc;
-    const ir = document.createElement("span"); ir.className = "ir"; ir.setAttribute("aria-hidden", "true");
-    a.append(t, ir, d); li.append(a); lista.append(li);
+  const MAX_RESULTADOS = 60;
+  const EPS = 0.0001;
+  let arts = new Map();        // codigo -> articulo
+  let stockPor = new Map();    // codigo -> [lotes]
+  let preciosPor = new Map();  // codigo -> [precios]
+  let cargado = { articulos: false, stock: false, precios: false };
+  let errores = [];
+  let seleccion = null;        // codigo elegido
+  let resultados = [];
+
+  // ---------------------------------------------------------------- datos
+  async function cargar(forzar) {
+    $("busqueda").classList.add("cargando");
+    $("datos").textContent = "Consultando Tango…";
+    errores = [];
+    const tareas = [
+      pedir("/api/articulos", forzar).then(d => { indexarArticulos(d.datos); cargado.articulos = true; return d; }),
+      pedir("/api/stock/partidas", forzar).then(d => { indexarStock(d.datos); cargado.stock = true; return d; }),
+      pedir("/api/precios", forzar).then(d => { indexarPrecios(d.datos); cargado.precios = true; return d; }),
+    ].map(p => p.then(d => { render(); return d; }, e => { errores.push(textoError(e)); render(); return null; }));
+    const listos = (await Promise.all(tareas)).filter(Boolean);
+    $("busqueda").classList.remove("cargando");
+    if (listos.length) {
+      const masViejo = listos.map(d => new Date(d.actualizado)).sort((a, b) => a - b)[0];
+      $("datos").textContent = "Datos de Tango de las " + HT.hora(masViejo) + " h";
+    } else {
+      $("datos").textContent = "Sin datos";
+    }
+    render();
   }
 
-  // Como guardar el acceso: el aviso se muestra hasta que la pagina se abre ya guardada
-  const instalada = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone;
-  const esCelular = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
-  if (!instalada) $(esCelular ? "guardar-celular" : "guardar-pc").hidden = false;
-
-  const ESTADOS = {
-    ok: ["ok", "Conectado a Tango"],
-    sin_conexion: ["mal", "Sin conexión con Tango"],
-    token_invalido: ["mal", "Tango rechazó el token"],
-    sin_configurar: ["mal", "Falta configurar el programa en la PC"],
-  };
-
-  let versionInicial = null;
-  async function revisar() {
-    try {
-      const r = await fetch("/api/estado", { cache: "no-store" });
-      const e = await r.json();
-      if (versionInicial && e.version !== versionInicial) { location.reload(); return; }
-      versionInicial = versionInicial || e.version;
-      $("version").textContent = "Versión " + e.version + ".";
-      $("aviso").hidden = true;
-
-      const clave = !e.configurado ? "sin_configurar" : e.tango;
-      const [clase, texto] = ESTADOS[clave] || ["", "Conectando…"];
-      $("estado").className = "estado " + clase;
-      $("estado").textContent = texto;
-
-      const a = e.actualizacion || {};
-      const instalando = a.estado === "instalando" || a.estado === "reiniciando";
-      $("actualizando").hidden = !instalando;
-      if (instalando) $("actualizando").textContent = `Instalando la versión ${a.version_disponible}. La página vuelve sola en unos segundos.`;
-    } catch {
-      $("aviso").textContent = "No hay conexión con el programa de la PC. Revisá que el celular esté en el Wi-Fi de la oficina.";
-      $("aviso").hidden = false;
+  function asegurar(codigo, desc) {
+    if (!arts.has(codigo)) arts.set(codigo, { cod: codigo, desc: desc || "", adic: "", sin: "", barras: "", um: "", ncm: "", usaPart: null });
+    return arts.get(codigo);
+  }
+  function indexarArticulos(lista) {
+    for (const x of lista) {
+      const a = asegurar(x.codigo, x.descripcion);
+      Object.assign(a, { desc: x.descripcion, adic: x.descripcion_adicional, sin: x.sinonimo, barras: x.codigo_barras,
+                         um: x.unidad, ncm: x.ncm, usaPart: x.usa_partidas, puntoPedido: x.punto_pedido });
+    }
+    reindexarTexto();
+  }
+  function indexarStock(lista) {
+    stockPor = new Map();
+    for (const x of lista) {
+      const a = asegurar(x.codigo_articulo, x.descripcion);
+      if (!a.um) a.um = x.unidad;
+      if (!stockPor.has(a.cod)) stockPor.set(a.cod, []);
+      stockPor.get(a.cod).push(x);
+    }
+    reindexarTexto();
+  }
+  function indexarPrecios(lista) {
+    preciosPor = new Map();
+    const vistos = new Set();
+    for (const x of lista) {
+      const clave = [x.numero_lista, x.codigo_articulo, x.precio, x.codigo_cliente].join("|");
+      if (vistos.has(clave)) continue;
+      vistos.add(clave);
+      asegurar(x.codigo_articulo, x.descripcion);
+      if (!preciosPor.has(x.codigo_articulo)) preciosPor.set(x.codigo_articulo, []);
+      preciosPor.get(x.codigo_articulo).push(x);
+    }
+    reindexarTexto();
+  }
+  function reindexarTexto() {
+    for (const a of arts.values()) {
+      a._txt = norm([a.cod, a.desc, a.adic, a.sin, a.barras].join(" "));
+      a._cod = sinCeros(norm(a.cod));
     }
   }
-  revisar();
-  setInterval(revisar, 15000);
+
+  function stockDe(cod) {
+    const lotes = stockPor.get(cod) || [];
+    const total = lotes.reduce((s, l) => s + l.saldo, 0);
+    return { lotes, total, conSaldo: lotes.filter(l => Math.abs(l.saldo) > EPS) };
+  }
+
+  // ---------------------------------------------------------------- busqueda
+  function buscar(texto) {
+    const ts = tokens(texto);
+    if (!ts.length) return [];
+    const q = sinCeros(norm(texto));
+    const out = [];
+    for (const a of arts.values()) {
+      if (!ts.every(t => a._txt.includes(t) || a._cod.includes(sinCeros(t)))) continue;
+      const exacto = a._cod === q || norm(a.barras) === norm(texto) ? 0 : a._cod.startsWith(q) ? 1 : 2;
+      const st = stockDe(a.cod);
+      out.push({ a, exacto, tieneStock: st.total > EPS ? 0 : 1 });
+    }
+    out.sort((x, y) => x.exacto - y.exacto || x.tieneStock - y.tieneStock || x.a.desc.localeCompare(y.a.desc, "es"));
+    return out.map(r => r.a);
+  }
+
+  // ---------------------------------------------------------------- dibujo
+  function render() {
+    const texto = $("q").value;
+    const col = $("resultados-col");
+    const bus = $("busqueda");
+    if (!tokens(texto).length) {
+      bus.classList.remove("con-resultados", "viendo-ficha");
+      $("detalle").replaceChildren();
+      col.replaceChildren(bienvenida());
+      return;
+    }
+    if (!arts.size) {
+      col.replaceChildren(errores.length ? cajaError(errores[0], () => cargar(true)) : el("p", "aviso", "Cargando artículos de Tango…"));
+      return;
+    }
+    resultados = buscar(texto);
+    if (!resultados.length) {
+      bus.classList.remove("con-resultados", "viendo-ficha");
+      $("detalle").replaceChildren();
+      const a = el("div", "aviso");
+      const p = el("p");
+      p.append("Ningún artículo coincide con ", el("strong", "", `«${texto.trim()}»`), ".");
+      a.append(p, el("p", "", "Probá con menos palabras o con parte del código."));
+      col.replaceChildren(a);
+      return;
+    }
+    bus.classList.add("con-resultados");
+    if (!seleccion || !resultados.some(a => a.cod === seleccion)) {
+      seleccion = window.matchMedia("(min-width: 960px)").matches ? resultados[0].cod : null;
+    }
+    const frag = document.createDocumentFragment();
+    frag.append(el("p", "resumen", resultados.length === 1 ? "1 artículo" :
+      resultados.length > MAX_RESULTADOS ? `${fmt.format(resultados.length)} artículos: se muestran los primeros ${MAX_RESULTADOS}` :
+      `${fmt.format(resultados.length)} artículos`));
+    const ul = el("ul", "resultados");
+    for (const a of resultados.slice(0, MAX_RESULTADOS)) ul.append(filaResultado(a));
+    frag.append(ul);
+    col.replaceChildren(frag);
+    dibujarFicha();
+  }
+
+  function filaResultado(a) {
+    const li = el("li");
+    const b = el("button", "res");
+    b.type = "button";
+    b.setAttribute("aria-pressed", String(a.cod === seleccion));
+    b.append(el("span", "res-cod", a.cod), el("span", "res-desc", a.desc || "(sin descripción)"));
+    const st = stockDe(a.cod);
+    const caja = el("span", "res-stock");
+    if (st.lotes.length) {
+      if (st.total < -EPS) caja.classList.add("neg");
+      if (Math.abs(st.total) <= EPS) caja.classList.add("nada");
+      caja.append(el("b", "", Math.abs(st.total) <= EPS ? "Sin stock" : num(st.total) + " " + unidad(a.um)));
+    } else {
+      caja.classList.add("nada");
+      caja.append(el("b", "", a.usaPart === false ? "" : cargado.stock ? "Sin stock" : ""));
+    }
+    const np = (preciosPor.get(a.cod) || []).filter(p => p.precio > 0).length;
+    if (np) caja.append(el("small", "", np === 1 ? "1 precio" : `${np} precios`));
+    b.append(caja);
+    b.addEventListener("click", () => {
+      seleccion = a.cod;
+      for (const x of document.querySelectorAll(".res")) x.setAttribute("aria-pressed", String(x === b));
+      if (!window.matchMedia("(min-width: 960px)").matches) {
+        history.pushState({ ficha: a.cod }, "", "#art=" + encodeURIComponent(a.cod));
+        $("busqueda").classList.add("viendo-ficha");
+        window.scrollTo(0, 0);
+      }
+      dibujarFicha();
+    });
+    li.append(b);
+    return li;
+  }
+
+  function dibujarFicha() {
+    const cont = $("detalle");
+    const a = seleccion && arts.get(seleccion);
+    if (!a) { cont.replaceChildren(); return; }
+    const t = el("article", "tarjeta ficha");
+
+    const volver = el("button", "boton volver", "‹ Resultados");
+    volver.type = "button";
+    volver.addEventListener("click", () => history.back());
+    t.append(volver);
+
+    t.append(el("div", "ficha-cod", a.cod), el("h2", "", a.desc || "(sin descripción)"));
+    if (a.adic) t.append(el("p", "ficha-adic", a.adic));
+    const datos = el("div", "datos-art");
+    const dato = (et, v) => { if (!v) return; const s = el("span"); s.append(et + " ", el("b", "", v)); datos.append(s); };
+    dato("Unidad", unidad(a.um));
+    dato("NCM", a.ncm);
+    dato("Código de barras", a.barras);
+    if (a.puntoPedido) dato("Punto de pedido", num(a.puntoPedido));
+    if (datos.childNodes.length) t.append(datos);
+
+    t.append(seccionStock(a), seccionPrecios(a));
+    cont.replaceChildren(t);
+  }
+
+  function seccionStock(a) {
+    const s = el("section", "seccion");
+    const cab = el("div", "seccion-cab");
+    cab.append(el("h3", "", "Stock"));
+    const st = stockDe(a.cod);
+    if (st.lotes.length) {
+      const link = el("a", "", "Ver en Stock por partida");
+      link.href = "/stock?q=" + encodeURIComponent(a.cod);
+      cab.append(link);
+    }
+    s.append(cab);
+
+    if (!cargado.stock) { s.append(el("p", "nota", "Cargando stock…")); return s; }
+    if (!st.lotes.length) {
+      s.append(el("p", "nota", a.usaPart === false
+        ? "Este artículo no lleva partidas. Su stock todavía no se consulta desde acá."
+        : "No tiene lotes registrados en Tango."));
+      return s;
+    }
+    const tot = el("div", "total" + (st.total < -EPS ? " neg" : ""));
+    tot.append(el("b", "", num(st.total)), el("span", "", unidad(a.um) + " en total"));
+    s.append(tot);
+
+    // Por deposito, si hay mas de uno
+    const porDep = new Map();
+    for (const l of st.conSaldo) porDep.set(l.deposito, (porDep.get(l.deposito) || 0) + l.saldo);
+    if (porDep.size > 1) {
+      s.append(el("p", "nota", [...porDep].map(([d, v]) => `${titulo(d)}: ${num(v)} ${unidad(a.um)}`).join(". ") + "."));
+    }
+    const negs = st.conSaldo.filter(l => l.saldo < -EPS);
+    if (negs.length) {
+      s.append(el("p", "nota alerta", negs.length === 1
+        ? "Hay un lote en negativo: salió más de lo que entró en ese lote."
+        : `Hay ${negs.length} lotes en negativo: salió más de lo que entró en esos lotes.`));
+    }
+    if (!st.conSaldo.length) {
+      s.append(el("p", "nota", "Todos sus lotes están en cero."));
+      return s;
+    }
+    const tabla = el("table", "tabla");
+    const thead = el("thead"); const trh = el("tr");
+    const cols = [["Lote", ""], ["Depósito", ""], ["Despacho", ""], ["Vence", ""], ["Saldo", "der"]];
+    for (const [c, cl] of cols) trh.append(el("th", cl, c));
+    thead.append(trh);
+    const tbody = el("tbody");
+    for (const l of [...st.conSaldo].sort((x, y) => (x.id_partida ?? 0) - (y.id_partida ?? 0))) {
+      const tr = el("tr", l.saldo < -EPS ? "neg" : "");
+      tr.append(el("td", "", l.partida || "sin número"), el("td", "", titulo(l.deposito)), el("td", "", l.despacho),
+                el("td", "", fecha(l.vencimiento)), el("td", "der", num(l.saldo) + " " + unidad(l.unidad || a.um)));
+      tbody.append(tr);
+    }
+    tabla.append(thead, tbody);
+    const env = el("div", "tabla-envoltura"); env.append(tabla);
+    s.append(env);
+    return s;
+  }
+
+  function seccionPrecios(a) {
+    const s = el("section", "seccion");
+    const cab = el("div", "seccion-cab");
+    cab.append(el("h3", "", "Precios"));
+    const ps = (preciosPor.get(a.cod) || []).slice().sort((x, y) => x.lista.localeCompare(y.lista, "es"));
+    if (ps.length) {
+      const link = el("a", "", "Ver en Listas de precios");
+      link.href = "/precios?q=" + encodeURIComponent(a.cod);
+      cab.append(link);
+    }
+    s.append(cab);
+    if (!cargado.precios) { s.append(el("p", "nota", "Cargando precios…")); return s; }
+    if (!ps.length) { s.append(el("p", "nota", "No está en ninguna lista de precios.")); return s; }
+    const tabla = el("table", "tabla");
+    const thead = el("thead"); const trh = el("tr");
+    for (const [c, cl] of [["Lista", ""], ["Cliente", ""], ["Precio", "der"], ["Modificado", "der"]]) trh.append(el("th", cl, c));
+    thead.append(trh);
+    const tbody = el("tbody");
+    for (const p of ps) {
+      const tr = el("tr", p.precio > 0 ? "" : "apagado");
+      const lista = el("td");
+      const link = el("a", "", p.lista);
+      link.href = "/precios#lista=" + p.numero_lista;
+      link.style.color = "inherit";
+      lista.append(link);
+      const precio = el("td", "der");
+      if (p.precio > 0) precio.append(el("span", "moneda", p.moneda), fmtPrecio.format(p.precio));
+      else precio.textContent = "Sin precio";
+      tr.append(lista, el("td", "", p.cliente || "Todos"), precio, el("td", "der", fecha(p.modificado)));
+      tbody.append(tr);
+    }
+    tabla.append(thead, tbody);
+    const env = el("div", "tabla-envoltura"); env.append(tabla);
+    s.append(env);
+    return s;
+  }
+
+  const titulo = d => d ? d.charAt(0) + d.slice(1).toLowerCase() : "";
+
+  function bienvenida() {
+    const cont = el("div", "bienvenida");
+    const t1 = el("div", "tarjeta");
+    t1.append(el("h2", "", "Todo de un artículo en un solo lugar"),
+      el("p", "", "Escribí el código o parte de la descripción: ves cuánto hay, en qué lotes y a qué precio está en cada lista."));
+    const ej = el("div", "ejemplos");
+    for (const x of ["zinc", "metco 130", "o-ring"]) {
+      const b = el("button", "chip", x);
+      b.type = "button";
+      b.addEventListener("click", () => { $("q").value = x; $("q").dispatchEvent(new Event("input")); $("q").focus(); });
+      ej.append(b);
+    }
+    t1.append(ej);
+    cont.append(t1);
+
+    const t2 = el("div", "tarjeta");
+    t2.append(el("h2", "", "Para revisar"));
+    const ul = el("ul", "revisar");
+    if (cargado.stock) {
+      let negs = 0;
+      for (const ls of stockPor.values()) negs += ls.filter(l => l.saldo < -EPS).length;
+      const li = el("li");
+      li.append(el("span", "", negs ? `${negs} lotes en negativo` : "No hay lotes en negativo"));
+      if (negs) { const a = el("a", "", "Ver"); a.href = "/stock#negativos"; li.append(a); }
+      ul.append(li);
+    }
+    if (cargado.articulos) {
+      const li = el("li");
+      li.append(el("span", "", `${fmt.format(arts.size)} artículos en Tango`));
+      ul.append(li);
+    }
+    if (cargado.precios) {
+      const listas = new Set();
+      for (const ps of preciosPor.values()) for (const p of ps) listas.add(p.numero_lista);
+      const li = el("li");
+      li.append(el("span", "", `${listas.size} listas de precios`));
+      const a = el("a", "", "Ver"); a.href = "/precios"; li.append(a);
+      ul.append(li);
+    }
+    if (!ul.childNodes.length) ul.append(el("li", "", errores[0] || "Cargando datos de Tango…"));
+    t2.append(ul);
+    cont.append(t2);
+
+    if (HT.esCelular && !HT.instalada) {
+      const t3 = el("div", "tarjeta");
+      t3.append(el("h2", "", "Tenerlo como app"));
+      const p = el("p");
+      p.innerHTML = "En Chrome, tocá el menú ⋮ y elegí <strong>Agregar a la pantalla principal</strong>. En iPhone, en Safari: Compartir y <strong>Agregar a inicio</strong>.";
+      t3.append(p);
+      cont.append(t3);
+    }
+    return cont;
+  }
+
+  // ---------------------------------------------------------------- eventos
+  const inicial = new URLSearchParams(location.search).get("q");
+  if (inicial) $("q").value = inicial;
+  HT.conectarBuscador($("q"), $("limpiar"), () => {
+    // Una busqueda nueva vuelve a la lista de resultados (en el celular)
+    seleccion = null;
+    $("busqueda").classList.remove("viendo-ficha");
+    if (location.hash.startsWith("#art=")) history.replaceState(null, "", location.pathname + location.search);
+    render();
+  });
+  $("actualizar").addEventListener("click", () => cargar(true));
+  window.addEventListener("popstate", () => {
+    if (!location.hash.startsWith("#art=")) $("busqueda").classList.remove("viendo-ficha");
+  });
+  if (location.hash.startsWith("#art=")) history.replaceState(null, "", location.pathname + location.search);
+  cargar(false);
 })();
 </script>
 </body>

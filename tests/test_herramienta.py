@@ -221,7 +221,7 @@ class TestServidor(unittest.TestCase):
     def test_pagina(self):
         estado, cuerpo = self._get("/")
         self.assertEqual(estado, 200)
-        self.assertIn(b'id="modulos"', cuerpo)          # menu de inicio
+        self.assertIn(b"app-nav", cuerpo)          # marco con la navegacion
         self.assertIn(b"/stock", cuerpo)
         estado, cuerpo = self._get("/stock")
         self.assertEqual(estado, 200)
@@ -255,6 +255,11 @@ class TestServidor(unittest.TestCase):
         self.assertEqual(estado, 400)
         self.assertFalse(datos["ok"])
         self.assertIn("modo_servidor", datos["sistema"])
+
+    def test_archivos_comunes(self):
+        for ruta, tipo in (("/comun.js", "text/javascript"), ("/comun.css", "text/css")):
+            with urllib.request.urlopen(self.base + ruta) as r:
+                self.assertTrue(r.headers["Content-Type"].startswith(tipo), ruta)
 
     def test_no_sale_de_la_carpeta_estatica(self):
         estado, _ = self._get("/../../config.py")

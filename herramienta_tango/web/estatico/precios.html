@@ -8,84 +8,8 @@
 <link rel="icon" href="/icono-192.png">
 <link rel="apple-touch-icon" href="/icono-192.png">
 <link rel="manifest" href="/manifest.json">
+<link rel="stylesheet" href="/comun.css">
 <style>
-  :root {
-    --zinc: #E6EAED;      /* fondo */
-    --papel: #FFFFFF;     /* superficies */
-    --grafito: #1B242C;   /* texto */
-    --plomo: #5E6B76;     /* texto secundario */
-    --linea: #CBD3D9;     /* bordes */
-    --patina: #0B6E69;    /* interaccion */
-    --patina-suave: #DCEFED;
-    --oxido: #B3261E;     /* negativos */
-    --oxido-suave: #FBE9E7;
-    --radio: 10px;
-    --fuente: "Segoe UI Variable Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, system-ui, sans-serif;
-  }
-  * { box-sizing: border-box; }
-  html { -webkit-text-size-adjust: 100%; }
-  body {
-    margin: 0; background: var(--zinc); color: var(--grafito);
-    font: 16px/1.45 var(--fuente);
-  }
-  .art-total, .lote-saldo, .estado { font-variant-numeric: tabular-nums; }
-  .contenedor { max-width: 720px; margin: 0 auto; padding: 0 14px 48px; }
-
-  /* Barra superior fija */
-  .barra {
-    position: sticky; top: 0; z-index: 5;
-    background: var(--zinc);
-    padding: 12px 0 10px;
-    border-bottom: 1px solid var(--linea);
-  }
-  .barra-sup { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
-  h1 { font-size: 1.15rem; font-weight: 650; margin: 0; letter-spacing: -0.01em; white-space: nowrap; line-height: 1.2; }
-  h1 .marca { display: block; font-size: .75rem; font-weight: 600; color: var(--patina); letter-spacing: 0; text-decoration: none; }
-  h1 .marca:hover { text-decoration: underline; }
-  .estado { font-size: .82rem; color: var(--plomo); text-align: right; }
-  .estado button { margin-left: 6px; }
-
-  .buscador { position: relative; }
-  .buscador input {
-    width: 100%; font: inherit; font-size: 1.15rem;
-    padding: 14px 44px 14px 14px;
-    border: 2px solid var(--linea); border-radius: var(--radio);
-    background: var(--papel); color: var(--grafito);
-    -webkit-appearance: none; appearance: none;
-  }
-  .buscador input::-webkit-search-cancel-button, .buscador input::-webkit-search-decoration { -webkit-appearance: none; display: none; }
-  .buscador input:focus { outline: none; border-color: var(--patina); box-shadow: 0 0 0 3px var(--patina-suave); }
-  .limpiar {
-    position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
-    width: 36px; height: 36px; border: 0; border-radius: 50%;
-    background: transparent; color: var(--plomo); font-size: 1.4rem; line-height: 1; cursor: pointer;
-  }
-  .limpiar[hidden] { display: none; }
-
-  .filtros { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }
-  select, .boton, .chip {
-    font: inherit; font-size: .9rem; min-height: 40px;
-    border-radius: 999px; border: 1px solid var(--linea);
-    background: var(--papel); color: var(--grafito); padding: 6px 14px; cursor: pointer;
-  }
-  select { padding-right: 30px; -webkit-appearance: none; appearance: none;
-    background-image: linear-gradient(45deg, transparent 50%, var(--plomo) 50%), linear-gradient(135deg, var(--plomo) 50%, transparent 50%);
-    background-position: calc(100% - 16px) 50%, calc(100% - 11px) 50%; background-size: 5px 5px; background-repeat: no-repeat; }
-  .chip { display: inline-flex; align-items: center; gap: 8px; user-select: none; }
-  .chip input { width: 18px; height: 18px; accent-color: var(--patina); margin: 0; }
-  .chip-neg[aria-pressed="true"] { background: var(--oxido); border-color: var(--oxido); color: #fff; }
-  .chip-neg .cant { font-weight: 650; }
-  .boton-texto { border: 0; background: none; color: var(--patina); font: inherit; font-size: .82rem; font-weight: 600; padding: 4px 2px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
-  :is(button, select, input, .chip):focus-visible { outline: 3px solid var(--patina); outline-offset: 2px; }
-
-  /* Mensajes */
-  .aviso { margin: 22px 2px; color: var(--plomo); }
-  .aviso strong { color: var(--grafito); }
-  .aviso p { margin: 0 0 8px; }
-  .error { background: var(--oxido-suave); color: var(--oxido); border: 1px solid #F1C4BF; border-radius: var(--radio); padding: 12px 14px; margin-top: 16px; }
-  .resumen { font-size: .85rem; color: var(--plomo); margin: 14px 2px 8px; }
-
-
   /* Listas */
   .listas { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
   .lista a {
@@ -120,39 +44,45 @@
   .articulo-en-listas .nombre { font-size: 1.05rem; line-height: 1.25; overflow-wrap: anywhere; }
   .articulo-en-listas .precios { margin-top: 10px; }
 
-  .mas { text-align: center; color: var(--plomo); font-size: .85rem; margin: 18px 0; }
-  .pie { margin-top: 28px; font-size: .78rem; color: var(--plomo); }
-  .actualizando { background: var(--patina-suave); color: var(--patina); border: 1px solid #B9DDD9;
-    border-radius: var(--radio); padding: 10px 14px; margin-top: 10px; font-size: .9rem; font-weight: 600; }
-  .actualizando[hidden] { display: none; }
-  .cargando { opacity: .55; transition: opacity .2s; }
-  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  .listas { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+  .cabecera-lista, .precios { max-width: 900px; }
+  .articulo-en-listas { max-width: 900px; }
+  .volver-lista { display: block; font-size: .85rem; font-weight: 600; color: var(--patina); text-decoration: none; margin-bottom: 2px; letter-spacing: 0; }
 </style>
 </head>
 <body>
-<div class="contenedor">
-  <header class="barra">
-    <div class="barra-sup">
-      <h1><a class="marca" id="volver" href="/">‹ Menú</a><span id="titulo">Listas de precios</span></h1>
-      <div class="estado"><span id="estado">Consultando Tango…</span><button type="button" class="boton-texto" id="actualizar">Actualizar</button></div>
-    </div>
-    <div class="buscador">
-      <label for="q" style="position:absolute;left:-9999px">Buscar</label>
-      <input id="q" type="search" inputmode="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-             placeholder="Lista, cliente o artículo" enterkeyhint="search">
-      <button type="button" class="limpiar" id="limpiar" aria-label="Borrar búsqueda" hidden>×</button>
-    </div>
-  </header>
+<div class="app">
+  <nav class="app-nav" id="app-nav"></nav>
+  <div class="app-principal">
+    <div class="pagina">
+      <header class="cabecera">
+        <div class="cabecera-sup">
+          <h1><a class="volver-lista" id="volver" href="#" hidden>‹ Listas</a><span id="titulo">Listas de precios</span></h1>
+          <div class="datos"><span id="estado">Consultando Tango…</span><button type="button" class="boton-texto" id="actualizar">Actualizar</button></div>
+        </div>
+      </header>
+      <div class="barra">
+        <div class="buscador">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>
+          <label for="q" style="position:absolute;left:-9999px">Buscar</label>
+          <input id="q" type="search" inputmode="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                 placeholder="Lista, cliente o artículo" enterkeyhint="search">
+          <button type="button" class="limpiar" id="limpiar" aria-label="Borrar búsqueda" hidden>×</button>
+        </div>
+      </div>
 
-  <div class="actualizando" id="actualizando" role="status" hidden></div>
-  <main id="resultados" aria-live="polite"></main>
+      <main id="resultados" aria-live="polite"></main>
 
-  <p class="pie">Solo lectura: los precios salen de la consulta «Precios vigentes a una fecha» de Tango y no se modifica nada. <span id="version"></span></p>
+      <p class="pie">Solo lectura: los precios salen de la consulta «Precios vigentes a una fecha» de Tango y no se modifica nada.</p>
+    </div>
+  </div>
 </div>
 
+<script src="/comun.js"></script>
 <script>
 (() => {
   "use strict";
+  HT.iniciar("precios");
   const $ = id => document.getElementById(id);
   const ui = { q: $("q"), limpiar: $("limpiar"), resultados: $("resultados"), estado: $("estado"),
                actualizar: $("actualizar"), titulo: $("titulo"), volver: $("volver") };
@@ -192,12 +122,12 @@
         pedir("/api/clientes", forzar).catch(() => null),   // si falla, solo falta "quién la usa"
       ]);
       armar(precios.datos, clientes ? clientes.datos : []);
-      ui.estado.textContent = "Tango, " + fmtHora(new Date(precios.actualizado)) + " h";
+      ui.estado.textContent = "Datos de Tango de las " + fmtHora(new Date(precios.actualizado)) + " h";
       render();
     } catch (e) {
       ui.estado.textContent = "Sin datos";
       ui.resultados.replaceChildren(mensajeError(e.message === "Failed to fetch"
-        ? "No hay conexión con el programa de la PC. Revisá que el celular esté en el Wi-Fi de la oficina y que el programa siga abierto."
+        ? HT.textoError(e)
         : e.message));
     } finally {
       ui.resultados.classList.remove("cargando");
@@ -265,14 +195,12 @@
     const l = listaActual();
     if (l) {
       ui.titulo.textContent = l.nombre;
-      ui.volver.textContent = "‹ Listas";
-      ui.volver.href = "#";
+      ui.volver.hidden = false;
       ui.q.placeholder = "Buscar artículo en " + l.nombre;
       dibujarLista(l);
     } else {
       ui.titulo.textContent = "Listas de precios";
-      ui.volver.textContent = "‹ Menú";
-      ui.volver.href = "/";
+      ui.volver.hidden = true;
       ui.q.placeholder = "Lista, cliente o artículo";
       dibujarInicio();
     }
@@ -406,35 +334,9 @@
   ui.actualizar.addEventListener("click", () => cargar(true));
   window.addEventListener("hashchange", () => { ui.q.value = ""; render(); window.scrollTo(0, 0); });
 
-  // ---------------------------------------------------------------- actualizaciones del programa
-  let versionInicial = null;
-  async function revisarVersion() {
-    const aviso = $("actualizando");
-    try {
-      const r = await fetch("/api/estado", { cache: "no-store" });
-      const e = await r.json();
-      if (!versionInicial) {
-        versionInicial = e.version;
-        $("version").textContent = "Versión " + e.version + ".";
-      } else if (e.version !== versionInicial) {
-        location.reload();
-        return;
-      }
-      const a = e.actualizacion || {};
-      if (a.estado === "instalando" || a.estado === "reiniciando") {
-        aviso.textContent = `Instalando la versión ${a.version_disponible}. La página vuelve sola en unos segundos.`;
-        aviso.hidden = false;
-      } else {
-        aviso.hidden = true;
-      }
-    } catch {
-      if (!aviso.hidden) aviso.textContent = "Reiniciando el programa con la versión nueva…";
-    }
-  }
-
+  const inicial = new URLSearchParams(location.search).get("q");
+  if (inicial) { ui.q.value = inicial; ui.limpiar.hidden = false; }
   cargar(false);
-  revisarVersion();
-  setInterval(revisarVersion, 15000);
 })();
 </script>
 </body>

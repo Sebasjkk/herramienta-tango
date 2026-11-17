@@ -55,6 +55,8 @@ from ..tango import TangoError
 log = logging.getLogger("herramienta_tango")
 
 CARPETA_ESTATICA = ruta_recurso("herramienta_tango/web/estatico")
+TIPOS = {".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json",
+         ".png": "image/png", ".ico": "image/x-icon", ".svg": "image/svg+xml"}
 MAX_DIAS_VENTAS = 366
 MAX_CUERPO = 10_000
 ENCABEZADO_PANEL = "X-Herramienta-Tango"
@@ -195,7 +197,9 @@ def crear_manejador(contexto):
             if raiz_estatica not in archivo.parents or not archivo.is_file():
                 self._responder(404, "text/plain; charset=utf-8", "No encontrado".encode())
                 return
-            tipo = mimetypes.guess_type(archivo.name)[0] or "application/octet-stream"
+            # Tipos fijos: en Windows mimetypes lee el registro, que a veces dice text/plain
+            # para .js; con nosniff el navegador no correria el script.
+            tipo = TIPOS.get(archivo.suffix.lower()) or mimetypes.guess_type(archivo.name)[0] or "application/octet-stream"
             if tipo.startswith("text/") or tipo in ("application/javascript", "application/json"):
                 tipo += "; charset=utf-8"
             self._responder(200, tipo, archivo.read_bytes())
