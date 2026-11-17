@@ -1,5 +1,6 @@
 """
-Integracion con Windows: instalacion, inicio automatico, accesos directos, avisos y red.
+Integracion con Windows: instalacion, inicio automatico, modo servidor,
+accesos directos, avisos y red.
 
 El programa corre con el Python oficial (pythonw.exe, firmado por la Python
 Software Foundation) y su codigo son archivos .py. No hay un .exe propio, para
@@ -20,7 +21,14 @@ from . import config
 CLAVE_INICIO = r"Software\Microsoft\Windows\CurrentVersion\Run"
 NOMBRE_INICIO = "HerramientaTango"
 NOMBRE_ACCESO = "Herramienta Tango"
+NOMBRE_TAREA = "Herramienta Tango"      # tarea programada y regla del firewall del modo servidor
 SIN_VENTANA = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+# Corriendo como servicio (sin nadie frente a la pantalla): no se muestran ventanas de aviso
+SIN_AVISOS = False
+
+# Redes privadas desde donde se acepta entrar en modo servidor (Wi-Fi y cableada de la oficina)
+REDES_PRIVADAS = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
 
 
 def es_windows() -> bool:
@@ -80,6 +88,79 @@ def activar_inicio_automatico(activo: bool) -> None:
                 pass
 
 
+# ------------------------------------------------------------ modo servidor
+# El programa corre como tarea programada de Windows con la cuenta SYSTEM: arranca
+# al prender la PC aunque nadie inicie sesion, y el firewall deja entrar a las
+# otras PCs y celulares de la red privada. Crear la tarea y la regla necesita
+# permiso de administrador (una ventana de Windows lo pide una vez).
+def marca_modo_servidor() -> Path:
+    return config.CARPETA / "modo_servidor.txt"
+
+
+def modo_servidor_activo() -> bool:
+    return marca_modo_servidor().exists()
+
+
+def _ps(texto: str) -> str:
+    return texto.replace("'", "''")
+
+
+def script_activar_servidor(inst: Instalacion, puerto: int, pid_a_esperar: int | None) -> str:
+    """PowerShell (como administrador) que crea la tarea y la regla del firewall y arranca la tarea."""
+    redes = ",".join(f"'{r}'" for r in REDES_PRIVADAS)
+    esperar = f"Wait-Process -Id {pid_a_esperar} -Timeout 60 -ErrorAction SilentlyContinue" if pid_a_esperar else ""
+    return f"""
+$ErrorActionPreference = 'Stop'
+$marca = '{_ps(str(marca_modo_servidor()))}'
+$error_archivo = '{_ps(str(config.CARPETA / "modo_servidor_error.txt"))}'
+try {{
+  $accion = New-ScheduledTaskAction -Execute '{_ps(str(inst.pythonw))}' -Argument '"{_ps(str(inst.script))}" --servicio' -WorkingDirectory '{_ps(str(inst.raiz))}'
+  $disparador = New-ScheduledTaskTrigger -AtStartup
+  $cuenta = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+  $ajustes = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1)
+  Register-ScheduledTask -TaskName '{_ps(NOMBRE_TAREA)}' -Action $accion -Trigger $disparador -Principal $cuenta -Settings $ajustes -Description 'Herramienta Tango: consultas sobre Tango para las PCs y celulares de la oficina' -Force | Out-Null
+  Get-NetFirewallRule -DisplayName '{_ps(NOMBRE_TAREA)}' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+  New-NetFirewallRule -DisplayName '{_ps(NOMBRE_TAREA)}' -Direction Inbound -Action Allow -Protocol TCP -LocalPort {int(puerto)} -RemoteAddress {redes} -Profile Any | Out-Null
+  Set-Content -Path $marca -Value 'Herramienta Tango corre como tarea programada de Windows (modo servidor).' -Encoding UTF8
+  {esperar}
+  Start-ScheduledTask -TaskName '{_ps(NOMBRE_TAREA)}'
+}} catch {{
+  Set-Content -Path $error_archivo -Value $_.Exception.Message -Encoding UTF8
+}}
+"""
+
+
+def script_desactivar_servidor() -> str:
+    return f"""
+$ErrorActionPreference = 'SilentlyContinue'
+Remove-Item -Path '{_ps(str(marca_modo_servidor()))}' -Force
+Get-NetFirewallRule -DisplayName '{_ps(NOMBRE_TAREA)}' | Remove-NetFirewallRule
+# Al final: borrar la tarea puede cortar este mismo script si corre dentro de ella
+Unregister-ScheduledTask -TaskName '{_ps(NOMBRE_TAREA)}' -Confirm:$false
+"""
+
+
+def ejecutar_powershell(script: str, como_admin: bool) -> None:
+    """Corre un script de PowerShell sin ventana. Con como_admin, Windows pide permiso;
+    si el usuario dice que no, lanza OSError. No espera a que el script termine."""
+    if not es_windows():
+        raise OSError("Solo disponible en Windows.")
+    if not como_admin:
+        r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
+                           capture_output=True, text=True, timeout=120, creationflags=SIN_VENTANA)
+        if r.returncode != 0:
+            raise OSError(r.stderr.strip() or "PowerShell devolvió un error")
+        return
+    archivo = config.CARPETA / "modo_servidor.ps1"
+    archivo.write_text(script, encoding="utf-8-sig")
+    lanzar = (f"Start-Process powershell -Verb RunAs -WindowStyle Hidden -ArgumentList "
+              f"'-NoProfile','-ExecutionPolicy','Bypass','-File','\"{_ps(str(archivo))}\"'")
+    r = subprocess.run(["powershell", "-NoProfile", "-Command", lanzar],
+                       capture_output=True, text=True, timeout=300, creationflags=SIN_VENTANA)
+    if r.returncode != 0:
+        raise OSError("No se dio el permiso de administrador.")
+
+
 # ------------------------------------------------------------ accesos directos
 def crear_accesos_directos() -> list[str]:
     """Crea 'Herramienta Tango' en el escritorio y en el menu Inicio. Devuelve donde los creo."""
@@ -115,6 +196,8 @@ foreach ($d in $destinos) {{
 # ------------------------------------------------------------ avisos
 def aviso(titulo: str, mensaje: str, error: bool = True) -> None:
     """Ventana de aviso de Windows (el programa no tiene consola)."""
+    if SIN_AVISOS:
+        return   # como servicio no hay pantalla: la ventana quedaria esperando para siempre
     if es_windows():
         import ctypes
         icono = 0x10 if error else 0x40  # MB_ICONERROR / MB_ICONINFORMATION
@@ -124,6 +207,10 @@ def aviso(titulo: str, mensaje: str, error: bool = True) -> None:
 
 
 # ------------------------------------------------------------ red
+def nombre_equipo() -> str:
+    return socket.gethostname().lower()
+
+
 def direcciones_locales() -> list[str]:
     ips: set[str] = set()
     try:

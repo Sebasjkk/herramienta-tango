@@ -232,6 +232,24 @@ class TestServidor(unittest.TestCase):
         _, menu = self._get("/")
         self.assertIn(b"/precios", menu)
 
+    def test_acceso_directo_para_otras_pcs(self):
+        estado, cuerpo = self._get("/acceso-directo.url")
+        self.assertEqual(estado, 200)
+        texto = cuerpo.decode("ascii")
+        self.assertTrue(texto.startswith("[InternetShortcut]"))
+        self.assertIn(f":{self.contexto.cfg.puerto}/", texto)
+        estado, _ = self._get("/icono.ico")
+        self.assertEqual(estado, 200)
+        estado, cuerpo = self._get("/manifest.json")
+        self.assertEqual(estado, 200)
+        self.assertEqual(json.loads(cuerpo)["start_url"], "/")
+
+    def test_modo_servidor_fuera_de_windows(self):
+        estado, datos = self._post("/api/sistema/modo-servidor", {"activo": True})
+        self.assertEqual(estado, 400)
+        self.assertFalse(datos["ok"])
+        self.assertIn("modo_servidor", datos["sistema"])
+
     def test_no_sale_de_la_carpeta_estatica(self):
         estado, _ = self._get("/../../config.py")
         self.assertEqual(estado, 404)
@@ -252,6 +270,30 @@ class TestServidor(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestModoServidor(unittest.TestCase):
+    def test_script_activar(self):
+        from herramienta_tango import sistema
+        inst = sistema.Instalacion(Path("C:/Herramienta Tango"), Path("C:/Herramienta Tango/python/pythonw.exe"),
+                                   Path("C:/Herramienta Tango/app/HerramientaTango.pyw"), Path("C:/x.ico"))
+        script = sistema.script_activar_servidor(inst, 8085, 1234)
+        self.assertIn("--servicio", script)
+        self.assertIn("-LocalPort 8085", script)
+        self.assertIn("Wait-Process -Id 1234", script)
+        self.assertIn("'192.168.0.0/16'", script)
+        self.assertIn("-ExecutionTimeLimit ([TimeSpan]::Zero)", script)
+
+    def test_vigilante_reabre_y_se_detiene(self):
+        from herramienta_tango import app
+        codigos = iter([app.SALIDA_REINICIAR, 1, app.SALIDA_DETENER])
+        with mock.patch.object(app.subprocess, "call", side_effect=lambda *a, **k: next(codigos)) as llamada, \
+             mock.patch.object(app.time, "sleep") as dormir:
+            self.assertEqual(app._vigilar(), 0)
+        app.sistema.SIN_AVISOS = False
+        self.assertEqual(llamada.call_count, 3)
+        self.assertEqual(dormir.call_count, 1)   # solo espera despues del error
+        self.assertIn("--hijo-servicio", llamada.call_args[0][0])
 
 
 class TestConfig(unittest.TestCase):

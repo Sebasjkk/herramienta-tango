@@ -67,6 +67,10 @@ jobs:
         shell: pwsh
         run: ./tests/probar_actualizacion.ps1
 
+      - name: Probar modo servidor
+        shell: pwsh
+        run: ./tests/probar_modo_servidor.ps1
+
       - name: Publicar version
         uses: softprops/action-gh-release@v2
         with:

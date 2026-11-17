@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0B6E69">
 <title>Herramienta Tango</title>
-<link rel="icon" href="data:,">
+<link rel="icon" href="/icono-192.png">
 <style>
   :root {
     --zinc: #E6EAED;
@@ -70,6 +70,11 @@
   .qr-codigo svg path { fill: var(--grafito); }
   .url { font-size: 1.15rem; font-weight: 650; overflow-wrap: anywhere; margin: 0 0 4px; font-variant-numeric: tabular-nums; }
   .chico { font-size: .88rem; color: var(--plomo); margin: 0; }
+  .equipos { display: grid; gap: 22px; }
+  .equipos h3 { font-size: 1rem; font-weight: 650; margin: 0 0 6px; }
+  .equipos .chico + .chico { margin-top: 6px; }
+  .equipos .acciones { margin-top: 10px; }
+  .fila-texto span.alerta { color: var(--oxido); }
 
   /* Ajustes */
   .fila { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; }
@@ -172,6 +177,13 @@
 
         <div class="tarjeta">
           <h2>Ajustes</h2>
+          <div class="fila" id="fila-servidor">
+            <div class="fila-texto">
+              <strong id="servidor-titulo">Modo servidor</strong>
+              <span id="servidor-detalle">Para la PC que queda siempre prendida. El programa arranca con la PC aunque nadie inicie sesión, y las otras PCs y celulares de la oficina pueden entrar. Windows pide permiso de administrador una sola vez.</span>
+            </div>
+            <button type="button" class="boton" id="servidor-boton">Activar</button>
+          </div>
           <div class="fila" id="fila-inicio">
             <div class="fila-texto">
               <strong>Abrir al prender la PC</strong>
@@ -203,7 +215,7 @@
           <div class="fila">
             <div class="fila-texto">
               <strong>Cerrar el programa</strong>
-              <span>Nadie va a poder consultar desde el celular hasta que se vuelva a abrir.</span>
+              <span id="cerrar-detalle">Nadie va a poder consultar desde el celular hasta que se vuelva a abrir.</span>
             </div>
             <button type="button" class="boton peligro" id="cerrar">Cerrar</button>
           </div>
@@ -212,13 +224,25 @@
 
       <div class="columna">
         <div class="tarjeta">
-          <h2>Desde el celular</h2>
-          <p class="bajada">Escaneá el código con la cámara para entrar al menú. El celular tiene que estar en el Wi-Fi de la oficina.</p>
-          <div class="qr">
-            <div class="qr-codigo" id="qr" role="img" aria-label="Código QR para abrir la consulta en el celular"></div>
+          <h2>Entrar desde otros equipos</h2>
+          <p class="bajada" id="equipos-bajada">Tienen que estar en la red o el Wi-Fi de la oficina.</p>
+          <div class="equipos">
             <div>
-              <p class="url" id="url-celular"></p>
-              <p class="chico" id="otras-urls"></p>
+              <h3>Celulares</h3>
+              <div class="qr">
+                <div class="qr-codigo" id="qr" role="img" aria-label="Código QR para abrir el menú en el celular"></div>
+                <div>
+                  <p class="url" id="url-celular"></p>
+                  <p class="chico">Escaneá el código con la cámara. Después, en Chrome: menú ⋮ y <strong>Agregar a la pantalla principal</strong>. Queda un ícono como el de una app.</p>
+                  <p class="chico" id="otras-urls"></p>
+                </div>
+              </div>
+            </div>
+            <div>
+              <h3>Otras PCs</h3>
+              <p class="url" id="url-pc"></p>
+              <p class="chico">Descargá el acceso directo y copialo al escritorio de cada PC. Desde el menú también se puede descargar, en cualquier PC.</p>
+              <div class="acciones"><a class="boton" href="/acceso-directo.url" download>Descargar acceso directo</a></div>
             </div>
           </div>
         </div>
@@ -227,8 +251,8 @@
   </section>
 
   <section id="vista-cerrado" class="cerrado" hidden>
-    <h2>El programa está cerrado</h2>
-    <p class="chico">Para volver a abrirlo, usá el acceso directo <strong>Herramienta Tango</strong> del escritorio.</p>
+    <h2 id="cerrado-titulo">El programa está cerrado</h2>
+    <p class="chico" id="cerrado-detalle">Para volver a abrirlo, usá el acceso directo <strong>Herramienta Tango</strong> del escritorio.</p>
   </section>
 </div>
 
@@ -243,6 +267,7 @@
   let versionInicial = null;
   let editando = false;      // formulario de conexion abierto por el usuario
   let cerrado = false;
+  let pasandoAServidor = false;  // la copia comun se cierra y arranca la del modo servidor
 
   async function api(ruta, datos) {
     const op = datos === undefined ? { cache: "no-store" } : {
@@ -318,10 +343,45 @@
     }
     $("otras-urls").textContent = ips.length > 1
       ? "Si no abre, probá con: " + ips.slice(1).map(ip => `http://${ip}:${sis.puerto}`).join("  o  ")
-      : "Guardala como acceso directo en la pantalla de inicio del celular.";
+      : "";
+    $("url-pc").textContent = `http://${sis.nombre_equipo}:${sis.puerto}`;
+
+    // Modo servidor
+    const ms = sis.modo_servidor || {};
+    const activo = ms.activo || ms.como_servicio;
+    $("fila-servidor").hidden = !ms.disponible;
+    const botonServ = $("servidor-boton");
+    const detServ = $("servidor-detalle");
+    detServ.classList.remove("alerta");
+    botonServ.disabled = false;
+    if (ms.estado === "esperando_permiso") {
+      $("servidor-titulo").textContent = "Modo servidor";
+      detServ.textContent = "Aceptá la ventana de Windows que pide permiso de administrador. Si no la ves, buscala en la barra de tareas.";
+      botonServ.disabled = true; botonServ.textContent = "Esperando permiso…";
+    } else if (ms.estado === "pasando") {
+      pasandoAServidor = true;
+      detServ.textContent = "Activado. El programa se reinicia como servidor…";
+      botonServ.disabled = true; botonServ.textContent = "Reiniciando…";
+    } else if (activo) {
+      $("servidor-titulo").textContent = "Modo servidor: activo";
+      detServ.textContent = ms.como_servicio
+        ? "Arranca con la PC aunque nadie inicie sesión. Las otras PCs y celulares de la oficina pueden entrar."
+        : "Está activado, pero esta copia no es la del servidor. Reiniciá la PC o cerrá esta copia para que arranque la del servidor.";
+      botonServ.textContent = "Desactivar";
+    } else {
+      $("servidor-titulo").textContent = "Modo servidor";
+      detServ.textContent = "Para la PC que queda siempre prendida. El programa arranca con la PC aunque nadie inicie sesión, y las otras PCs y celulares de la oficina pueden entrar. Windows pide permiso de administrador una sola vez.";
+      botonServ.textContent = "Activar";
+    }
+    if (ms.estado === "error" && ms.mensaje) {
+      detServ.textContent = ms.mensaje; detServ.classList.add("alerta");
+    }
+    $("cerrar-detalle").textContent = ms.como_servicio
+      ? "Nadie va a poder entrar hasta que se reinicie la PC o se abra desde el escritorio."
+      : "Nadie va a poder consultar desde el celular hasta que se vuelva a abrir.";
 
     // Ajustes
-    $("fila-inicio").hidden = !sis.inicio_automatico_disponible;
+    $("fila-inicio").hidden = !sis.inicio_automatico_disponible || activo;
     $("fila-accesos").hidden = !sis.inicio_automatico_disponible;
     $("inicio").checked = !!sis.inicio_automatico;
     $("servidor-actual").textContent = sis.servidor || "Sin configurar";
@@ -363,11 +423,14 @@
       if (versionInicial && d.version !== versionInicial) { location.reload(); return; }
       versionInicial = versionInicial || d.version;
       sis = d;
+      if (pasandoAServidor && d.modo_servidor && d.modo_servidor.como_servicio) pasandoAServidor = false;
       $("aviso-global").hidden = true;
       dibujar();
     } catch {
       const instalando = sis && sis.actualizacion && ["instalando", "reiniciando"].includes(sis.actualizacion.estado);
-      mensaje($("aviso-global"), "info", instalando
+      mensaje($("aviso-global"), "info", pasandoAServidor
+        ? "Arrancando en modo servidor… la página vuelve sola en unos segundos."
+        : instalando
         ? "Reiniciando con la versión nueva… la página vuelve sola."
         : "El programa no responde. Si lo cerraste, abrilo desde el acceso directo Herramienta Tango del escritorio.");
     }
@@ -447,6 +510,35 @@
     const d = await api("/api/sistema/accesos-directos", {});
     $("accesos-detalle").textContent = d.mensaje || d.error;
     b.disabled = false;
+  });
+
+  let confirmarDesactivar = 0;
+  $("servidor-boton").addEventListener("click", async e => {
+    const b = e.currentTarget;
+    const ms = sis.modo_servidor || {};
+    const activar = !(ms.activo || ms.como_servicio);
+    if (!activar && Date.now() > confirmarDesactivar) {
+      confirmarDesactivar = Date.now() + 4000;
+      b.textContent = "¿Desactivar? Tocá de nuevo";
+      setTimeout(dibujar, 4000);
+      return;
+    }
+    b.disabled = true;
+    const d = await api("/api/sistema/modo-servidor", { activo: activar });
+    if (!d.ok) {
+      $("servidor-detalle").textContent = d.mensaje || d.error;
+      $("servidor-detalle").classList.add("alerta");
+      b.disabled = false;
+      return;
+    }
+    if (!activar && ms.como_servicio) {
+      cerrado = true; mostrar("cerrado"); $("aviso-global").hidden = true;
+      $("cerrado-titulo").textContent = "Modo servidor desactivado";
+      $("cerrado-detalle").innerHTML = "El programa se cerró. Para seguir usándolo en esta PC, abrí <strong>Herramienta Tango</strong> desde el escritorio.";
+      return;
+    }
+    sis = d.sistema; dibujar();
+    refrescar();
   });
 
   let confirmarHasta = 0;

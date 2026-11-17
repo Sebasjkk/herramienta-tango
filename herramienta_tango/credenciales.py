@@ -1,7 +1,10 @@
 """
 Token de Tango guardado cifrado con DPAPI de Windows.
 
-token.dat solo lo puede descifrar el mismo usuario de Windows en la misma PC.
+token.dat se cifra a nivel equipo: lo puede descifrar cualquier programa de esta
+PC (hace falta para el modo servidor, que corre con la cuenta SYSTEM antes de que
+alguien inicie sesion), pero copiado a otra PC no sirve.
+Los token.dat viejos, cifrados por usuario, se siguen leyendo con ese usuario.
 Fuera de Windows (solo para pruebas) se guarda sin cifrar con permisos 600.
 """
 
@@ -22,6 +25,10 @@ def formato_valido(token: str) -> bool:
     return bool(PATRON_TOKEN.match((token or "").strip()))
 
 
+CRYPTPROTECT_UI_FORBIDDEN = 0x1
+CRYPTPROTECT_LOCAL_MACHINE = 0x4
+
+
 def _dpapi(datos: bytes, cifrar: bool) -> bytes:
     import ctypes
     from ctypes import wintypes
@@ -34,7 +41,8 @@ def _dpapi(datos: bytes, cifrar: bool) -> bytes:
     salida = DATA_BLOB()
     crypt32 = ctypes.windll.crypt32
     funcion = crypt32.CryptProtectData if cifrar else crypt32.CryptUnprotectData
-    if not funcion(ctypes.byref(entrada), None, None, None, None, 0, ctypes.byref(salida)):
+    banderas = CRYPTPROTECT_UI_FORBIDDEN | (CRYPTPROTECT_LOCAL_MACHINE if cifrar else 0)
+    if not funcion(ctypes.byref(entrada), None, None, None, None, banderas, ctypes.byref(salida)):
         raise OSError("DPAPI no pudo procesar el token")
     try:
         return ctypes.string_at(salida.pbData, salida.cbData)

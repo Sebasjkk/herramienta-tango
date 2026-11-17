@@ -8,7 +8,9 @@ servicio nuevo y se reemplaza el anterior.
 from __future__ import annotations
 
 import logging
+import os
 import threading
+import time
 from datetime import datetime
 from typing import Callable
 
@@ -31,6 +33,8 @@ class Contexto:
         self.estado_tango: dict = {"estado": "sin_configurar", "mensaje": "", "revisado": None}
         self.actualizador = None          # lo asigna app.py
         self.al_cerrar: Callable[[], None] = lambda: None
+        self.como_servicio = False        # corre como tarea programada de Windows (modo servidor)
+        self.cambio_modo: dict = {"estado": "", "mensaje": ""}   # activacion/desactivacion en curso
 
     # ------------------------------------------------------------- servicio
     def _armar_servicio(self, servidor: str, token: str) -> ServicioTango:
@@ -104,8 +108,70 @@ class Contexto:
         self.probar_conexion()
         return True, "Listo: conectado a Tango."
 
+    # ------------------------------------------------------------- modo servidor
+    def _cambio(self, estado: str, mensaje: str = "") -> None:
+        self.cambio_modo = {"estado": estado, "mensaje": mensaje}
+        if mensaje:
+            log.info(f"Modo servidor: {mensaje}")
+
+    def activar_modo_servidor(self) -> tuple[bool, str]:
+        inst = sistema.instalacion()
+        if not sistema.es_windows() or not inst:
+            return False, "Solo disponible con el programa instalado en Windows."
+        if self.cambio_modo["estado"] == "esperando_permiso":
+            return False, "Ya se pidió el permiso: buscá la ventana de Windows."
+        threading.Thread(target=self._activar, args=(inst,), name="modo-servidor", daemon=True).start()
+        return True, "Windows va a pedir permiso de administrador."
+
+    def _activar(self, inst) -> None:
+        error = config.CARPETA / "modo_servidor_error.txt"
+        try:
+            error.unlink(missing_ok=True)
+            # Volver a guardar el token cifrado a nivel equipo, para que lo lea la cuenta SYSTEM
+            token = credenciales.leer_token()
+            if token:
+                credenciales.guardar_token(token)
+            self._cambio("esperando_permiso", "")
+            sistema.ejecutar_powershell(
+                sistema.script_activar_servidor(inst, self.cfg.puerto, os.getpid()), como_admin=True)
+        except OSError as e:
+            self._cambio("error", str(e))
+            return
+        # El script corre aparte: avisa con un archivo cuando termino
+        for _ in range(180):
+            if error.exists():
+                self._cambio("error", "Windows no dejó activarlo: " + error.read_text(encoding="utf-8-sig").strip())
+                return
+            if sistema.modo_servidor_activo():
+                break
+            time.sleep(0.5)
+        else:
+            self._cambio("error", "No hubo respuesta. Probá de nuevo.")
+            return
+        try:
+            sistema.activar_inicio_automatico(False)   # ya arranca la tarea programada
+        except OSError:
+            pass
+        self._cambio("pasando", "Activado: el programa se reinicia como servidor.")
+        threading.Timer(2.0, self.al_cerrar).start()   # el script espera a que esta copia se cierre
+
+    def desactivar_modo_servidor(self) -> tuple[bool, str]:
+        if not sistema.es_windows():
+            return False, "Solo disponible en Windows."
+        try:
+            # Como SYSTEM no hace falta pedir permiso; desde una copia comun, si
+            sistema.ejecutar_powershell(sistema.script_desactivar_servidor(), como_admin=not self.como_servicio)
+        except OSError as e:
+            return False, str(e)
+        if self.como_servicio:
+            self._cambio("desactivado", "Modo servidor desactivado.")
+            threading.Timer(2.0, self.al_cerrar).start()
+            return True, "Desactivado. Para seguir usándolo, abrí Herramienta Tango desde el escritorio."
+        return True, "Desactivado."
+
     def info(self) -> dict:
         act = self.actualizador.estado.como_dict() if self.actualizador else None
+        inst = sistema.instalacion()
         return {
             "version": VERSION,
             "configurado": self.configurado,
@@ -113,6 +179,13 @@ class Contexto:
             "tango": self.estado_tango,
             "puerto": self.cfg.puerto,
             "direcciones": sistema.direcciones_locales(),
+            "nombre_equipo": sistema.nombre_equipo(),
+            "modo_servidor": {
+                "disponible": sistema.es_windows() and inst is not None,
+                "activo": sistema.modo_servidor_activo(),
+                "como_servicio": self.como_servicio,
+                **self.cambio_modo,
+            },
             "inicio_automatico": sistema.inicio_automatico_activo(),
             "inicio_automatico_disponible": sistema.es_windows() and sistema.instalacion() is not None,
             "actualizacion": act,

@@ -86,6 +86,22 @@ Cada vez que se sube un cambio a `main`, GitHub Actions corre las pruebas, arma 
 
 Si se vuelve a abrir con el programa ya funcionando, solo abre el panel. El panel (`http://127.0.0.1:8085/panel`) solo funciona desde la misma PC.
 
+## Modo servidor (recomendado en la PC que queda siempre prendida)
+
+Lo ideal es instalarlo en el **servidor de Tango**, que está siempre prendido. En el panel: Ajustes > **Modo servidor** > **Activar**. Windows pide permiso de administrador una sola vez, y después:
+
+- El programa corre como **tarea programada de Windows** con la cuenta SYSTEM: arranca al prender la PC **aunque nadie inicie sesión**.
+- Un vigilante lo vuelve a abrir si se cae, y después de cada actualización.
+- Se agrega la regla **Herramienta Tango** al firewall, que deja entrar al puerto 8085 solo desde redes privadas (10.x, 172.16-31.x, 192.168.x).
+- Se deja de usar "Abrir al prender la PC" (ya no hace falta).
+
+El token se guarda cifrado a nivel equipo (DPAPI de la máquina): lo puede leer cualquier programa de esa PC, pero copiado a otra no sirve. Para volver al modo normal: **Desactivar** en el mismo lugar.
+
+**Cómo entran los demás**
+
+- **Otras PCs:** `http://NOMBRE-DEL-SERVIDOR:8085`. Al pie del menú está **Descargar acceso directo** (un archivo `.url` que se copia al escritorio).
+- **Celulares:** el QR del panel. Después, en Chrome: menú ⋮ > **Agregar a la pantalla principal**, y queda un ícono como el de una app. Usa la IP del servidor, así que conviene reservarle una IP fija en el router.
+
 ## Actualizaciones automáticas
 
 El programa se actualiza solo. Cada 15 minutos consulta los Releases de este repositorio (o en el momento, con **Buscar actualizaciones** en el panel) y, si hay una versión nueva:

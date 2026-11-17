@@ -26,6 +26,10 @@ Panel de la PC (solo desde la misma PC donde corre el programa):
     POST /api/sistema/inicio-automatico   {"activo": true|false}
     POST /api/sistema/buscar-actualizacion
     POST /api/sistema/accesos-directos   crea los accesos directos de nuevo
+    POST /api/sistema/modo-servidor   {"activo": true|false}
+
+Para las otras PCs:
+    GET /acceso-directo.url           acceso directo de Windows que abre el menu
     POST /api/sistema/cerrar
 
 Los POST exigen el encabezado X-Herramienta-Tango, para que una pagina web
@@ -140,6 +144,13 @@ def crear_manejador(contexto):
             return 400, {"ok": False, "mensaje": "Solo disponible con el programa instalado en Windows."}
         return 200, {"ok": True, "mensaje": "Listo: hay un acceso directo en el escritorio y en el menú Inicio."}
 
+    def accion_modo_servidor(datos: dict) -> tuple[int, dict]:
+        if datos.get("activo"):
+            ok, mensaje = contexto.activar_modo_servidor()
+        else:
+            ok, mensaje = contexto.desactivar_modo_servidor()
+        return (200 if ok else 400), {"ok": ok, "mensaje": mensaje, "sistema": contexto.info()}
+
     def accion_cerrar(datos: dict) -> tuple[int, dict]:
         threading.Timer(0.5, contexto.al_cerrar).start()
         return 200, {"ok": True, "mensaje": "El programa se está cerrando."}
@@ -150,6 +161,7 @@ def crear_manejador(contexto):
         "/api/sistema/inicio-automatico": accion_inicio,
         "/api/sistema/buscar-actualizacion": accion_actualizacion,
         "/api/sistema/accesos-directos": accion_accesos,
+        "/api/sistema/modo-servidor": accion_modo_servidor,
         "/api/sistema/cerrar": accion_cerrar,
     }
 
@@ -188,6 +200,14 @@ def crear_manejador(contexto):
                 tipo += "; charset=utf-8"
             self._responder(200, tipo, archivo.read_bytes())
 
+        def _acceso_directo(self) -> None:
+            """Archivo .url: al abrirlo en otra PC de Windows abre el menu en el navegador.
+            Usa el nombre de esta PC (no la IP), que sigue andando aunque la IP cambie."""
+            base = f"http://{sistema.nombre_equipo()}:{contexto.cfg.puerto}"
+            texto = f"[InternetShortcut]\r\nURL={base}/\r\nIconFile={base}/icono.ico\r\nIconIndex=0\r\n"
+            self._responder(200, "application/octet-stream", texto.encode("ascii", "replace"),
+                            {"Content-Disposition": 'attachment; filename="Herramienta Tango.url"'})
+
         # --------------------------------------------------------- GET
         def do_GET(self):
             url = urllib.parse.urlparse(self.path)
@@ -219,6 +239,14 @@ def crear_manejador(contexto):
                         self._responder(302, "text/plain; charset=utf-8", b"", {"Location": "/"})
                 elif url.path in ("", "/"):
                     self._estatico("index.html")
+                elif url.path == "/acceso-directo.url":
+                    self._acceso_directo()
+                elif url.path == "/icono.ico":
+                    icono = ruta_recurso("recursos/icono.ico")
+                    if icono.is_file():
+                        self._responder(200, "image/x-icon", icono.read_bytes())
+                    else:
+                        self._responder(404, "text/plain; charset=utf-8", "No encontrado".encode())
                 else:
                     relativa = url.path.strip("/")
                     if "." not in relativa.rsplit("/", 1)[-1]:
