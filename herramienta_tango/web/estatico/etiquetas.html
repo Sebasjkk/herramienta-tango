@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0B6E69">
+<title>Etiquetas de envío | Herramienta Tango</title>
+<link rel="icon" href="/icono-192.png">
+<link rel="apple-touch-icon" href="/icono-192.png">
+<link rel="manifest" href="/manifest.json">
+<link rel="stylesheet" href="/comun.css">
+<style>
+  .contenido-et { display: grid; gap: 16px; }
+  @media (min-width: 1100px) { .contenido-et { grid-template-columns: minmax(280px, 360px) 1fr; align-items: start; } }
+  .lista-rem { list-style: none; margin: 0; padding: 0; max-height: 70vh; overflow-y: auto; }
+  .rem { width: 100%; display: grid; grid-template-columns: 1fr auto; gap: 1px 12px; text-align: left; font: inherit; color: inherit;
+    background: var(--papel); border: 1px solid var(--linea); border-radius: var(--radio); padding: 10px 13px; margin-bottom: 7px; cursor: pointer; }
+  .rem:hover { border-color: var(--patina); }
+  .rem[aria-pressed="true"] { border-color: var(--patina); box-shadow: inset 3px 0 0 var(--patina); background: #F6FBFA; }
+  .rem .num { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .rem .cli { font-size: .92rem; overflow-wrap: anywhere; }
+  .rem .der { grid-column: 2; grid-row: 1 / span 2; text-align: right; font-size: .8rem; color: var(--plomo); }
+
+  .armado { padding: 16px 18px; }
+  .armado h2 { font-size: 1.1rem; margin: 0 0 4px; }
+  .grilla-campos { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+  .grilla-campos .ancho { grid-column: 1 / -1; }
+  .opcion { display: grid; grid-template-columns: auto 1fr; gap: 8px 10px; align-items: center; margin-top: 10px; }
+  .opcion input[type=checkbox], .cantidad input[type=radio] { width: 18px; height: 18px; accent-color: var(--patina); margin: 0; }
+  .opcion label { font-weight: 600; font-size: .9rem; }
+  .opcion .campo { grid-column: 2; }
+  .cantidad { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin-top: 8px; }
+  .cantidad label { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: .92rem; }
+  .cantidad .campo { width: 90px; }
+  .seccion-et { border-top: 1px solid var(--linea); margin: 16px -18px 0; padding: 14px 18px 0; }
+  .seccion-et h3 { font-size: .95rem; margin: 0 0 4px; }
+  .acciones-et { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
+
+  /* La etiqueta impresa (rotulo): 150 x 100 mm (10 x 15 cm en horizontal) */
+  .vista { overflow-x: auto; padding: 4px 0 6px; }
+  .rotulo { width: 150mm; height: 100mm; box-sizing: border-box; padding: 6mm 7mm 5mm; background: #fff; color: #000;
+    font-family: Arial, "Helvetica Neue", Helvetica, sans-serif; position: relative; overflow: hidden; }
+  .vista .rotulo { border: 1px dashed #9AA6AF; transform-origin: top left; }
+  .et-nombre { font-weight: 700; line-height: 1.05; margin: 0 0 2.5mm; }
+  .et-dir { font-size: 15pt; line-height: 1.2; font-weight: 600; }
+  .et-extra { margin-top: 3mm; font-size: 14pt; line-height: 1.3; font-weight: 700; }
+  .et-retira { display: inline-block; margin-top: 2.5mm; padding: 1mm 3mm; background: #000; color: #fff; font-size: 15pt; font-weight: 700; letter-spacing: .02em; }
+  .et-pie { position: absolute; left: 7mm; right: 7mm; bottom: 5mm; border-top: .5mm solid #000; padding-top: 2mm;
+    display: flex; justify-content: space-between; align-items: flex-end; gap: 4mm; }
+  .et-rte { font-size: 9pt; line-height: 1.25; }
+  .et-rte b { font-size: 10pt; }
+  .et-bulto { text-align: right; font-weight: 700; line-height: 1; white-space: nowrap; }
+  .et-bulto small { display: block; font-size: 10pt; font-weight: 600; margin-bottom: 1mm; }
+  .et-bulto span { font-size: 22pt; }
+
+  #impresion { display: none; }
+  @media print {
+    @page { size: 150mm 100mm; margin: 0; }
+    html, body { background: #fff !important; margin: 0; }
+    .app { display: none !important; }
+    #impresion { display: block; }
+    /* 96 mm y no 100: Chrome deja un margen de redondeo y con 100 se corta a la hoja siguiente */
+    #impresion .rotulo { height: 96mm; break-inside: avoid; }
+    #impresion .rotulo + .rotulo { break-before: page; page-break-before: always; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="app-nav" id="app-nav"></nav>
+  <div class="app-principal">
+    <div class="pagina">
+      <header class="cabecera">
+        <div class="cabecera-sup">
+          <h1>Etiquetas de envío</h1>
+          <div class="datos"><span id="estado">Consultando Tango…</span><button type="button" class="boton-texto" id="actualizar">Actualizar</button></div>
+        </div>
+      </header>
+      <div class="contenido-et">
+        <div>
+          <div class="buscador" style="margin-bottom:10px">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>
+            <label for="q" style="position:absolute;left:-9999px">Buscar remito</label>
+            <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="Número de remito o cliente" enterkeyhint="search">
+            <button type="button" class="limpiar" id="limpiar" aria-label="Borrar búsqueda" hidden>×</button>
+          </div>
+          <div id="remitos" aria-live="polite"></div>
+        </div>
+        <div id="armado"></div>
+      </div>
+      <p class="pie">La etiqueta mide 10 × 15 cm en horizontal. Al imprimir, elegí la Zebra; en sus preferencias tiene que estar el papel de 100 × 150 mm.</p>
+    </div>
+  </div>
+</div>
+<div id="impresion"></div>
+
+<script src="/comun.js"></script>
+<script>
+(() => {
+  "use strict";
+  HT.iniciar("etiquetas");
+  const { $, el, norm, tokens, sinCeros, fecha, pedir, textoError, cajaError } = HT;
+  const REMITENTE = ["SIANCO S.A.", "Heredia 478 – C.A.B.A."];
+  const MAX = 80;
+
+  let remitos = [];
+  let elegido = null;
+  let envio = null;          // datos del cliente del remito elegido
+  const f = {};              // valores del formulario
+
+  async function cargar(forzar) {
+    $("estado").textContent = "Consultando Tango…";
+    try {
+      const d = await pedir("/api/remitos", forzar);
+      remitos = d.datos;
+      $("estado").textContent = "Datos de Tango de las " + HT.hora(new Date(d.actualizado)) + " h";
+      dibujarLista();
+    } catch (e) {
+      $("estado").textContent = "Sin datos";
+      $("remitos").replaceChildren(cajaError(textoError(e), () => cargar(true)));
+    }
+  }
+
+  function dibujarLista() {
+    const ts = tokens($("q").value);
+    const lista = remitos.filter(r => ts.every(t => {
+      const txt = norm([r.numero, r.numero_corto, r.cliente, r.codigo_cliente, r.orden_compra].join(" "));
+      return txt.includes(t) || sinCeros(r.numero.replace(/\D/g, "")).includes(sinCeros(t.replace(/\D/g, "")) || "\u0000");
+    }));
+    if (!lista.length) { $("remitos").replaceChildren(el("p", "aviso", remitos.length ? "Ningún remito coincide." : "No hay remitos en el último año.")); return; }
+    const ul = el("ul", "lista-rem");
+    for (const r of lista.slice(0, MAX)) {
+      const li = el("li");
+      const b = el("button", "rem"); b.type = "button"; b.setAttribute("aria-pressed", String(elegido && elegido.numero === r.numero));
+      const der = el("span", "der", fecha(r.fecha));
+      if (r.orden_compra) { der.append(el("br"), "OC " + r.orden_compra); }
+      b.append(el("span", "num", r.numero_corto), el("span", "cli", r.cliente), der);
+      b.addEventListener("click", () => elegir(r));
+      li.append(b); ul.append(li);
+    }
+    $("remitos").replaceChildren(ul);
+    if (lista.length > MAX) $("remitos").append(el("p", "mas", `Se muestran ${MAX} de ${lista.length}. Escribí el número o el cliente.`));
+  }
+
+  async function elegir(r) {
+    elegido = r; envio = null;
+    dibujarLista();
+    $("armado").replaceChildren(el("p", "aviso", "Buscando la dirección de entrega…"));
+    try { envio = (await pedir(`/api/clientes/${r.id_cliente}/envio`)).datos; }
+    catch (e) { envio = { razon_social: r.cliente, direcciones: [], contacto: "" }; }
+    const d = envio.direcciones[0] || {};
+    Object.assign(f, {
+      nombre: envio.razon_social || r.cliente, direccion: d.direccion || "", cp: d.codigo_postal || "",
+      localidad: d.localidad || "", provincia: d.provincia || "",
+      usarOc: !!r.orden_compra, oc: r.orden_compra || "", usarAt: false, at: envio.contacto || "",
+      retira: false, usarTexto: false, texto: "", remito: true, porBulto: false, bultos: 2,
+    });
+    dibujarArmado();
+    if (window.matchMedia("(max-width: 1099px)").matches) $("armado").scrollIntoView({ behavior: "smooth" });
+  }
+
+  function campoTexto(cont, etiqueta, clave, clase) {
+    const caja = el("div", clase || "");
+    const inp = HT.campo(caja, etiqueta, { value: f[clave] });
+    inp.addEventListener("input", () => { f[clave] = inp.value; vista(); });
+    cont.append(caja);
+    return inp;
+  }
+
+  function opcion(cont, etiqueta, claveUsar, claveTexto, placeholder) {
+    const o = el("div", "opcion");
+    const id = "o" + claveUsar;
+    const chk = el("input"); chk.type = "checkbox"; chk.id = id; chk.checked = f[claveUsar];
+    const l = el("label", "", etiqueta); l.htmlFor = id;
+    o.append(chk, l);
+    if (claveTexto) {
+      const inp = el("input", "campo"); inp.value = f[claveTexto]; inp.placeholder = placeholder || ""; inp.setAttribute("aria-label", etiqueta);
+      inp.addEventListener("input", () => { f[claveTexto] = inp.value; if (inp.value && !chk.checked) { chk.checked = true; f[claveUsar] = true; } vista(); });
+      o.append(el("span"), inp);
+    }
+    chk.addEventListener("change", () => { f[claveUsar] = chk.checked; vista(); });
+    cont.append(o);
+  }
+
+  function dibujarArmado() {
+    const r = elegido;
+    const t = el("section", "tarjeta armado");
+    t.append(el("h2", "", "Remito " + r.numero_corto));
+    t.append(el("p", "nota", `${fecha(r.fecha)}${r.pedido ? " · pedido " + r.pedido.trim() : ""}`));
+
+    const s1 = el("div", "seccion-et"); s1.append(el("h3", "", "Destinatario"));
+    if (envio.direcciones.length > 1) {
+      const l = el("label", "etiqueta", "Dirección de entrega"); l.htmlFor = "sel-dir";
+      const sel = el("select", "campo"); sel.id = "sel-dir";
+      sel.style.cssText = "-webkit-appearance:auto;appearance:auto;border-radius:8px;background-image:none";
+      envio.direcciones.forEach((d, i) => { const o = el("option", "", `${d.codigo} – ${d.direccion}, ${d.localidad}${d.habitual ? " (habitual)" : ""}`); o.value = i; sel.append(o); });
+      sel.addEventListener("change", () => {
+        const d = envio.direcciones[+sel.value];
+        Object.assign(f, { direccion: d.direccion, cp: d.codigo_postal, localidad: d.localidad, provincia: d.provincia });
+        dibujarArmado();
+      });
+      s1.append(l, sel);
+    } else if (!envio.direcciones.length) {
+      s1.append(el("p", "nota", "El cliente no tiene dirección de entrega cargada en Tango: completala acá."));
+    }
+    const g = el("div", "grilla-campos");
+    campoTexto(g, "Nombre", "nombre", "ancho");
+    campoTexto(g, "Dirección", "direccion", "ancho");
+    campoTexto(g, "Código postal", "cp");
+    campoTexto(g, "Localidad", "localidad");
+    campoTexto(g, "Provincia", "provincia");
+    s1.append(g);
+    t.append(s1);
+
+    const s2 = el("div", "seccion-et"); s2.append(el("h3", "", "Datos opcionales"));
+    opcion(s2, "OC", "usarOc", "oc", "Orden de compra del cliente");
+    opcion(s2, "At.", "usarAt", "at", "Persona que recibe");
+    opcion(s2, "Retira en depósito", "retira");
+    opcion(s2, "Texto libre", "usarTexto", "texto", "Por ejemplo: Frágil");
+    opcion(s2, "Número de remito", "remito");
+    t.append(s2);
+
+    const s3 = el("div", "seccion-et"); s3.append(el("h3", "", "Cantidad"));
+    const c = el("div", "cantidad");
+    const r1 = el("label"); const i1 = el("input"); i1.type = "radio"; i1.name = "cant"; i1.checked = !f.porBulto; r1.append(i1, "Una sola etiqueta");
+    const r2 = el("label"); const i2 = el("input"); i2.type = "radio"; i2.name = "cant"; i2.checked = f.porBulto; r2.append(i2, "Una por bulto:");
+    const n = el("input", "campo"); n.type = "number"; n.min = 1; n.max = 99; n.value = f.bultos; n.setAttribute("aria-label", "Cantidad de bultos");
+    const sync = () => { f.porBulto = i2.checked; f.bultos = Math.max(1, Math.min(99, parseInt(n.value) || 1)); vista(); };
+    i1.addEventListener("change", sync); i2.addEventListener("change", sync);
+    n.addEventListener("input", () => { i2.checked = true; sync(); });
+    c.append(r1, r2, n);
+    s3.append(c);
+    t.append(s3);
+
+    const s4 = el("div", "seccion-et"); s4.append(el("h3", "", "Vista previa"));
+    const v = el("div", "vista"); v.id = "vista"; s4.append(v);
+    const acc = el("div", "acciones-et");
+    const imp = el("button", "boton primario", "Imprimir"); imp.type = "button"; imp.id = "imprimir";
+    imp.addEventListener("click", imprimir);
+    acc.append(imp, el("span", "nota", ""));
+    acc.lastChild.id = "cuantas";
+    s4.append(acc);
+    t.append(s4);
+    $("armado").replaceChildren(t);
+    vista();
+  }
+
+  function etiqueta(nBulto, total) {
+    const e = el("div", "rotulo");
+    const nom = el("div", "et-nombre", f.nombre);
+    const largo = (f.nombre || "").length;
+    nom.style.fontSize = (largo > 42 ? 18 : largo > 30 ? 21 : 25) + "pt";
+    e.append(nom);
+    const dir = el("div", "et-dir");
+    if (f.direccion) dir.append(f.direccion, el("br"));
+    const linea = [f.cp ? `(${f.cp})` : "", f.localidad].filter(Boolean).join(" ");
+    dir.append([linea, f.provincia].filter(Boolean).join(" – "));
+    e.append(dir);
+    const extra = el("div", "et-extra");
+    if (f.usarOc && f.oc) extra.append(el("div", "", "OC: " + f.oc));
+    if (f.usarAt && f.at) extra.append(el("div", "", "At.: " + f.at));
+    if (f.usarTexto && f.texto) extra.append(el("div", "", f.texto));
+    if (extra.childNodes.length) e.append(extra);
+    if (f.retira) { const r = el("div"); r.append(el("span", "et-retira", "RETIRA EN DEPÓSITO")); e.append(r); }
+    const pie = el("div", "et-pie");
+    const rte = el("div", "et-rte");
+    rte.append("Rte: ", el("b", "", REMITENTE[0]), el("br"), REMITENTE[1]);
+    if (f.remito) rte.append(el("br"), "Remito " + elegido.numero_corto);
+    pie.append(rte);
+    if (total > 1) { const b = el("div", "et-bulto"); b.append(el("small", "", "BULTO"), el("span", "", `${nBulto} de ${total}`)); pie.append(b); }
+    e.append(pie);
+    return e;
+  }
+
+  function vista() {
+    const v = $("vista"); if (!v) return;
+    const total = f.porBulto ? f.bultos : 1;
+    const e = etiqueta(1, total);
+    v.replaceChildren(e);
+    // Achicar la vista para que entre en la pantalla (150 mm ≈ 567 px)
+    const escala = Math.min(1, (v.clientWidth - 4) / 567);
+    e.style.transform = `scale(${escala})`;
+    v.style.height = Math.ceil(378 * escala + 10) + "px";
+    $("cuantas").textContent = total === 1 ? "Sale 1 etiqueta." : `Salen ${total} etiquetas (bulto 1 de ${total} a ${total} de ${total}).`;
+  }
+
+  function imprimir() {
+    const total = f.porBulto ? f.bultos : 1;
+    const cont = $("impresion");
+    cont.replaceChildren(...Array.from({ length: total }, (_, i) => etiqueta(i + 1, total)));
+    window.print();
+  }
+
+  window.addEventListener("resize", vista);
+  HT.conectarBuscador($("q"), $("limpiar"), dibujarLista);
+  $("actualizar").addEventListener("click", () => cargar(true));
+  cargar(false);
+})();
+</script>
+</body>
+</html>

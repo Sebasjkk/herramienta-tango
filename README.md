@@ -12,6 +12,7 @@ Hoy es **solo lectura**: no carga ni modifica nada en Tango.
 | Stock por partida | Listo | Stock |
 | Listas de precios | Ver y modificar | Precios |
 | Cotizaciones | Ver, por estado, y reimprimir el PDF de Tango | Cotizaciones |
+| Etiquetas de envío | Etiqueta 10 × 15 cm desde un remito (Zebra ZD220) | Etiquetas |
 
 Las páginas para los usuarios comparten `comun.css` y `comun.js` (navegación: barra lateral en la PC, pestañas abajo en el celular). Un módulo nuevo se agrega en `MODULOS` de `comun.js`. El panel del servidor (`panel.html`) es aparte.
 

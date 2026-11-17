@@ -22,6 +22,8 @@ Listas de precios (leidas de las tablas de Tango, no de la consulta 12742):
     GET /api/cotizaciones            todas las cotizaciones (consulta 17948)
     GET /api/cotizaciones/<numero>/renglones
     GET /cotizacion/<id>.pdf         el PDF del formulario 128, como lo imprime Tango
+    GET /api/remitos                 remitos del ultimo año (consulta 17965), con la OC del pedido
+    GET /api/clientes/<id>/envio     direcciones de entrega y contacto, para las etiquetas
     GET /api/precios/cambios         registro de cambios hechos desde la herramienta
     GET /api/sesion                  si se pueden modificar precios y quien esta adentro
 
@@ -136,6 +138,7 @@ def crear_rutas(contexto) -> dict[str, Callable[[dict, bool], tuple]]:
         "/api/ventas": ventas,
         "/api/listas": lambda qs, f: (s().editor.listas(f), time.time()),
         "/api/cotizaciones": lambda qs, f: s().cotizaciones(f),
+        "/api/remitos": lambda qs, f: s().remitos(f),
         "/api/precios/cambios": lambda qs, f: (s().editor.registro.ultimos(300), time.time()),
     }
 
@@ -152,6 +155,9 @@ def ruta_variable(contexto, ruta: str):
             todos, momento = contexto.servicio().renglones_cotizaciones(f)
             return [r for r in todos if r.numero.strip() == numero], momento
         return renglones
+    if len(partes) == 4 and partes[:2] == ["api", "clientes"] and partes[2].isdigit() and partes[3] == "envio":
+        id_cliente = int(partes[2])
+        return lambda qs, f: (contexto.servicio().datos_envio(id_cliente), time.time())
     if len(partes) == 4 and partes[:2] == ["api", "articulos"] and partes[3] == "precios":
         codigo = urllib.parse.unquote(partes[2])
         return lambda qs, f: (contexto.servicio().editor.precios_de_articulo(codigo), time.time())

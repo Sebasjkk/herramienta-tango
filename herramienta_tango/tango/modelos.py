@@ -160,6 +160,7 @@ class Pedido:
     lista_precios: str
     total: float
     leyendas: tuple[str, ...]
+    numero_remito: str = ""
 
     @classmethod
     def desde_tango(cls, x: dict) -> "Pedido":
@@ -178,6 +179,7 @@ class Pedido:
             lista_precios=_txt(x.get("NOMBRE_LIS")),
             total=_num(x.get("TOTAL_PEDI")),
             leyendas=tuple(l for l in leyendas if l),
+            numero_remito=_txt(x.get("N_REMITO")),
         )
 
 
@@ -350,6 +352,78 @@ class RenglonCotizacion:
             descuento=_num(_primero(x, "PORC_DESCUENTO", "DESCUENTO", "PORCENTAJE_DESCUENTO", "BONIFICACION")),
             pendiente=None if pendiente is None else _num(pendiente),
         )
+
+
+def solo_digitos(texto: str) -> str:
+    return "".join(c for c in (texto or "") if c.isdigit())
+
+
+@dataclass(frozen=True)
+class Remito:
+    id: int | None              # ID_STA14 (movimiento de stock)
+    numero: str                 # tal cual Tango: "R0000800000110"
+    numero_corto: str           # "R 00008-00000110"
+    fecha: str | None
+    id_cliente: int | None
+    codigo_cliente: str
+    cliente: str
+    estado: str
+    orden_compra: str = ""      # de un pedido que referencia este remito, si hay
+    pedido: str = ""
+
+    @classmethod
+    def desde_tango(cls, x: dict) -> "Remito":
+        numero = _txt(x.get("NRO_COMPROBANTE"))
+        d = solo_digitos(numero)
+        letra = numero[:1] if numero[:1].isalpha() else ""
+        corto = f"{letra} {d[:-8]}-{d[-8:]}".strip() if len(d) > 8 else numero
+        return cls(id=x.get("ID_STA14"), numero=numero, numero_corto=corto, fecha=_fecha(x.get("FECHA")),
+                   id_cliente=x.get("ID_GVA14"), codigo_cliente=_txt(x.get("COD_CLIENTE")),
+                   cliente=_txt(x.get("RAZON_SOCIAL")), estado=_txt(x.get("ESTADO")))
+
+
+PROVINCIAS = {"01": "Capital Federal", "02": "Buenos Aires"}   # codigos de Tango vistos; el resto se completa a mano
+
+
+@dataclass(frozen=True)
+class DireccionEntrega:
+    codigo: str
+    direccion: str
+    localidad: str
+    codigo_postal: str
+    provincia: str
+    telefono: str
+    habitual: bool
+
+    @classmethod
+    def desde_tango(cls, x: dict) -> "DireccionEntrega":
+        return cls(codigo=_txt(x.get("COD_DIRECCION_ENTREGA")), direccion=_txt(x.get("DIRECCION")),
+                   localidad=_txt(x.get("LOCALIDAD")), codigo_postal=_txt(x.get("CODIGO_POSTAL")),
+                   provincia=PROVINCIAS.get(_txt(x.get("COD_PROVINCIA")), ""), telefono=_txt(x.get("TELEFONO1")),
+                   habitual=_txt(x.get("HABITUAL")).upper() == "S")
+
+
+@dataclass(frozen=True)
+class DatosEnvio:
+    """Lo que hace falta de un cliente para la etiqueta del bulto."""
+    codigo: str
+    razon_social: str
+    direcciones: tuple[DireccionEntrega, ...]
+    contacto: str
+
+    @classmethod
+    def desde_tango(cls, x: dict) -> "DatosEnvio":
+        dirs = [DireccionEntrega.desde_tango(d) for d in (x.get("DIRECCION_ENTREGA") or [])
+                if _txt(d.get("HABILITADO") or "S").upper() != "N"]
+        if not dirs and _txt(x.get("DOMICILIO")):
+            dirs = [DireccionEntrega("DOMICILIO", _txt(x.get("DOMICILIO")), _txt(x.get("LOCALIDAD")),
+                                     _txt(x.get("C_POSTAL")), PROVINCIAS.get(_txt(x.get("COD_PROVIN")), ""),
+                                     _txt(x.get("TELEFONO_1")), True)]
+        dirs.sort(key=lambda d: not d.habitual)
+        contactos = x.get("CONTACTOS") or []
+        defecto = next((c for c in contactos if _txt(c.get("DEFECTO")).upper() == "S"), contactos[0] if contactos else {})
+        return cls(codigo=_txt(x.get("COD_GVA14")), razon_social=_txt(x.get("RAZON_SOCI")),
+                   direcciones=tuple(dirs), contacto=_txt(defecto.get("NOMBRE")))
 
 
 @dataclass(frozen=True)

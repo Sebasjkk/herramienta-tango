@@ -20,7 +20,7 @@ from unittest import mock
 from herramienta_tango import config, credenciales
 from herramienta_tango.contexto import Contexto
 from herramienta_tango.tango import TokenInvalido, procesos
-from herramienta_tango.tango.modelos import Articulo, Cotizacion, Pedido, PrecioVigente, SaldoPartida
+from herramienta_tango.tango.modelos import Articulo, Cotizacion, DatosEnvio, Pedido, PrecioVigente, Remito, SaldoPartida
 from herramienta_tango.tango.servicio import ServicioTango
 from herramienta_tango.web.servidor import crear_servidor
 
@@ -97,6 +97,29 @@ class TestModelos(unittest.TestCase):
                                     "FECHA_DE_VIGENCIA": "2026-11-30T00:00:00", "ESTADO": 4, "MONEDA": False,
                                     "COD_CLIENTE": "CLI01", "RAZON_SOCIAL": "CLIENTE PRUEBA", "ID_GVA08": 18})
         self.assertEqual((c.numero_corto, c.estado_texto, c.moneda, c.vigencia), ("BA3215", "Procesada", "US$", "2026-11-30"))
+
+    def test_remito_y_datos_de_envio(self):
+        r = Remito.desde_tango({"TIPO_COMPROBANTE": "REM", "NRO_COMPROBANTE": "R0000800000110", "FECHA": "2026-11-14T00:00:00",
+                                "COD_CLIENTE": "CLI01", "RAZON_SOCIAL": "CLIENTE PRUEBA", "ID_GVA14": 7, "ID_STA14": 31760})
+        self.assertEqual(r.numero_corto, "R 00008-00000110")
+        e = DatosEnvio.desde_tango({"COD_GVA14": "CLI01", "RAZON_SOCI": "CLIENTE PRUEBA", "CONTACTOS": [{"NOMBRE": "ANA", "DEFECTO": "S"}],
+            "DIRECCION_ENTREGA": [
+                {"COD_DIRECCION_ENTREGA": "DEP", "DIRECCION": "RUTA 1 ", "LOCALIDAD": "X", "COD_PROVINCIA": "02", "HABITUAL": "N"},
+                {"COD_DIRECCION_ENTREGA": "PRINCIPAL", "DIRECCION": "CALLE 1", "LOCALIDAD": "Y", "COD_PROVINCIA": "02",
+                 "HABITUAL": "S", "CODIGO_POSTAL": "7400"}]})
+        self.assertEqual((e.direcciones[0].codigo, e.direcciones[0].provincia, e.contacto), ("PRINCIPAL", "Buenos Aires", "ANA"))
+        sin = DatosEnvio.desde_tango({"RAZON_SOCI": "OTRO", "DOMICILIO": "AV 2", "LOCALIDAD": "Z", "C_POSTAL": "1000"})
+        self.assertEqual(sin.direcciones[0].direccion, "AV 2")      # sin direcciones de entrega: el domicilio
+
+    def test_remitos_con_oc_del_pedido(self):
+        class Cliente(ClienteFalso):
+            def consulta_live(self, proceso, desde=None, hasta=None):
+                return [{"TIPO_COMPROBANTE": "REM", "NRO_COMPROBANTE": "R0000800000110", "FECHA": "2026-11-14T00:00:00"},
+                        {"TIPO_COMPROBANTE": "FAC", "NRO_COMPROBANTE": "A0000300012358"}]
+            def listar(self, proceso, vista=""):
+                return [{**PEDIDO, "N_REMITO": " 0000800000110", "NRO_OC_COMP": "4500012345"}]
+        remitos, _ = ServicioTango(Cliente()).remitos()
+        self.assertEqual([(x.numero, x.orden_compra) for x in remitos], [("R0000800000110", "4500012345")])
 
     def test_campos_faltantes_no_rompen(self):
         s = SaldoPartida.desde_tango({})

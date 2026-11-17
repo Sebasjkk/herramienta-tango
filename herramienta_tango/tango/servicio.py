@@ -17,9 +17,9 @@ from datetime import date
 from typing import Callable, TypeVar
 
 from . import procesos
-from .cliente import ClienteTango
-from .modelos import (Articulo, Cliente, Cotizacion, Deposito, ListaPrecios, Pedido,
-                      PrecioVigente, RenglonCotizacion, RenglonVenta, SaldoPartida)
+from .cliente import ClienteTango, TangoError
+from .modelos import (Articulo, Cliente, Cotizacion, DatosEnvio, Deposito, ListaPrecios, Pedido,
+                      PrecioVigente, Remito, RenglonCotizacion, RenglonVenta, SaldoPartida, solo_digitos)
 
 T = TypeVar("T")
 
@@ -61,6 +61,7 @@ class ServicioTango:
         "listas_precios": 600,
         "precios": 300,
         "cotizaciones": 60,
+        "remitos": 60,
         "depositos": 3600,
     }
 
@@ -143,6 +144,38 @@ class ServicioTango:
 
     def pdf_cotizacion(self, id_cotizacion: int) -> tuple[str, bytes]:
         return self._cliente.pdf(procesos.TABLERO_FICHA_COTIZACION, id_cotizacion)
+
+    # --------------------------------------------------------------- remitos y etiquetas
+    def remitos(self, forzar: bool = False) -> tuple[list[Remito], float]:
+        """Remitos del ultimo año, con la OC del pedido que los referencia (si hay)."""
+        from dataclasses import replace
+        from datetime import timedelta
+
+        def cargar():
+            filas = self._cliente.consulta_live(procesos.LIVE_COMPROBANTES_VENTA, date.today() - timedelta(days=365), date.today())
+            remitos = [Remito.desde_tango(x) for x in filas if str(x.get("TIPO_COMPROBANTE") or "").strip().upper() == "REM"]
+            try:
+                pedidos, _ = self.pedidos(forzar)
+            except Exception:
+                pedidos = []
+            por_remito = {}
+            for p in pedidos:
+                d = solo_digitos(p.numero_remito)
+                if d and int(d):
+                    por_remito[d.lstrip("0")] = p
+            salida = []
+            for r in remitos:
+                p = por_remito.get(solo_digitos(r.numero).lstrip("0"))
+                salida.append(replace(r, orden_compra=p.orden_compra_cliente, pedido=p.numero) if p else r)
+            salida.sort(key=lambda r: (r.fecha or "", r.numero), reverse=True)
+            return salida
+        return self._cacheado("remitos", "remitos", cargar, forzar)
+
+    def datos_envio(self, id_cliente: int) -> DatosEnvio:
+        x = self._cliente.obtener(procesos.CLIENTES, id_cliente)
+        if not x:
+            raise TangoError("No se encontró el cliente en Tango.")
+        return DatosEnvio.desde_tango(x)
 
     def ventas(self, desde: date, hasta: date, forzar: bool = False) -> tuple[list[RenglonVenta], float]:
         clave = f"ventas:{desde.isoformat()}:{hasta.isoformat()}"

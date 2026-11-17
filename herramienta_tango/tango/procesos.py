@@ -27,6 +27,7 @@ LIVE_COTIZACIONES = 17948      # Ventas > Consultas > Cotizaciones > Consulta (u
 LIVE_COTIZACIONES_DETALLE = 12481  # Ventas > Consultas > Cotizaciones > Detalle (renglones)
 TABLERO_FICHA_COTIZACION = 14062   # Ficha Live de cotizaciones: Api/GetPdf con este proceso
                                    # devuelve el PDF del formulario 128 (id = ID_GVA08)
+LIVE_COMPROBANTES_VENTA = 17965   # comprobantes de venta, uno por fila (remitos: TIPO_COMPROBANTE = REM)
 LIVE_PRECIOS_VIGENTES = 12742  # Ventas > Consultas > Precios > Precios vigentes a una fecha
 
 # Pantalla de carga de precios (Ventas > Archivos > Actualizaciones > Precios de venta >
