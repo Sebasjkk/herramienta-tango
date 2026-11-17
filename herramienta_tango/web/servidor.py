@@ -14,6 +14,25 @@ de la empresa consulte Tango sin conocer su API:
     GET /api/precios                 precios vigentes de todas las listas
     GET /api/ventas?desde=AAAA-MM-DD&hasta=AAAA-MM-DD
 
+Listas de precios (leidas de las tablas de Tango, no de la consulta 12742):
+
+    GET /api/listas                  listas con cantidad de articulos y clientes asignados
+    GET /api/listas/<id>             articulos de una lista, con precios especiales por cliente
+    GET /api/articulos/<codigo>/precios   en que listas esta un articulo
+    GET /api/precios/cambios         registro de cambios hechos desde la herramienta
+    GET /api/sesion                  si se pueden modificar precios y quien esta adentro
+
+Modificar precios (desde cualquier equipo de la red, con sesion abierta con
+la clave del panel; encabezado X-Sesion):
+
+    POST /api/sesion                 {"nombre": "...", "clave": "..."} -> {"token": "..."}
+    POST /api/sesion/salir
+    POST /api/precios/cambiar        {"renglon": id, "precio": n, "cliente": id_cliente|null}
+    POST /api/precios/agregar        {"lista": id, "articulo": "codigo", "precio": n, "cliente": id|null, "codigo_cliente": "..."}
+    POST /api/precios/quitar         {"renglon": id}
+    POST /api/listas/crear           {"nombre": "...", "moneda": "$"|"US$", "numero": n|null}
+    POST /api/listas/eliminar        {"lista": id, "confirmar": "NOMBRE"}
+
 Con ?refrescar=1 se saltea la cache. Las respuestas tienen la forma
 {"ok": true, "actualizado": "...", "datos": [...]}, o {"ok": false, "error": "..."}.
 
@@ -27,6 +46,7 @@ Panel de la PC (solo desde la misma PC donde corre el programa):
     POST /api/sistema/buscar-actualizacion
     POST /api/sistema/accesos-directos   crea los accesos directos de nuevo
     POST /api/sistema/modo-servidor   {"activo": true|false}
+    POST /api/sistema/clave-precios   {"clave": "..."} (vacia: nadie puede modificar precios)
 
 Para las otras PCs:
     GET /acceso-directo.url           acceso directo de Windows que abre el menu
@@ -48,7 +68,10 @@ from datetime import date, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Callable
 
-from .. import VERSION, sistema
+import time
+
+from .. import VERSION, autorizacion, sistema
+from ..precios import PedidoInvalido as DatoInvalido
 from ..config import ruta_recurso
 from ..tango import TangoError
 
@@ -60,11 +83,16 @@ TIPOS = {".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".j
 MAX_DIAS_VENTAS = 366
 MAX_CUERPO = 10_000
 ENCABEZADO_PANEL = "X-Herramienta-Tango"
+ENCABEZADO_SESION = "X-Sesion"
 DIRECCIONES_LOCALES = {"127.0.0.1", "::1", "::ffff:127.0.0.1"}
 
 
 class PedidoInvalido(Exception):
     pass
+
+
+RUTAS_PRECIOS = {"/api/sesion", "/api/sesion/salir", "/api/precios/cambiar", "/api/precios/agregar",
+                 "/api/precios/quitar", "/api/listas/crear", "/api/listas/eliminar"}
 
 
 def _a_json(valor) -> object:
@@ -106,7 +134,21 @@ def crear_rutas(contexto) -> dict[str, Callable[[dict, bool], tuple]]:
         "/api/listas-precios": lambda qs, f: s().listas_precios(f),
         "/api/precios": lambda qs, f: s().precios(f),
         "/api/ventas": ventas,
+        "/api/listas": lambda qs, f: (s().editor.listas(f), time.time()),
+        "/api/precios/cambios": lambda qs, f: (s().editor.registro.ultimos(300), time.time()),
     }
+
+
+def ruta_variable(contexto, ruta: str):
+    """/api/listas/<id> y /api/articulos/<codigo>/precios"""
+    partes = ruta.strip("/").split("/")
+    if len(partes) == 3 and partes[:2] == ["api", "listas"] and partes[2].isdigit():
+        id_lista = int(partes[2])
+        return lambda qs, f: (contexto.servicio().editor.lista(id_lista, f), time.time())
+    if len(partes) == 4 and partes[:2] == ["api", "articulos"] and partes[3] == "precios":
+        codigo = urllib.parse.unquote(partes[2])
+        return lambda qs, f: (contexto.servicio().editor.precios_de_articulo(codigo), time.time())
+    return None
 
 
 def crear_manejador(contexto):
@@ -153,6 +195,10 @@ def crear_manejador(contexto):
             ok, mensaje = contexto.desactivar_modo_servidor()
         return (200 if ok else 400), {"ok": ok, "mensaje": mensaje, "sistema": contexto.info()}
 
+    def accion_clave_precios(datos: dict) -> tuple[int, dict]:
+        ok, mensaje = autorizacion.definir_clave(str(datos.get("clave", "")))
+        return (200 if ok else 400), {"ok": ok, "mensaje": mensaje, "sistema": contexto.info()}
+
     def accion_cerrar(datos: dict) -> tuple[int, dict]:
         threading.Timer(0.5, contexto.al_cerrar).start()
         return 200, {"ok": True, "mensaje": "El programa se está cerrando."}
@@ -164,6 +210,7 @@ def crear_manejador(contexto):
         "/api/sistema/buscar-actualizacion": accion_actualizacion,
         "/api/sistema/accesos-directos": accion_accesos,
         "/api/sistema/modo-servidor": accion_modo_servidor,
+        "/api/sistema/clave-precios": accion_clave_precios,
         "/api/sistema/cerrar": accion_cerrar,
     }
 
@@ -226,9 +273,12 @@ def crear_manejador(contexto):
                         self._json(403, {"ok": False, "error": "Solo desde la PC donde está instalado el programa."})
                     else:
                         self._json(200, {"ok": True, **contexto.info()})
-                elif url.path in rutas:
+                elif url.path == "/api/sesion":
+                    self._json(200, {"ok": True, "edicion_habilitada": autorizacion.edicion_habilitada(),
+                                     "quien": autorizacion.SESIONES.quien(self.headers.get(ENCABEZADO_SESION))})
+                elif url.path in rutas or ruta_variable(contexto, url.path):
                     forzar = qs.get("refrescar") == ["1"]
-                    datos, momento = rutas[url.path](qs, forzar)
+                    datos, momento = (rutas.get(url.path) or ruta_variable(contexto, url.path))(qs, forzar)
                     self._json(200, {
                         "ok": True,
                         "actualizado": datetime.fromtimestamp(momento).isoformat(timespec="seconds"),
@@ -256,7 +306,7 @@ def crear_manejador(contexto):
                     if "." not in relativa.rsplit("/", 1)[-1]:
                         relativa += ".html"   # /stock -> stock.html
                     self._estatico(relativa)
-            except PedidoInvalido as e:
+            except (PedidoInvalido, DatoInvalido) as e:
                 self._json(400, {"ok": False, "error": str(e)})
             except NoConfigurado as e:
                 self._json(503, {"ok": False, "error": str(e)})
@@ -270,8 +320,76 @@ def crear_manejador(contexto):
                 self._json(500, {"ok": False, "error": f"Error inesperado en el programa: {e.__class__.__name__}"})
 
         # --------------------------------------------------------- POST (solo panel)
+        def _leer_cuerpo(self) -> dict | None:
+            try:
+                largo = int(self.headers.get("Content-Length") or 0)
+                if largo > MAX_CUERPO:
+                    self._json(413, {"ok": False, "error": "Pedido demasiado grande."})
+                    return None
+                cuerpo = self.rfile.read(largo) if largo else b"{}"
+                datos = json.loads(cuerpo.decode("utf-8") or "{}")
+                if not isinstance(datos, dict):
+                    raise ValueError
+                return datos
+            except (ValueError, UnicodeDecodeError):
+                self._json(400, {"ok": False, "error": "Pedido inválido."})
+                return None
+
+        def _post_precios(self, ruta: str) -> None:
+            datos = self._leer_cuerpo()
+            if datos is None:
+                return
+            sesiones = autorizacion.SESIONES
+            if ruta == "/api/sesion":
+                token, mensaje = sesiones.entrar(str(datos.get("nombre", "")), str(datos.get("clave", "")),
+                                                 self.client_address[0])
+                self._json(200 if token else 403, {"ok": bool(token), "token": token, "mensaje": mensaje,
+                                                    "quien": sesiones.quien(token)})
+                return
+            token = self.headers.get(ENCABEZADO_SESION)
+            if ruta == "/api/sesion/salir":
+                sesiones.salir(token)
+                self._json(200, {"ok": True})
+                return
+            quien = sesiones.quien(token)
+            if not quien:
+                self._json(401, {"ok": False, "error": "Para modificar precios hay que entrar con la clave."})
+                return
+            try:
+                editor = contexto.servicio().editor
+                entero = lambda clave: int(datos[clave]) if datos.get(clave) not in (None, "") else None
+                if ruta == "/api/precios/cambiar":
+                    r = editor.cambiar_precio(entero("renglon"), datos.get("precio"), quien, entero("cliente"))
+                elif ruta == "/api/precios/agregar":
+                    r = editor.agregar_articulo(entero("lista"), str(datos.get("articulo", "")), datos.get("precio"),
+                                                quien, entero("cliente"), str(datos.get("codigo_cliente") or ""))
+                elif ruta == "/api/precios/quitar":
+                    r = editor.quitar_articulo(entero("renglon"), quien)
+                elif ruta == "/api/listas/crear":
+                    r = editor.crear_lista(str(datos.get("nombre", "")), str(datos.get("moneda", "")), quien,
+                                           entero("numero"))
+                elif ruta == "/api/listas/eliminar":
+                    r = editor.eliminar_lista(entero("lista"), str(datos.get("confirmar", "")), quien)
+                else:
+                    self._json(404, {"ok": False, "error": "Esa acción no existe."})
+                    return
+                self._json(200, {"ok": True, "datos": r})
+            except (DatoInvalido, KeyError, TypeError, ValueError) as e:
+                self._json(400, {"ok": False, "error": str(e) if isinstance(e, DatoInvalido) else "Faltan datos en el pedido."})
+            except NoConfigurado as e:
+                self._json(503, {"ok": False, "error": str(e)})
+            except TangoError as e:
+                log.error(f"Precios: {e}")
+                self._json(502, {"ok": False, "error": str(e)})
+            except Exception as e:
+                log.exception("Error al modificar precios")
+                self._json(500, {"ok": False, "error": f"Error inesperado: {e.__class__.__name__}"})
+
         def do_POST(self):
             url = urllib.parse.urlparse(self.path)
+            if url.path in RUTAS_PRECIOS:
+                self._post_precios(url.path)
+                return
             accion = acciones.get(url.path)
             if accion is None:
                 self._json(405, {"ok": False, "error": "Solo lectura."})
@@ -282,17 +400,8 @@ def crear_manejador(contexto):
             if self.headers.get(ENCABEZADO_PANEL) != "1":
                 self._json(403, {"ok": False, "error": "Pedido no permitido."})
                 return
-            try:
-                largo = int(self.headers.get("Content-Length") or 0)
-                if largo > MAX_CUERPO:
-                    self._json(413, {"ok": False, "error": "Pedido demasiado grande."})
-                    return
-                cuerpo = self.rfile.read(largo) if largo else b"{}"
-                datos = json.loads(cuerpo.decode("utf-8") or "{}")
-                if not isinstance(datos, dict):
-                    raise ValueError
-            except (ValueError, UnicodeDecodeError):
-                self._json(400, {"ok": False, "error": "Pedido inválido."})
+            datos = self._leer_cuerpo()
+            if datos is None:
                 return
             try:
                 estado, respuesta = accion(datos)

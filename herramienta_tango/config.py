@@ -45,6 +45,9 @@ DEFECTO = {
         "automatica": "si",
         "cada_minutos": "15",
     },
+    "precios": {
+        "clave": "",             # se define desde el panel; vacia = no se pueden modificar precios
+    },
 }
 
 COMENTARIO = """\
@@ -56,6 +59,7 @@ COMENTARIO = """\
 ; vigencia_saldos_segundos: cuanto tiempo se reutiliza la consulta de saldos.
 ; actualizaciones: de que repositorio de GitHub se bajan las versiones nuevas,
 ;   si se instalan solas (si / no) y cada cuantos minutos se revisa.
+; precios/clave: clave para modificar precios (guardada cifrada; se cambia desde el panel).
 
 """
 
@@ -124,4 +128,14 @@ def cargar() -> Config:
 def guardar_servidor(servidor: str) -> None:
     cfg = _leer()
     cfg.set("tango", "servidor", servidor)
+    _escribir(cfg)
+
+
+def leer_clave_precios() -> str:
+    return _leer().get("precios", "clave").strip()
+
+
+def guardar_clave_precios(valor: str) -> None:
+    cfg = _leer()
+    cfg.set("precios", "clave", valor)
     _escribir(cfg)

@@ -10,7 +10,7 @@ Hoy es **solo lectura**: no carga ni modifica nada en Tango.
 |---|---|---|
 | Buscar artículo | Listo | Inicio: stock por lote y precio en cada lista de un artículo |
 | Stock por partida | Listo | Stock |
-| Listas de precios | Solo lectura | Precios |
+| Listas de precios | Ver y modificar (con clave) | Precios |
 
 Las páginas para los usuarios comparten `comun.css` y `comun.js` (navegación: barra lateral en la PC, pestañas abajo en el celular). Un módulo nuevo se agrega en `MODULOS` de `comun.js`. El panel del servidor (`panel.html`) es aparte.
 
@@ -128,11 +128,28 @@ Ojo: cualquiera con permiso de escritura en este repositorio puede publicar una 
 | El antivirus bloquea algo | Agregá `C:\HerramientaTango` como excepción en el antivirus. |
 | Algo no funciona y no se ve por qué | Mirá `herramienta_tango.log` en la carpeta del programa. |
 
+## Modificar listas de precios
+
+En **Precios**, con la clave que se define en el panel del servidor (Ajustes > Clave para modificar precios), se puede:
+cambiar el precio de un artículo, agregar o quitar artículos de una lista, crear una lista y eliminarla.
+
+Cómo guarda Tango los precios (verificado el 17/11/2026 con una lista de prueba):
+
+- Lista: tabla GVA10, proceso 984.
+- Artículo en una lista: GVA17, proceso 20091, con el **precio de lista**.
+- **Precio especial por cliente**: GVA13, que viaja adentro del renglón de GVA17 (campo `GVA13`) y se graba con el mismo `Update`.
+  Las listas de cliente (SCIPIO, TECSPRAY...) tienen el precio de lista en 0 y el precio real como precio especial del cliente;
+  el editor respeta eso: en esas listas cambia y agrega precios especiales del cliente.
+- La consulta «Precios vigentes a una fecha» (12742) lee un historial y no refleja lo que se carga por la API: no se usa para editar.
+
+Cada cambio se verifica volviendo a leer el registro y queda en `cambios_precios.jsonl` (quién, cuándo, antes y después;
+al eliminar una lista, también todo su contenido). No se puede eliminar una lista que un cliente tiene asignada en Tango.
+Una lista nueva hay que asignársela al cliente en su ficha en Tango.
+
 ## Límites actuales
 
 - Stock por partida muestra solo artículos que llevan partidas.
-- No hay escritura en Tango.
-- Los precios se leen de la consulta «Precios vigentes a una fecha» (12742). La pantalla de carga de precios (20091) muestra 0 en las listas por cliente; hasta saber cuál de las dos usa Tango al facturar, no se cambian precios desde acá.
+- Lo único que escribe en Tango es el editor de listas de precios (ver abajo).
 - Funciona solo dentro de la red de la oficina, a propósito: el token de Tango viaja sin cifrar y la API propia no pide clave.
 
 ## Desarrollo

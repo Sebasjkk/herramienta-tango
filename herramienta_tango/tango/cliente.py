@@ -1,10 +1,13 @@
 """
 Cliente HTTP de la API de Tango Gestion.
 
-Es la UNICA parte del programa que habla con Tango. Hoy solo expone
-lecturas (GET): no hay ningun metodo que cree, modifique o borre datos.
-Si en el futuro se agrega escritura, tiene que ir en metodos separados y
-explicitos, nunca mezclada con las lecturas.
+Es la UNICA parte del programa que habla con Tango. Las lecturas (GET) y
+las escrituras (crear, modificar, borrar) estan en metodos separados. Las
+escrituras solo las usa el editor de precios (precios.py); probadas contra
+Tango 25.1 el 17/11/2026 con una lista de prueba:
+    POST   api/Create?process=N        cuerpo: el registro (como lo da GetById, sin ID)
+    PUT    api/Update?process=N        cuerpo: el registro completo, con su ID
+    DELETE api/Delete?process=N&id=ID
 
 Autenticacion: encabezados ApiAuthorization (token de desarrollador) y
 Company (ID interno de la empresa).
@@ -43,23 +46,31 @@ class ClienteTango:
         self.timeout = timeout
 
     # ------------------------------------------------------------------ base
-    def _get(self, ruta: str, parametros: dict) -> dict:
+    def _pedir(self, metodo: str, ruta: str, parametros: dict, cuerpo: dict | None = None) -> dict:
         url = f"{self.servidor}/{ruta}?{urllib.parse.urlencode(parametros)}"
-        pedido = urllib.request.Request(url, method="GET", headers={
-            "ApiAuthorization": self._token,
-            "Company": self.company,
-            "Accept": "application/json",
-        })
+        encabezados = {"ApiAuthorization": self._token, "Company": self.company, "Accept": "application/json"}
+        datos_cuerpo = None
+        if cuerpo is not None:
+            datos_cuerpo = json.dumps(cuerpo).encode("utf-8")
+            encabezados["Content-Type"] = "application/json"
+        pedido = urllib.request.Request(url, data=datos_cuerpo, method=metodo, headers=encabezados)
         try:
             with urllib.request.urlopen(pedido, timeout=self.timeout) as resp:
-                datos = json.loads(resp.read().decode("utf-8-sig"))
+                texto = resp.read().decode("utf-8-sig")
+                datos = json.loads(texto) if texto.strip() else {}
         except urllib.error.HTTPError as e:
             if e.code == 401:
                 raise TokenInvalido(
                     "Tango rechazó el token (401). Borrá el archivo token.dat de la carpeta del "
                     "programa, volvé a abrirlo y pegá un token aceptado en Tango "
                     "(Desarrollador > Aceptar).") from None
-            raise TangoError(f"Tango respondió con error HTTP {e.code}.") from None
+            detalle = ""
+            try:
+                cuerpo_error = json.loads(e.read().decode("utf-8-sig") or "{}")
+                detalle = cuerpo_error.get("message") or cuerpo_error.get("title") or ""
+            except Exception:
+                pass
+            raise TangoError(f"Tango respondió con error HTTP {e.code}" + (f": {detalle}" if detalle else ".")) from None
         except urllib.error.URLError as e:
             raise SinConexion(f"No se pudo conectar con Tango en {self.servidor} ({e.reason}).") from None
         except (TimeoutError, socket.timeout):
@@ -68,8 +79,13 @@ class ClienteTango:
             raise TangoError("Tango respondió algo que no es JSON.") from None
 
         if isinstance(datos, dict) and datos.get("succeeded") is False:
-            raise TangoError(f"Tango no pudo resolver el pedido: {datos.get('message') or 'sin detalle'}")
+            info = datos.get("exceptionInfo") or {}
+            detalle = datos.get("message") or (info.get("message") if isinstance(info, dict) else "") or "sin detalle"
+            raise TangoError(f"Tango no pudo resolver el pedido: {detalle}")
         return datos
+
+    def _get(self, ruta: str, parametros: dict) -> dict:
+        return self._pedir("GET", ruta, parametros)
 
     def _paginas(self, ruta: str, parametros: dict) -> Iterator[dict]:
         pagina, total = 0, 1
@@ -85,10 +101,12 @@ class ClienteTango:
         """Todos los registros de un proceso (api/Get), recorriendo las paginas."""
         return list(self._paginas("api/Get", {"process": proceso, "view": vista}))
 
-    def obtener(self, proceso: int, id_registro: int) -> dict:
-        """Un registro por su ID interno (api/GetById)."""
+    def obtener(self, proceso: int, id_registro: int) -> dict | None:
+        """Un registro por su ID interno (api/GetById). None si no existe."""
         datos = self._get("api/GetById", {"process": proceso, "id": id_registro})
-        return datos.get("value") or datos.get("resultData") or datos
+        if "value" in datos:
+            return datos["value"]
+        return datos.get("resultData") or datos
 
     def consulta_live(self, proceso: int, desde: date | None = None, hasta: date | None = None) -> list[dict]:
         """Todos los renglones de una consulta Live (api/GetApiLiveQueryData)."""
@@ -98,3 +116,17 @@ class ClienteTango:
         if hasta:
             parametros["toDate"] = hasta.strftime("%d/%m/%Y")
         return list(self._paginas("api/GetApiLiveQueryData", parametros))
+
+    # --------------------------------------------------------------- escrituras
+    # Cambian datos en Tango. Solo las usa el editor de precios.
+    def crear(self, proceso: int, registro: dict) -> int:
+        """Crea un registro y devuelve su ID."""
+        datos = self._pedir("POST", "api/Create", {"process": proceso}, registro)
+        return int(datos.get("savedId") or 0)
+
+    def actualizar(self, proceso: int, registro: dict) -> None:
+        """Reemplaza un registro (tiene que venir completo, con su ID)."""
+        self._pedir("PUT", "api/Update", {"process": proceso}, registro)
+
+    def borrar(self, proceso: int, id_registro: int) -> None:
+        self._pedir("DELETE", "api/Delete", {"process": proceso, "id": id_registro})

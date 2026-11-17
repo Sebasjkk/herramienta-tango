@@ -184,6 +184,7 @@ class Contexto:
             "puerto": self.cfg.puerto,
             "direcciones": sistema.direcciones_locales(),
             "nombre_equipo": sistema.nombre_equipo(),
+            "clave_precios_definida": bool(config.leer_clave_precios()),
             "modo_servidor": {
                 "disponible": sistema.es_windows() and inst is not None,
                 "activo": sistema.modo_servidor_activo(),

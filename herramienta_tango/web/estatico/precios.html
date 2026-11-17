@@ -10,44 +10,65 @@
 <link rel="manifest" href="/manifest.json">
 <link rel="stylesheet" href="/comun.css">
 <style>
+  /* Barra de edicion */
+  .edicion { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+    margin: 0 0 12px; font-size: .88rem; color: var(--plomo); }
+  .edicion .quien { color: var(--patina); font-weight: 600; }
+  .edicion .acciones { display: flex; gap: 8px; flex-wrap: wrap; }
+
   /* Listas */
-  .listas { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
-  .lista a {
-    display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; align-items: center;
-    background: var(--papel); border: 1px solid var(--linea); border-radius: var(--radio);
-    padding: 14px; color: inherit; text-decoration: none;
-  }
+  .listas { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); }
+  .lista a { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; align-items: center;
+    background: var(--papel); border: 1px solid var(--linea); border-radius: var(--radio); padding: 14px; color: inherit; text-decoration: none; height: 100%; }
   .lista a:hover { border-color: var(--patina); }
-  .lista a:active { background: var(--patina-suave); }
-  .lista a:focus-visible { outline: 3px solid var(--patina); outline-offset: 2px; }
   .lista .nombre { font-weight: 650; font-size: 1.05rem; overflow-wrap: anywhere; }
-  .lista .cant { grid-column: 2; grid-row: 1 / span 2; text-align: right; font-size: .85rem; color: var(--plomo); line-height: 1.2; }
+  .lista .cant { grid-column: 2; grid-row: 1 / span 2; text-align: right; font-size: .82rem; color: var(--plomo); line-height: 1.2; }
   .lista .cant b { display: block; font-size: 1.35rem; color: var(--grafito); font-variant-numeric: tabular-nums; }
-  .lista .quien { grid-column: 1; font-size: .85rem; color: var(--plomo); overflow-wrap: anywhere; }
-  h2 { font-size: .95rem; font-weight: 650; margin: 22px 2px 10px; }
+  .lista .quien { grid-column: 1; font-size: .84rem; color: var(--plomo); overflow-wrap: anywhere; }
 
-  /* Detalle de una lista */
-  .cabecera-lista { background: var(--papel); border: 1px solid var(--linea); border-radius: var(--radio); padding: 14px; margin-top: 14px; }
-  .cabecera-lista .nombre { font-size: 1.3rem; font-weight: 700; letter-spacing: -0.01em; }
-  .cabecera-lista p { margin: 4px 0 0; font-size: .88rem; color: var(--plomo); }
-  .precios { list-style: none; margin: 12px 0 0; padding: 0; background: var(--papel); border: 1px solid var(--linea); border-radius: var(--radio); overflow: hidden; }
-  .precio { display: grid; grid-template-columns: 1fr auto; gap: 1px 12px; padding: 11px 14px; }
-  .precio + .precio { border-top: 1px solid #E3E8EB; }
-  .precio .cod { font-size: .8rem; color: var(--plomo); }
-  .precio .desc { font-weight: 600; overflow-wrap: anywhere; line-height: 1.3; }
-  .precio .valor { grid-column: 2; grid-row: 1 / span 2; text-align: right; font-weight: 700; font-size: 1.1rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
-  .precio .valor small { font-size: .78rem; font-weight: 600; color: var(--plomo); margin-right: 3px; }
-  .precio .valor.cero { color: var(--plomo); font-weight: 500; font-size: .9rem; }
-  .precio .meta { grid-column: 1 / -1; font-size: .78rem; color: var(--plomo); }
-  .precio .meta a { color: var(--patina); }
-  .articulo-en-listas .cod { font-size: .8rem; color: var(--plomo); }
-  .articulo-en-listas .nombre { font-size: 1.05rem; line-height: 1.25; overflow-wrap: anywhere; }
-  .articulo-en-listas .precios { margin-top: 10px; }
+  /* Una lista */
+  .detalle { max-width: 960px; }
+  .cab-lista { padding: 16px 18px; margin-bottom: 12px; }
+  .cab-lista .nombre { font-size: 1.3rem; font-weight: 700; letter-spacing: -0.01em; }
+  .cab-lista p { margin: 4px 0 0; font-size: .88rem; color: var(--plomo); }
+  .cab-lista .acciones { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .agregar { padding: 14px 18px; margin-bottom: 12px; }
+  .agregar h3 { font-size: .95rem; margin: 0 0 8px; }
+  .agregar-fila { display: grid; grid-template-columns: 1fr 140px auto; gap: 8px; align-items: start; }
+  .sugerencias { list-style: none; margin: 6px 0 0; padding: 0; border: 1px solid var(--linea); border-radius: 8px; max-height: 260px; overflow-y: auto; }
+  .sugerencias button { width: 100%; text-align: left; font: inherit; font-size: .9rem; background: var(--papel); border: 0; padding: 8px 12px; cursor: pointer; }
+  .sugerencias li + li button { border-top: 1px solid var(--linea-suave); }
+  .sugerencias button:hover, .sugerencias button:focus-visible { background: var(--patina-suave); }
+  .sugerencias small { color: var(--plomo); margin-right: 8px; }
+  .elegido { font-size: .9rem; padding: 8px 0 0; }
 
-  .listas { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
-  .cabecera-lista, .precios { max-width: 900px; }
-  .articulo-en-listas { max-width: 900px; }
-  .volver-lista { display: block; font-size: .85rem; font-weight: 600; color: var(--patina); text-decoration: none; margin-bottom: 2px; letter-spacing: 0; }
+  .renglones { list-style: none; margin: 0; padding: 0; }
+  .renglon { display: grid; grid-template-columns: 1fr auto; gap: 1px 14px; padding: 11px 18px; align-items: center; }
+  .renglon + .renglon { border-top: 1px solid var(--linea-suave); }
+  .renglon .cod { font-size: .8rem; color: var(--plomo); font-variant-numeric: tabular-nums; }
+  .renglon .desc { font-weight: 600; overflow-wrap: anywhere; line-height: 1.3; }
+  .renglon .valor { grid-column: 2; grid-row: 1 / span 2; text-align: right; font-weight: 700; font-size: 1.1rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .renglon .valor.cero { color: var(--plomo); font-weight: 500; font-size: .9rem; }
+  .renglon .meta { grid-column: 1 / -1; font-size: .78rem; color: var(--plomo); }
+  .renglon .botones { grid-column: 1 / -1; display: flex; gap: 8px; margin-top: 6px; }
+  .renglon.editando { background: #F6FBFA; }
+  .editor-precio { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+  .editor-precio .campo { width: 150px; }
+  .editor-precio .cambio { font-size: .9rem; }
+  .editor-precio .cambio b { font-variant-numeric: tabular-nums; }
+
+  /* Registro de cambios */
+  .cambios { list-style: none; margin: 0; padding: 0; max-height: 60vh; overflow-y: auto; }
+  .cambios li { padding: 8px 0; border-top: 1px solid var(--linea-suave); font-size: .88rem; }
+  .cambios li:first-child { border-top: 0; }
+  .cambios small { display: block; color: var(--plomo); }
+  .radios { display: flex; gap: 16px; margin-top: 4px; }
+  .radios label { display: flex; align-items: center; gap: 6px; }
+
+  @media (max-width: 600px) {
+    .agregar-fila { grid-template-columns: 1fr 1fr; }
+    .agregar-fila .campo-art { grid-column: 1 / -1; }
+  }
 </style>
 </head>
 <body>
@@ -57,23 +78,24 @@
     <div class="pagina">
       <header class="cabecera">
         <div class="cabecera-sup">
-          <h1><a class="volver-lista" id="volver" href="#" hidden>‹ Listas</a><span id="titulo">Listas de precios</span></h1>
+          <h1><a class="volver-lista" id="volver" href="#" hidden style="display:block;font-size:.85rem;font-weight:600;color:var(--patina);text-decoration:none;margin-bottom:2px;letter-spacing:0">‹ Listas</a><span id="titulo">Listas de precios</span></h1>
           <div class="datos"><span id="estado">Consultando Tango…</span><button type="button" class="boton-texto" id="actualizar">Actualizar</button></div>
         </div>
       </header>
+      <div class="edicion" id="edicion"></div>
       <div class="barra">
         <div class="buscador">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>
           <label for="q" style="position:absolute;left:-9999px">Buscar</label>
           <input id="q" type="search" inputmode="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-                 placeholder="Lista, cliente o artículo" enterkeyhint="search">
+                 placeholder="Lista o cliente" enterkeyhint="search">
           <button type="button" class="limpiar" id="limpiar" aria-label="Borrar búsqueda" hidden>×</button>
         </div>
       </div>
 
       <main id="resultados" aria-live="polite"></main>
 
-      <p class="pie">Solo lectura: los precios salen de la consulta «Precios vigentes a una fecha» de Tango y no se modifica nada.</p>
+      <p class="pie" id="pie">Los precios se leen directo de las tablas de precios de Tango.</p>
     </div>
   </div>
 </div>
@@ -83,260 +105,471 @@
 (() => {
   "use strict";
   HT.iniciar("precios");
-  const $ = id => document.getElementById(id);
+  const { $, el, norm, sinCeros, tokens, fmt, fmtPrecio, fecha, pedir, textoError, cajaError } = HT;
   const ui = { q: $("q"), limpiar: $("limpiar"), resultados: $("resultados"), estado: $("estado"),
-               actualizar: $("actualizar"), titulo: $("titulo"), volver: $("volver") };
-  const MAX_FILAS = 120;
-  const MAX_ARTICULOS = 25;
-  const fmtPrecio = new Intl.NumberFormat("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const fmt = new Intl.NumberFormat("es-AR");
-  const fmtHora = d => d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hour12: false });
-  const fmtFecha = iso => iso ? new Date(iso + "T00:00:00").toLocaleDateString("es-AR") : "";
-  const norm = s => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
-  const sinCeros = s => s.replace(/^0+/, "");
+               titulo: $("titulo"), volver: $("volver"), edicion: $("edicion") };
+  const MAX_FILAS = 150;
 
-  let listas = [];            // [{nro, nombre, renglones:[...], quien:Set, conPrecio}]
-  let porNro = new Map();
+  let listas = [];          // resumen de todas las listas
+  let actual = null;        // lista abierta: {lista, cliente, renglones, especiales_leidos}
+  let sesion = { habilitada: false, quien: null };
+  let articulos = null;     // para agregar: se cargan la primera vez
+  let editando = null;      // id del renglon que se esta editando
 
-  function el(tag, clase, texto) {
-    const e = document.createElement(tag);
-    if (clase) e.className = clase;
-    if (texto !== undefined) e.textContent = texto;
-    return e;
+  // ---------------------------------------------------------------- sesion
+  const guardarToken = t => { try { t ? localStorage.setItem("ht_sesion", t) : localStorage.removeItem("ht_sesion"); } catch {} };
+  const leerToken = () => { try { return localStorage.getItem("ht_sesion") || ""; } catch { return ""; } };
+
+  async function revisarSesion() {
+    try {
+      const r = await fetch("/api/sesion", { cache: "no-store", headers: { "X-Sesion": leerToken() } });
+      const d = await r.json();
+      sesion = { habilitada: d.edicion_habilitada, quien: d.quien };
+      if (!d.quien) guardarToken("");
+    } catch { sesion = { habilitada: false, quien: null }; }
+    dibujarEdicion();
+  }
+
+  async function escribir(ruta, datos) {
+    const r = await fetch(ruta, { method: "POST", cache: "no-store",
+      headers: { "Content-Type": "application/json", "X-Sesion": leerToken() }, body: JSON.stringify(datos) });
+    const d = await r.json();
+    if (r.status === 401) { await revisarSesion(); }
+    if (!d.ok) throw new Error(d.error || d.mensaje || "No se pudo guardar.");
+    return d;
+  }
+
+  function dibujarEdicion() {
+    const c = ui.edicion;
+    c.replaceChildren();
+    if (sesion.quien) {
+      const t = el("span");
+      t.append("Modificando como ", el("span", "quien", sesion.quien), ". Cada cambio queda registrado.");
+      const acc = el("div", "acciones");
+      const ver = el("button", "boton chico", "Ver cambios"); ver.type = "button"; ver.addEventListener("click", verCambios);
+      const salir = el("button", "boton chico", "Terminar"); salir.type = "button";
+      salir.addEventListener("click", async () => {
+        try { await escribir("/api/sesion/salir", {}); } catch {}
+        guardarToken(""); sesion.quien = null; editando = null; dibujarEdicion(); render();
+      });
+      acc.append(ver, salir);
+      c.append(t, acc);
+    } else if (sesion.habilitada) {
+      const b = el("button", "boton chico", "Modificar precios"); b.type = "button";
+      b.addEventListener("click", entrar);
+      const ver = el("button", "boton chico", "Ver cambios"); ver.type = "button"; ver.addEventListener("click", verCambios);
+      const acc = el("div", "acciones"); acc.append(b, ver);
+      c.append(el("span", "", ""), acc);
+    }
+    c.hidden = !c.childNodes.length;
+  }
+
+  // Ventanitas (dialog) armadas en el momento
+  function ventana(titulo, armar) {
+    const d = el("dialog", "ayuda");
+    d.append(el("h2", "", titulo));
+    const cerrar = () => { d.close(); d.remove(); };
+    armar(d, cerrar);
+    d.addEventListener("cancel", () => setTimeout(() => d.remove(), 0));
+    document.body.append(d);
+    d.showModal();
+    return d;
+  }
+
+  function entrar() {
+    ventana("Modificar precios", (d, cerrar) => {
+      d.append(el("p", "", "Escribí tu nombre (queda en el registro de cada cambio) y la clave que se definió en el panel del servidor."));
+      const f = el("form");
+      const n = el("input", "campo"); n.id = "ses-nombre"; n.autocomplete = "name"; n.required = true;
+      const k = el("input", "campo"); k.id = "ses-clave"; k.type = "password"; k.autocomplete = "current-password"; k.required = true;
+      const ln = el("label", "etiqueta", "Tu nombre"); ln.htmlFor = "ses-nombre";
+      const lk = el("label", "etiqueta", "Clave"); lk.htmlFor = "ses-clave";
+      const err = el("p", "mensaje-error"); err.hidden = true;
+      const acc = el("div", "acciones");
+      const cancelar = el("button", "boton", "Cancelar"); cancelar.type = "button"; cancelar.addEventListener("click", cerrar);
+      const ok = el("button", "boton primario", "Entrar"); ok.type = "submit";
+      acc.append(cancelar, ok);
+      try { n.value = localStorage.getItem("ht_nombre") || ""; } catch {}
+      f.append(ln, n, lk, k, err, acc);
+      f.addEventListener("submit", async e => {
+        e.preventDefault(); ok.disabled = true; err.hidden = true;
+        try {
+          const r = await fetch("/api/sesion", { method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ nombre: n.value, clave: k.value }) });
+          const res = await r.json();
+          if (!res.ok) throw new Error(res.mensaje);
+          guardarToken(res.token);
+          try { localStorage.setItem("ht_nombre", n.value); } catch {}
+          sesion.quien = res.quien; cerrar(); dibujarEdicion(); render();
+        } catch (ex) { err.textContent = ex.message; err.hidden = false; ok.disabled = false; }
+      });
+      d.append(f);
+      setTimeout(() => (n.value ? k : n).focus(), 50);
+    });
+  }
+
+  async function verCambios() {
+    ventana("Cambios hechos desde la Herramienta", async (d, cerrar) => {
+      const ul = el("ul", "cambios");
+      ul.append(el("li", "", "Cargando…"));
+      const acc = el("div", "acciones");
+      const b = el("button", "boton", "Cerrar"); b.type = "button"; b.addEventListener("click", cerrar);
+      acc.append(b);
+      d.append(ul, acc);
+      try {
+        const { datos } = await pedir("/api/precios/cambios", true);
+        ul.replaceChildren();
+        if (!datos.length) ul.append(el("li", "", "Todavía no se hizo ningún cambio."));
+        for (const c of datos.slice(0, 100)) {
+          const li = el("li");
+          li.append(describirCambio(c));
+          li.append(el("small", "", `${c.quien} · ${new Date(c.fecha).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}`));
+          ul.append(li);
+        }
+      } catch (e) { ul.replaceChildren(el("li", "", textoError(e))); }
+    });
+  }
+
+  const precioDe = r => r && (r.especiales && r.especiales.length ? r.especiales[0].precio : r.precio);
+  function describirCambio(c) {
+    const art = c.articulo ? ` ${c.articulo}` : "";
+    const p = x => x == null ? "—" : fmtPrecio.format(x);
+    if (c.accion === "cambiar precio") return `${c.lista}:${art} de ${p(precioDe(c.antes))} a ${p(precioDe(c.despues))}`;
+    if (c.accion === "agregar artículo") return `${c.lista}: se agregó${art} a ${p(precioDe(c.despues))}`;
+    if (c.accion === "quitar artículo") return `${c.lista}: se quitó${art} (estaba a ${p(precioDe(c.antes))})`;
+    if (c.accion === "crear lista") return `Se creó la lista ${c.lista} (número ${c.numero}, ${c.moneda})`;
+    if (c.accion === "eliminar lista") return `Se eliminó la lista ${c.lista} con ${c.articulos} artículos`;
+    return `${c.accion} ${c.lista || ""}`;
   }
 
   // ---------------------------------------------------------------- datos
-  async function pedir(ruta, forzar) {
-    const r = await fetch(ruta + (forzar ? "?refrescar=1" : ""), { cache: "no-store" });
-    const d = await r.json();
-    if (!d.ok) throw new Error(d.error || "Error al consultar Tango.");
-    return d;
-  }
-
-  async function cargar(forzar) {
+  async function cargarListas(forzar) {
     ui.resultados.classList.add("cargando");
     ui.estado.textContent = "Consultando Tango…";
     try {
-      const [precios, clientes] = await Promise.all([
-        pedir("/api/precios", forzar),
-        pedir("/api/clientes", forzar).catch(() => null),   // si falla, solo falta "quién la usa"
-      ]);
-      armar(precios.datos, clientes ? clientes.datos : []);
-      ui.estado.textContent = "Datos de Tango de las " + fmtHora(new Date(precios.actualizado)) + " h";
-      render();
+      const d = await pedir("/api/listas", forzar);
+      listas = d.datos;
+      ui.estado.textContent = "Datos de Tango de las " + HT.hora(new Date(d.actualizado)) + " h";
     } catch (e) {
       ui.estado.textContent = "Sin datos";
-      ui.resultados.replaceChildren(mensajeError(e.message === "Failed to fetch"
-        ? HT.textoError(e)
-        : e.message));
-    } finally {
-      ui.resultados.classList.remove("cargando");
-    }
+      ui.resultados.replaceChildren(cajaError(textoError(e), () => cargarListas(true)));
+      return;
+    } finally { ui.resultados.classList.remove("cargando"); }
+    render();
   }
 
-  function armar(precios, clientes) {
-    porNro = new Map();
-    const vistos = new Set();
-    for (const x of precios) {
-      // La consulta puede repetir un renglon identico: se muestra una sola vez
-      const clave = [x.numero_lista, x.codigo_articulo, x.precio, x.codigo_cliente].join("|");
-      if (vistos.has(clave)) continue;
-      vistos.add(clave);
-      if (!porNro.has(x.numero_lista)) {
-        porNro.set(x.numero_lista, { nro: x.numero_lista, nombre: x.lista, renglones: [], quien: new Set(), conPrecio: 0 });
-      }
-      const l = porNro.get(x.numero_lista);
-      const r = { art: x.codigo_articulo, desc: x.descripcion, precio: x.precio, moneda: x.moneda,
-                  cliente: x.cliente, modificado: x.modificado };
-      r._txt = norm(r.art + " " + r.desc);
-      r._art = sinCeros(norm(r.art));
-      l.renglones.push(r);
-      if (x.precio > 0) l.conPrecio++;
-      if (x.cliente) l.quien.add(x.cliente);
-    }
-    // Clientes que tienen asignada la lista en su ficha
-    const porNombre = new Map([...porNro.values()].map(l => [norm(l.nombre), l]));
-    for (const c of clientes) {
-      const l = porNombre.get(norm(c.lista_precios));
-      if (l && c.razon_social && c.habilitado !== false) l.quien.add(c.razon_social);
-    }
-    listas = [...porNro.values()];
-    for (const l of listas) {
-      l.renglones.sort((a, b) => a.desc.localeCompare(b.desc, "es") || a.art.localeCompare(b.art));
-      l._txt = norm(l.nombre + " " + [...l.quien].join(" "));
-    }
-    listas.sort((a, b) => b.conPrecio - a.conPrecio || a.nombre.localeCompare(b.nombre, "es"));
+  async function abrirLista(id, forzar) {
+    ui.resultados.classList.add("cargando");
+    if (!actual || actual.lista.id !== id) ui.resultados.replaceChildren(el("p", "aviso", "Cargando la lista…"));
+    try {
+      const d = await pedir("/api/listas/" + id, forzar);
+      actual = d.datos;
+      ui.estado.textContent = "Datos de Tango de las " + HT.hora(new Date(d.actualizado)) + " h";
+    } catch (e) {
+      ui.resultados.replaceChildren(cajaError(textoError(e), () => abrirLista(id, true)));
+      return;
+    } finally { ui.resultados.classList.remove("cargando"); }
+    render();
   }
 
-  function mensajeError(texto) {
-    const d = el("div", "error");
-    d.append(el("p", "", texto));
-    const b = el("button", "boton-texto", "Volver a intentar");
-    b.type = "button"; b.addEventListener("click", () => cargar(true));
-    d.append(b);
-    return d;
-  }
-
-  // ---------------------------------------------------------------- navegacion
-  // #lista=10 abre una lista; sin nada, el listado. El boton Atras del celular vuelve.
-  function listaActual() {
-    const m = location.hash.match(/^#lista=(-?\d+)/);
-    return m ? porNro.get(Number(m[1])) : null;
-  }
-
-  function coincide(r, tokens) {
-    return tokens.every(t => r._txt.includes(t) || r._art.includes(sinCeros(t)));
-  }
+  const idDelHash = () => { const m = location.hash.match(/^#lista=(\d+)/); return m ? Number(m[1]) : null; };
 
   // ---------------------------------------------------------------- dibujo
   function render() {
     ui.limpiar.hidden = !ui.q.value;
-    if (!listas.length && !porNro.size) return;
-    const l = listaActual();
-    if (l) {
-      ui.titulo.textContent = l.nombre;
+    const id = idDelHash();
+    if (id) {
       ui.volver.hidden = false;
-      ui.q.placeholder = "Buscar artículo en " + l.nombre;
-      dibujarLista(l);
+      ui.q.placeholder = "Buscar artículo en esta lista";
+      if (!actual || actual.lista.id !== id) { ui.titulo.textContent = "Lista"; return; }
+      ui.titulo.textContent = actual.lista.nombre;
+      dibujarLista();
     } else {
-      ui.titulo.textContent = "Listas de precios";
       ui.volver.hidden = true;
-      ui.q.placeholder = "Lista, cliente o artículo";
-      dibujarInicio();
+      ui.titulo.textContent = "Listas de precios";
+      ui.q.placeholder = "Lista o cliente";
+      dibujarListas();
     }
   }
 
-  function quienTexto(l) {
-    const q = [...l.quien];
-    if (!q.length) return "Sin clientes asignados";
-    return (q.length === 1 ? "Cliente: " : "Clientes: ") + (q.length > 3 ? q.slice(0, 3).join(", ") + ` y ${q.length - 3} más` : q.join(", "));
-  }
-
-  function tarjetaLista(l) {
-    const li = el("li", "lista");
-    const a = el("a");
-    a.href = "#lista=" + l.nro;
-    a.append(el("span", "nombre", l.nombre),
-             el("span", "quien", quienTexto(l)));
-    const c = el("span", "cant");
-    c.append(el("b", "", fmt.format(l.conPrecio)), l.conPrecio === 1 ? "precio" : "precios");
-    a.append(c);
-    li.append(a);
-    return li;
-  }
-
-  function dibujarInicio() {
-    const tokens = norm(ui.q.value).split(/\s+/).filter(Boolean);
+  function dibujarListas() {
+    const ts = tokens(ui.q.value);
     const frag = document.createDocumentFragment();
-    const ls = tokens.length ? listas.filter(l => tokens.every(t => l._txt.includes(t))) : listas;
-
-    if (!tokens.length) {
-      const total = listas.reduce((a, l) => a + l.conPrecio, 0);
-      frag.append(el("p", "resumen", `${listas.length} listas con ${fmt.format(total)} precios cargados. Tocá una lista para ver sus artículos, o buscá un artículo para ver su precio en todas las listas.`));
+    const ls = listas.filter(l => ts.every(t => norm(l.nombre + " " + l.numero + " " + l.clientes_asignados.join(" ")).includes(t)));
+    const cab = el("div", "edicion");
+    cab.append(el("p", "resumen", ts.length ? `${ls.length} de ${listas.length} listas` : `${listas.length} listas`));
+    if (sesion.quien) {
+      const b = el("button", "boton chico primario", "Nueva lista"); b.type = "button"; b.addEventListener("click", nuevaLista);
+      cab.append(b);
     }
+    frag.append(cab);
     if (ls.length) {
-      if (tokens.length) frag.append(el("h2", "", ls.length === 1 ? "1 lista" : `${ls.length} listas`));
       const ul = el("ul", "listas");
-      for (const l of ls) ul.append(tarjetaLista(l));
+      for (const l of ls) {
+        const li = el("li", "lista");
+        const a = el("a"); a.href = "#lista=" + l.id;
+        const q = l.clientes_asignados;
+        a.append(el("span", "nombre", l.nombre),
+          el("span", "quien", `Lista ${l.numero} · ${l.moneda === "$" ? "pesos" : "dólares"}` +
+            (q.length ? ` · ${q.length === 1 ? q[0] : q.length + " clientes"}` : "")));
+        const c = el("span", "cant"); c.append(el("b", "", fmt.format(l.articulos)), l.articulos === 1 ? "artículo" : "artículos");
+        a.append(c); li.append(a); ul.append(li);
+      }
       frag.append(ul);
-    }
-
-    // Un articulo en todas las listas
-    if (tokens.length) {
-      const arts = new Map();
-      for (const l of listas) for (const r of l.renglones) {
-        if (!coincide(r, tokens)) continue;
-        if (!arts.has(r.art)) arts.set(r.art, { art: r.art, desc: r.desc, en: [] });
-        arts.get(r.art).en.push({ l, r });
-      }
-      const q = sinCeros(norm(ui.q.value));
-      const lista = [...arts.values()].sort((a, b) =>
-        (sinCeros(norm(a.art)) === q ? 0 : 1) - (sinCeros(norm(b.art)) === q ? 0 : 1) || a.desc.localeCompare(b.desc, "es"));
-      if (lista.length) {
-        frag.append(el("h2", "", lista.length === 1 ? "1 artículo" : `${lista.length} artículos`));
-        for (const g of lista.slice(0, MAX_ARTICULOS)) {
-          const cab = el("div", "cabecera-lista articulo-en-listas");
-          cab.append(el("div", "cod", g.art), el("div", "nombre", g.desc));
-          const ul = el("ul", "precios");
-          g.en.sort((a, b) => a.l.nombre.localeCompare(b.l.nombre, "es"));
-          for (const { l, r } of g.en) ul.append(filaPrecio(r, l, true));
-          cab.append(ul);
-          frag.append(cab);
-        }
-        if (lista.length > MAX_ARTICULOS) frag.append(el("p", "mas", `Se muestran ${MAX_ARTICULOS} de ${lista.length}. Escribí más para achicar la búsqueda.`));
-      }
-      if (!ls.length && !lista.length) {
-        const a = el("div", "aviso");
-        const p = el("p");
-        p.append("Nada coincide con ", el("strong", "", `«${ui.q.value.trim()}»`), ".");
-        a.append(p, el("p", "", "Probá con menos palabras o con parte del código."));
-        frag.append(a);
-      }
+    } else {
+      const a = el("div", "aviso");
+      const p = el("p"); p.append("Ninguna lista coincide con ", el("strong", "", `«${ui.q.value.trim()}»`), ".");
+      const p2 = el("p"); const link = el("a", "", "Buscar ese artículo");
+      link.href = "/?q=" + encodeURIComponent(ui.q.value.trim()); link.style.color = "var(--patina)";
+      p2.append("Si buscás el precio de un artículo en todas las listas: ", link, ".");
+      a.append(p, p2); frag.append(a);
     }
     ui.resultados.replaceChildren(frag);
   }
 
-  // enArticulo: la fila va dentro de la tarjeta de un articulo y muestra la lista en lugar del articulo
-  function filaPrecio(r, lista, enArticulo) {
-    const li = el("li", "precio");
-    if (enArticulo) li.append(el("span", "cod", "Lista " + lista.nro), el("span", "desc", lista.nombre));
-    else li.append(el("span", "cod", r.art), el("span", "desc", r.desc));
-    const v = el("span", "valor" + (r.precio > 0 ? "" : " cero"));
-    if (r.precio > 0) v.append(el("small", "", r.moneda), fmtPrecio.format(r.precio));
+  // Precio que se muestra de un renglon: el especial del cliente de la lista, o el de lista
+  function precioMostrado(r) {
+    const dueno = actual.cliente;
+    const esp = (r.especiales || []).find(e => dueno && e.id_cliente === dueno.id);
+    return esp ? { precio: esp.precio, cliente: esp.id_cliente } : { precio: r.precio, cliente: null };
+  }
+
+  function dibujarLista() {
+    const l = actual.lista;
+    const frag = document.createDocumentFragment();
+    const d = el("div", "detalle");
+    const cab = el("div", "tarjeta cab-lista");
+    cab.append(el("div", "nombre", l.nombre));
+    const cli = actual.cliente;
+    cab.append(el("p", "", `Lista ${l.numero} · ${l.moneda === "$" ? "pesos" : "dólares"} · ${fmt.format(actual.renglones.length)} artículos`));
+    cab.append(el("p", "", cli ? `Precios para ${cli.razon_social || cli.codigo} (precio especial del cliente)` : "Precios de lista, iguales para todos los clientes que la usen."));
+    if (sesion.quien) {
+      const acc = el("div", "acciones");
+      const b = el("button", "boton chico peligro", "Eliminar lista"); b.type = "button"; b.addEventListener("click", eliminarLista);
+      acc.append(b); cab.append(acc);
+    }
+    d.append(cab);
+    if (sesion.quien) d.append(formAgregar());
+
+    const ts = tokens(ui.q.value);
+    const filas = ts.length ? actual.renglones.filter(r => {
+      const txt = norm(r.codigo_articulo + " " + r.descripcion);
+      return ts.every(t => txt.includes(t) || sinCeros(norm(r.codigo_articulo)).includes(sinCeros(t)));
+    }) : actual.renglones;
+    if (!filas.length) {
+      d.append(el("p", "aviso", actual.renglones.length ? "Ningún artículo de la lista coincide con la búsqueda." : "La lista todavía no tiene artículos."));
+    } else {
+      const ul = el("ul", "renglones tarjeta");
+      for (const r of filas.slice(0, MAX_FILAS)) ul.append(filaRenglon(r));
+      d.append(ul);
+      if (filas.length > MAX_FILAS) d.append(el("p", "mas", `Se muestran ${MAX_FILAS} de ${fmt.format(filas.length)}. Escribí para buscar un artículo.`));
+    }
+    if (!actual.especiales_leidos) d.append(el("p", "pie", "Lista muy grande: se muestran los precios de lista, sin los precios especiales por cliente."));
+    frag.append(d);
+    ui.resultados.replaceChildren(frag);
+  }
+
+  function filaRenglon(r) {
+    const li = el("li", "renglon" + (editando === r.id ? " editando" : ""));
+    li.append(el("span", "cod", r.codigo_articulo), el("span", "desc", r.descripcion || "(sin descripción)"));
+    const m = precioMostrado(r);
+    const v = el("span", "valor" + (m.precio > 0 ? "" : " cero"));
+    if (m.precio > 0) v.append(el("span", "moneda", actual.lista.moneda), fmtPrecio.format(m.precio));
     else v.textContent = "Sin precio";
     li.append(v);
-    const meta = [];
-    if (r.cliente && lista.quien.size > 1) meta.push("Precio para " + r.cliente);
-    if (r.modificado) meta.push("Modificado el " + fmtFecha(r.modificado));
-    if (enArticulo || meta.length) {
-      const m = el("span", "meta", meta.join(" · "));
-      if (enArticulo) {
-        const a = el("a", "", "Ver lista completa");
-        a.href = "#lista=" + lista.nro;
-        if (meta.length) m.append(" · ");
-        m.append(a);
+    const otros = (r.especiales || []).filter(e => e.id_cliente !== m.cliente);
+    if (otros.length) li.append(el("span", "meta", "También: " + otros.map(e => `${e.codigo_cliente} ${fmtPrecio.format(e.precio)}`).join(", ")));
+    if (sesion.quien) {
+      if (editando === r.id) li.append(editorPrecio(r, m));
+      else {
+        const b = el("div", "botones");
+        const cambiar = el("button", "boton chico", "Cambiar precio"); cambiar.type = "button";
+        cambiar.addEventListener("click", () => { editando = r.id; render(); setTimeout(() => { const c = document.querySelector(".editor-precio .campo"); c && c.focus(); }, 30); });
+        const quitar = el("button", "boton chico peligro", "Quitar"); quitar.type = "button";
+        let hasta = 0;
+        quitar.addEventListener("click", async () => {
+          if (Date.now() > hasta) { hasta = Date.now() + 4000; quitar.classList.add("confirmar"); quitar.textContent = "¿Quitar de la lista? Tocá de nuevo";
+            setTimeout(() => { quitar.classList.remove("confirmar"); quitar.textContent = "Quitar"; }, 4000); return; }
+          quitar.disabled = true; quitar.textContent = "Quitando…";
+          try { await escribir("/api/precios/quitar", { renglon: r.id }); await abrirLista(actual.lista.id, true); }
+          catch (e) { alertar(li, e.message); quitar.disabled = false; quitar.textContent = "Quitar"; }
+        });
+        b.append(cambiar, quitar); li.append(b);
       }
-      li.append(m);
     }
     return li;
   }
 
-  function dibujarLista(l) {
-    const tokens = norm(ui.q.value).split(/\s+/).filter(Boolean);
-    const frag = document.createDocumentFragment();
-    const cab = el("div", "cabecera-lista");
-    cab.append(el("div", "nombre", l.nombre));
-    const sinPrecio = l.renglones.length - l.conPrecio;
-    cab.append(el("p", "", `Lista ${l.nro} · ${fmt.format(l.conPrecio)} artículos con precio` + (sinPrecio ? ` · ${fmt.format(sinPrecio)} sin precio` : "")));
-    cab.append(el("p", "", quienTexto(l)));
-    frag.append(cab);
+  function alertar(contenedor, texto) {
+    contenedor.querySelectorAll(".mensaje-error").forEach(x => x.remove());
+    const p = el("p", "mensaje-error", texto); p.style.gridColumn = "1 / -1";
+    contenedor.append(p);
+  }
 
-    const filas = tokens.length ? l.renglones.filter(r => coincide(r, tokens)) : l.renglones;
-    if (!filas.length) {
-      const a = el("div", "aviso");
-      const p = el("p");
-      p.append("Ningún artículo de ", el("strong", "", l.nombre), " coincide con ", el("strong", "", `«${ui.q.value.trim()}»`), ".");
-      a.append(p);
-      frag.append(a);
-    } else {
-      const ul = el("ul", "precios");
-      for (const r of filas.slice(0, MAX_FILAS)) ul.append(filaPrecio(r, l));
-      frag.append(ul);
-      if (filas.length > MAX_FILAS) frag.append(el("p", "mas", `Se muestran ${MAX_FILAS} de ${fmt.format(filas.length)}. Escribí para buscar un artículo.`));
-    }
-    ui.resultados.replaceChildren(frag);
+  // "1.234,56" o "1234,56" (coma decimal) o "1234.56" (punto decimal, si no hay coma)
+  const leerPrecio = t => {
+    const x = String(t).trim();
+    const n = Number(x.includes(",") ? x.replace(/\./g, "").replace(",", ".") : x);
+    return x && Number.isFinite(n) ? n : NaN;
+  };
+
+  function editorPrecio(r, m) {
+    const caja = el("div", "editor-precio");
+    const campo = el("input", "campo"); campo.inputMode = "decimal"; campo.value = m.precio ? String(m.precio).replace(".", ",") : "";
+    campo.setAttribute("aria-label", "Precio nuevo");
+    const cambio = el("span", "cambio");
+    const guardar = el("button", "boton chico primario", "Guardar"); guardar.type = "button";
+    const cancelar = el("button", "boton chico", "Cancelar"); cancelar.type = "button";
+    const mostrar = () => {
+      const n = leerPrecio(campo.value);
+      cambio.replaceChildren();
+      if (Number.isNaN(n) || n < 0) { cambio.textContent = "Escribí un precio válido."; guardar.disabled = true; return; }
+      guardar.disabled = n === m.precio;
+      cambio.append(el("b", "", fmtPrecio.format(m.precio)), " → ", el("b", "", fmtPrecio.format(n)));
+    };
+    campo.addEventListener("input", mostrar);
+    campo.addEventListener("keydown", e => { if (e.key === "Enter" && !guardar.disabled) guardar.click(); if (e.key === "Escape") cancelar.click(); });
+    cancelar.addEventListener("click", () => { editando = null; render(); });
+    guardar.addEventListener("click", async () => {
+      guardar.disabled = true; guardar.textContent = "Guardando…";
+      try {
+        await escribir("/api/precios/cambiar", { renglon: r.id, precio: leerPrecio(campo.value), cliente: m.cliente });
+        editando = null; await abrirLista(actual.lista.id, true);
+      } catch (e) { alertar(caja, e.message); guardar.disabled = false; guardar.textContent = "Guardar"; }
+    });
+    caja.append(campo, cambio, guardar, cancelar);
+    mostrar();
+    return caja;
+  }
+
+  function formAgregar() {
+    const t = el("div", "tarjeta agregar");
+    t.append(el("h3", "", "Agregar artículo"));
+    const fila = el("div", "agregar-fila");
+    const art = el("input", "campo campo-art"); art.placeholder = "Código o descripción"; art.autocomplete = "off"; art.setAttribute("aria-label", "Artículo");
+    const precio = el("input", "campo"); precio.placeholder = "Precio"; precio.inputMode = "decimal"; precio.setAttribute("aria-label", "Precio");
+    const boton = el("button", "boton primario", "Agregar"); boton.type = "button"; boton.disabled = true;
+    fila.append(art, precio, boton);
+    const sug = el("ul", "sugerencias"); sug.hidden = true;
+    const elegido = el("div", "elegido"); elegido.hidden = true;
+    let codigo = null;
+    const yaEsta = new Set(actual.renglones.map(r => r.codigo_articulo));
+    const habilitar = () => { const n = leerPrecio(precio.value); boton.disabled = !codigo || Number.isNaN(n) || n < 0 || precio.value.trim() === ""; };
+    art.addEventListener("focus", async () => {
+      if (articulos) return;
+      try { articulos = (await pedir("/api/articulos")).datos.map(a => ({ ...a, _t: norm(a.codigo + " " + a.descripcion) })); }
+      catch (e) { alertar(t, textoError(e)); }
+    });
+    art.addEventListener("input", () => {
+      codigo = null; elegido.hidden = true; habilitar();
+      const ts = tokens(art.value);
+      sug.replaceChildren();
+      if (!ts.length || !articulos) { sug.hidden = true; return; }
+      const res = articulos.filter(a => ts.every(x => a._t.includes(x))).slice(0, 30);
+      for (const a of res) {
+        const li = el("li"); const b = el("button"); b.type = "button";
+        b.append(el("small", "", a.codigo), a.descripcion + (yaEsta.has(a.codigo) ? " (ya está en la lista)" : ""));
+        b.disabled = yaEsta.has(a.codigo);
+        b.addEventListener("click", () => {
+          codigo = a.codigo; art.value = a.codigo + " " + a.descripcion; sug.hidden = true;
+          elegido.hidden = true; habilitar(); precio.focus();
+        });
+        li.append(b); sug.append(li);
+      }
+      sug.hidden = !res.length;
+    });
+    precio.addEventListener("input", habilitar);
+    precio.addEventListener("keydown", e => { if (e.key === "Enter" && !boton.disabled) boton.click(); });
+    boton.addEventListener("click", async () => {
+      boton.disabled = true; boton.textContent = "Agregando…";
+      try {
+        const cli = actual.cliente;
+        await escribir("/api/precios/agregar", { lista: actual.lista.id, articulo: codigo, precio: leerPrecio(precio.value),
+                                                 cliente: cli ? cli.id : null, codigo_cliente: cli ? cli.codigo : "" });
+        await abrirLista(actual.lista.id, true);
+      } catch (e) { alertar(t, e.message); boton.disabled = false; boton.textContent = "Agregar"; }
+    });
+    t.append(fila, sug, elegido);
+    return t;
+  }
+
+  function nuevaLista() {
+    ventana("Nueva lista de precios", (d, cerrar) => {
+      const f = el("form");
+      const n = el("input", "campo"); n.id = "nl-nombre"; n.maxLength = 20; n.required = true;
+      const ln = el("label", "etiqueta", "Nombre (hasta 20 letras; por ejemplo el del cliente)"); ln.htmlFor = "nl-nombre";
+      const lm = el("span", "etiqueta", "Moneda");
+      const radios = el("div", "radios");
+      for (const [v, t, ch] of [["US$", "Dólares", true], ["$", "Pesos", false]]) {
+        const lab = el("label"); const r = el("input"); r.type = "radio"; r.name = "moneda"; r.value = v; r.checked = ch;
+        lab.append(r, t); radios.append(lab);
+      }
+      const sig = Math.max(0, ...listas.map(l => l.numero || 0)) + 1;
+      const nro = el("input", "campo"); nro.id = "nl-numero"; nro.inputMode = "numeric"; nro.placeholder = String(sig);
+      const lnro = el("label", "etiqueta", "Número de lista (si lo dejás vacío, " + sig + ")"); lnro.htmlFor = "nl-numero";
+      const nota = el("p", "", "Para que un cliente la use, después asignásela en su ficha en Tango (campo Lista de precios).");
+      const err = el("p", "mensaje-error"); err.hidden = true;
+      const acc = el("div", "acciones");
+      const c = el("button", "boton", "Cancelar"); c.type = "button"; c.addEventListener("click", cerrar);
+      const ok = el("button", "boton primario", "Crear lista"); ok.type = "submit";
+      acc.append(c, ok);
+      f.append(ln, n, lm, radios, lnro, nro, nota, err, acc);
+      f.addEventListener("submit", async e => {
+        e.preventDefault(); ok.disabled = true; err.hidden = true;
+        try {
+          const res = await escribir("/api/listas/crear", { nombre: n.value, moneda: f.moneda.value,
+                                                            numero: nro.value.trim() ? Number(nro.value) : null });
+          cerrar();
+          await cargarListas(true);
+          location.hash = "lista=" + res.datos.id;
+        } catch (ex) { err.textContent = ex.message; err.hidden = false; ok.disabled = false; }
+      });
+      d.append(f);
+      setTimeout(() => n.focus(), 50);
+    });
+  }
+
+  function eliminarLista() {
+    const l = actual.lista;
+    ventana("Eliminar la lista " + l.nombre, (d, cerrar) => {
+      d.append(el("p", "", `Se quitan sus ${actual.renglones.length} artículos y se borra la lista de Tango. Lo que tenía queda guardado en el registro de cambios.`));
+      const f = el("form");
+      const n = el("input", "campo"); n.id = "el-nombre"; n.autocomplete = "off";
+      const ln = el("label", "etiqueta", `Para confirmar, escribí ${l.nombre}`); ln.htmlFor = "el-nombre";
+      const err = el("p", "mensaje-error"); err.hidden = true;
+      const acc = el("div", "acciones");
+      const c = el("button", "boton", "Cancelar"); c.type = "button"; c.addEventListener("click", cerrar);
+      const ok = el("button", "boton peligro confirmar", "Eliminar lista"); ok.type = "submit"; ok.disabled = true;
+      n.addEventListener("input", () => { ok.disabled = norm(n.value) !== norm(l.nombre); });
+      acc.append(c, ok);
+      f.append(ln, n, err, acc);
+      f.addEventListener("submit", async e => {
+        e.preventDefault(); ok.disabled = true; ok.textContent = "Eliminando…"; err.hidden = true;
+        try {
+          await escribir("/api/listas/eliminar", { lista: l.id, confirmar: n.value });
+          cerrar(); actual = null; location.hash = ""; await cargarListas(true);
+        } catch (ex) { err.textContent = ex.message; err.hidden = false; ok.disabled = false; ok.textContent = "Eliminar lista"; }
+      });
+      d.append(f);
+      setTimeout(() => n.focus(), 50);
+    });
   }
 
   // ---------------------------------------------------------------- eventos
-  let espera;
-  ui.q.addEventListener("input", () => { clearTimeout(espera); espera = setTimeout(render, 120); });
-  ui.limpiar.addEventListener("click", () => { ui.q.value = ""; render(); ui.q.focus(); });
-  ui.actualizar.addEventListener("click", () => cargar(true));
-  window.addEventListener("hashchange", () => { ui.q.value = ""; render(); window.scrollTo(0, 0); });
+  HT.conectarBuscador(ui.q, ui.limpiar, render);
+  $("actualizar").addEventListener("click", () => { const id = idDelHash(); id ? abrirLista(id, true) : cargarListas(true); });
+  ui.volver.addEventListener("click", e => { e.preventDefault(); location.hash = ""; });
+  window.addEventListener("hashchange", () => {
+    ui.q.value = ""; editando = null; window.scrollTo(0, 0);
+    const id = idDelHash();
+    if (id) abrirLista(id); else render();
+  });
 
   const inicial = new URLSearchParams(location.search).get("q");
   if (inicial) { ui.q.value = inicial; ui.limpiar.hidden = false; }
-  cargar(false);
+  revisarSesion();
+  cargarListas(false);
+  if (idDelHash()) abrirLista(idDelHash());
 })();
 </script>
 </body>

@@ -207,6 +207,19 @@
           </div>
           <div class="fila">
             <div class="fila-texto">
+              <strong id="clave-titulo">Clave para modificar precios</strong>
+              <span id="clave-detalle">Sin clave nadie puede modificar precios. Con clave, se puede desde cualquier PC o celular de la oficina, y cada cambio queda registrado con el nombre de quien lo hizo.</span>
+              <span id="clave-form" hidden style="margin-top:8px">
+                <input type="password" id="clave-nueva" autocomplete="new-password" placeholder="Clave nueva (6 o más letras)"
+                       style="font:inherit;padding:8px 10px;border:1.5px solid var(--linea);border-radius:8px;width:100%;max-width:260px">
+                <button type="button" class="boton primario" id="clave-guardar" style="margin-top:6px">Guardar clave</button>
+                <button type="button" class="boton" id="clave-quitar" style="margin-top:6px">Quitar clave</button>
+              </span>
+            </div>
+            <button type="button" class="boton" id="clave-boton">Definir</button>
+          </div>
+          <div class="fila">
+            <div class="fila-texto">
               <strong>Servidor y token</strong>
               <span id="servidor-actual"></span>
             </div>
@@ -384,6 +397,11 @@
     $("fila-accesos").hidden = !sis.inicio_automatico_disponible;
     $("inicio").checked = !!sis.inicio_automatico;
     $("servidor-actual").textContent = sis.servidor || "Sin configurar";
+    if (!editandoClave) {
+      $("clave-titulo").textContent = sis.clave_precios_definida ? "Clave para modificar precios: definida" : "Clave para modificar precios";
+      $("clave-boton").textContent = sis.clave_precios_definida ? "Cambiar" : "Definir";
+      $("clave-quitar").hidden = !sis.clave_precios_definida;
+    }
 
     const a = sis.actualizacion;
     const det = $("act-detalle");
@@ -510,6 +528,22 @@
     $("accesos-detalle").textContent = d.mensaje || d.error;
     b.disabled = false;
   });
+
+  let editandoClave = false;
+  $("clave-boton").addEventListener("click", () => {
+    editandoClave = !editandoClave;
+    $("clave-form").hidden = !editandoClave;
+    $("clave-boton").textContent = editandoClave ? "Cancelar" : (sis.clave_precios_definida ? "Cambiar" : "Definir");
+    if (editandoClave) $("clave-nueva").focus();
+  });
+  async function guardarClave(clave) {
+    const d = await api("/api/sistema/clave-precios", { clave });
+    $("clave-detalle").textContent = d.mensaje || d.error;
+    if (d.ok) { editandoClave = false; $("clave-form").hidden = true; $("clave-nueva").value = ""; sis = d.sistema; dibujar(); }
+  }
+  $("clave-guardar").addEventListener("click", () => guardarClave($("clave-nueva").value));
+  $("clave-nueva").addEventListener("keydown", e => { if (e.key === "Enter") guardarClave($("clave-nueva").value); });
+  $("clave-quitar").addEventListener("click", () => guardarClave(""));
 
   let confirmarDesactivar = 0;
   $("servidor-boton").addEventListener("click", async e => {

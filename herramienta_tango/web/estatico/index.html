@@ -357,36 +357,46 @@
     return s;
   }
 
+  // Precios leidos de las tablas de Tango (precio de lista y especiales por cliente)
+  const preciosArt = new Map();   // codigo -> datos | "cargando" | Error
+  function cargarPreciosDe(cod) {
+    if (preciosArt.has(cod)) return;
+    preciosArt.set(cod, "cargando");
+    pedir("/api/articulos/" + encodeURIComponent(cod) + "/precios")
+      .then(d => preciosArt.set(cod, d.datos), e => preciosArt.set(cod, new Error(textoError(e))))
+      .then(() => { if (seleccion === cod) dibujarFicha(); });
+  }
+
   function seccionPrecios(a) {
     const s = el("section", "seccion");
     const cab = el("div", "seccion-cab");
     cab.append(el("h3", "", "Precios"));
-    const ps = (preciosPor.get(a.cod) || []).slice().sort((x, y) => x.lista.localeCompare(y.lista, "es"));
-    if (ps.length) {
-      const link = el("a", "", "Ver en Listas de precios");
-      link.href = "/precios?q=" + encodeURIComponent(a.cod);
-      cab.append(link);
-    }
     s.append(cab);
-    if (!cargado.precios) { s.append(el("p", "nota", "Cargando precios…")); return s; }
+    cargarPreciosDe(a.cod);
+    const ps = preciosArt.get(a.cod);
+    if (ps === "cargando") { s.append(el("p", "nota", "Cargando precios…")); return s; }
+    if (ps instanceof Error) { s.append(el("p", "nota alerta", ps.message)); return s; }
     if (!ps.length) { s.append(el("p", "nota", "No está en ninguna lista de precios.")); return s; }
     const tabla = el("table", "tabla");
     const thead = el("thead"); const trh = el("tr");
-    for (const [c, cl] of [["Lista", ""], ["Cliente", ""], ["Precio", "der"], ["Modificado", "der"]]) trh.append(el("th", cl, c));
+    for (const [c, cl] of [["Lista", ""], ["Cliente", ""], ["Precio", "der"]]) trh.append(el("th", cl, c));
     thead.append(trh);
     const tbody = el("tbody");
-    for (const p of ps) {
-      const tr = el("tr", p.precio > 0 ? "" : "apagado");
+    const fila = (p, cliente, valor) => {
+      const tr = el("tr", valor > 0 ? "" : "apagado");
       const lista = el("td");
       const link = el("a", "", p.lista);
-      link.href = "/precios#lista=" + p.numero_lista;
-      link.style.color = "inherit";
+      link.href = "/precios#lista=" + p.id_lista; link.style.color = "inherit";
       lista.append(link);
       const precio = el("td", "der");
-      if (p.precio > 0) precio.append(el("span", "moneda", p.moneda), fmtPrecio.format(p.precio));
+      if (valor > 0) precio.append(el("span", "moneda", p.moneda), fmtPrecio.format(valor));
       else precio.textContent = "Sin precio";
-      tr.append(lista, el("td", "", p.cliente || "Todos"), precio, el("td", "der", fecha(p.modificado)));
+      tr.append(lista, el("td", "", cliente), precio);
       tbody.append(tr);
+    };
+    for (const p of ps) {
+      for (const e of p.especiales) fila(p, e.razon_social || e.codigo_cliente, e.precio);
+      if (p.precio > 0 || !p.especiales.length) fila(p, "Todos", p.precio);
     }
     tabla.append(thead, tbody);
     const env = el("div", "tabla-envoltura"); env.append(tabla);
@@ -460,7 +470,7 @@
     if (location.hash.startsWith("#art=")) history.replaceState(null, "", location.pathname + location.search);
     render();
   });
-  $("actualizar").addEventListener("click", () => cargar(true));
+  $("actualizar").addEventListener("click", () => { preciosArt.clear(); cargar(true); });
   window.addEventListener("popstate", () => {
     if (!location.hash.startsWith("#art=")) $("busqueda").classList.remove("viendo-ficha");
   });

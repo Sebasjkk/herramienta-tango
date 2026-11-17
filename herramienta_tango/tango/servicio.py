@@ -45,6 +45,10 @@ class _Cache:
             self._datos[clave] = (momento, datos)
             return datos, momento
 
+    def olvidar(self, clave: str) -> None:
+        with self._lock_global:
+            self._datos.pop(clave, None)
+
 
 class ServicioTango:
     # Segundos que se reutiliza cada consulta
@@ -65,6 +69,18 @@ class ServicioTango:
         self.vigencia = dict(self.VIGENCIA)
         if vigencia_saldos is not None:
             self.vigencia["saldos_partida"] = vigencia_saldos
+
+    def olvidar(self, clave: str) -> None:
+        """Descarta lo guardado de una consulta (despues de modificar datos en Tango)."""
+        self._cache.olvidar(clave)
+
+    @property
+    def editor(self):
+        """Editor de listas de precios (lee y escribe en Tango). Se arma la primera vez que se usa."""
+        if getattr(self, "_editor", None) is None:
+            from ..precios import EditorPrecios
+            self._editor = EditorPrecios(self._cliente, self)
+        return self._editor
 
     def _cacheado(self, clave: str, tipo: str, cargar: Callable[[], T], forzar: bool) -> tuple[T, float]:
         return self._cache.obtener(clave, self.vigencia[tipo], cargar, forzar)

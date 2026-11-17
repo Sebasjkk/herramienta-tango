@@ -203,6 +203,54 @@ class ListaPrecios:
 
 
 @dataclass(frozen=True)
+class PrecioEspecial:
+    """Precio de un articulo en una lista para un cliente puntual (GVA13).
+    Las listas de cliente (SCIPIO, TECSPRAY...) tienen el precio de lista en 0
+    y el precio real aca."""
+    id: int | None
+    id_cliente: int | None
+    codigo_cliente: str
+    precio: float
+
+    @classmethod
+    def desde_tango(cls, x: dict) -> "PrecioEspecial":
+        return cls(id=x.get("ID_GVA13"), id_cliente=x.get("ID_GVA14"),
+                   codigo_cliente=_txt(x.get("COD_CLIENT")), precio=_num(x.get("PRECIO")))
+
+
+@dataclass(frozen=True)
+class RenglonPrecio:
+    """Un articulo dentro de una lista de precios (GVA17, proceso 20091)."""
+    id: int
+    id_lista: int | None
+    numero_lista: int | None
+    id_articulo: int | None
+    codigo_articulo: str
+    descripcion: str
+    precio: float                      # precio de lista
+    modificado: str | None
+    especiales: tuple[PrecioEspecial, ...] | None   # None: no se leyeron (lista muy grande)
+
+    @classmethod
+    def desde_tango(cls, x: dict, detalle: dict | None = None) -> "RenglonPrecio":
+        """x: renglon de api/Get. detalle: el mismo renglon por GetById (trae los especiales)."""
+        especiales = None
+        if detalle is not None:
+            especiales = tuple(PrecioEspecial.desde_tango(c) for c in (detalle.get("GVA13") or []))
+        return cls(
+            id=int(x.get("ID_GVA17")),
+            id_lista=x.get("ID_GVA10"),
+            numero_lista=x.get("NRO_DE_LIS"),
+            id_articulo=x.get("ID_STA11"),
+            codigo_articulo=_txt(x.get("COD_STA11") or x.get("COD_ARTICU")),
+            descripcion=_txt(x.get("DESCRIPCIO")),
+            precio=_num((detalle or x).get("PRECIO")),
+            modificado=_fecha(x.get("FECHA_MODI")),
+            especiales=especiales,
+        )
+
+
+@dataclass(frozen=True)
 class PrecioVigente:
     """Un precio de un articulo en una lista, tal como lo muestra la consulta
     Precios vigentes a una fecha. Si el precio es propio de un cliente, viene el cliente."""
