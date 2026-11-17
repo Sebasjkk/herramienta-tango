@@ -20,7 +20,7 @@ from unittest import mock
 from herramienta_tango import config, credenciales
 from herramienta_tango.contexto import Contexto
 from herramienta_tango.tango import TokenInvalido, procesos
-from herramienta_tango.tango.modelos import Articulo, Pedido, PrecioVigente, SaldoPartida
+from herramienta_tango.tango.modelos import Articulo, Cotizacion, Pedido, PrecioVigente, SaldoPartida
 from herramienta_tango.tango.servicio import ServicioTango
 from herramienta_tango.web.servidor import crear_servidor
 
@@ -91,6 +91,12 @@ class TestModelos(unittest.TestCase):
         self.assertEqual((p.codigo_cliente, p.modificado), ("CLI01", "2026-09-17"))
         sin_nombre = PrecioVigente.desde_tango({"NRO_LISTA_DE_PRECIOS": 3, "MONEDA": True})
         self.assertEqual((sin_nombre.lista, sin_nombre.moneda, sin_nombre.cliente), ("Lista 3", "$", ""))
+
+    def test_cotizacion(self):
+        c = Cotizacion.desde_tango({"TALONARIO": 128, "NRO_COTIZACION": " 0000100003215", "FECHA": "2026-11-16T00:00:00",
+                                    "FECHA_DE_VIGENCIA": "2026-11-30T00:00:00", "ESTADO": 4, "MONEDA": False,
+                                    "COD_CLIENTE": "CLI01", "RAZON_SOCIAL": "CLIENTE PRUEBA", "ID_GVA08": 18})
+        self.assertEqual((c.numero_corto, c.estado_texto, c.moneda, c.vigencia), ("BA3215", "Procesada", "US$", "2026-11-30"))
 
     def test_campos_faltantes_no_rompen(self):
         s = SaldoPartida.desde_tango({})

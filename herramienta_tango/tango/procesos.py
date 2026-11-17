@@ -23,6 +23,10 @@ LISTAS_PRECIOS = 984
 # Consultas Live (endpoint api/GetApiLiveQueryData)
 LIVE_SALDOS_POR_PARTIDA = 17686
 LIVE_VENTAS_DETALLE = 17839  # renglones de comprobantes de venta, por fecha
+LIVE_COTIZACIONES = 17948      # Ventas > Consultas > Cotizaciones > Consulta (una por fila)
+LIVE_COTIZACIONES_DETALLE = 12481  # Ventas > Consultas > Cotizaciones > Detalle (renglones)
+TABLERO_FICHA_COTIZACION = 14062   # Ficha Live de cotizaciones: Api/GetPdf con este proceso
+                                   # devuelve el PDF del formulario 128 (id = ID_GVA08)
 LIVE_PRECIOS_VIGENTES = 12742  # Ventas > Consultas > Precios > Precios vigentes a una fecha
 
 # Pantalla de carga de precios (Ventas > Archivos > Actualizaciones > Precios de venta >

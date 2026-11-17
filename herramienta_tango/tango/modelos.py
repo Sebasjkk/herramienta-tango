@@ -280,6 +280,78 @@ class PrecioVigente:
         )
 
 
+ESTADOS_COTIZACION = {2: "Autorizada", 4: "Procesada", 5: "Anulada"}   # vistos en Tango el 17/11/2026
+
+
+def _primero(x: dict, *claves):
+    """El primer campo que exista: las consultas Live no siempre usan el mismo nombre."""
+    for c in claves:
+        if c in x and x[c] is not None:
+            return x[c]
+    return None
+
+
+@dataclass(frozen=True)
+class Cotizacion:
+    id: int | None
+    talonario: int | None
+    numero: str              # tal cual Tango: "0000100003215"
+    numero_corto: str        # como lo imprime el formulario: "BA3215"
+    fecha: str | None
+    vigencia: str | None
+    codigo_cliente: str
+    cliente: str
+    vendedor: str
+    estado: int | None
+    estado_texto: str
+    moneda: str
+    perdida: bool
+
+    @classmethod
+    def desde_tango(cls, x: dict) -> "Cotizacion":
+        numero = _txt(x.get("NRO_COTIZACION"))
+        estado = x.get("ESTADO")
+        return cls(
+            id=x.get("ID_GVA08"),
+            talonario=x.get("TALONARIO"),
+            numero=numero,
+            numero_corto="BA" + str(int(numero[-8:])) if numero[-8:].isdigit() else numero,
+            fecha=_fecha(x.get("FECHA")),
+            vigencia=_fecha(x.get("FECHA_DE_VIGENCIA")),
+            codigo_cliente=_txt(x.get("COD_CLIENTE")),
+            cliente=_txt(x.get("RAZON_SOCIAL")),
+            vendedor=_txt(x.get("VENDEDOR")),
+            estado=estado,
+            estado_texto=ESTADOS_COTIZACION.get(estado, f"Estado {estado}"),
+            moneda="$" if _bool(x.get("MONEDA")) else "US$",
+            perdida=_bool(x.get("PERDIDA")),
+        )
+
+
+@dataclass(frozen=True)
+class RenglonCotizacion:
+    numero: str
+    codigo_articulo: str
+    descripcion: str
+    cantidad: float
+    precio: float
+    descuento: float
+    pendiente: float | None
+
+    @classmethod
+    def desde_tango(cls, x: dict) -> "RenglonCotizacion":
+        pendiente = _primero(x, "SALDO_PENDIENTE", "CANTIDAD_PENDIENTE", "PENDIENTE", "CANT_PENDIENTE")
+        return cls(
+            numero=_txt(_primero(x, "NRO_COTIZACION", "NUMERO_COTIZACION", "N_COTIZACION")),
+            codigo_articulo=_txt(_primero(x, "COD_ARTICULO", "COD_STA11", "COD_ARTICU")),
+            descripcion=_txt(_primero(x, "DESCRIPCION", "DESCRIPCION_ARTICULO", "DESCRIPCIO")),
+            cantidad=_num(_primero(x, "CANTIDAD", "CANT_COTIZADA", "CANTIDAD_COTIZADA")),
+            precio=_num(_primero(x, "PRECIO", "PRECIO_UNITARIO")),
+            descuento=_num(_primero(x, "PORC_DESCUENTO", "DESCUENTO", "PORCENTAJE_DESCUENTO", "BONIFICACION")),
+            pendiente=None if pendiente is None else _num(pendiente),
+        )
+
+
 @dataclass(frozen=True)
 class RenglonVenta:
     fecha: str | None

@@ -18,8 +18,8 @@ from typing import Callable, TypeVar
 
 from . import procesos
 from .cliente import ClienteTango
-from .modelos import (Articulo, Cliente, Deposito, ListaPrecios, Pedido,
-                      PrecioVigente, RenglonVenta, SaldoPartida)
+from .modelos import (Articulo, Cliente, Cotizacion, Deposito, ListaPrecios, Pedido,
+                      PrecioVigente, RenglonCotizacion, RenglonVenta, SaldoPartida)
 
 T = TypeVar("T")
 
@@ -60,6 +60,7 @@ class ServicioTango:
         "clientes": 600,
         "listas_precios": 600,
         "precios": 300,
+        "cotizaciones": 60,
         "depositos": 3600,
     }
 
@@ -124,6 +125,24 @@ class ServicioTango:
             PrecioVigente.desde_tango(x)
             for x in self._cliente.consulta_live(procesos.LIVE_PRECIOS_VIGENTES)
         ], forzar)
+
+    # --------------------------------------------------------------- cotizaciones
+    DESDE_SIEMPRE = date(2000, 1, 1)
+
+    def cotizaciones(self, forzar: bool = False) -> tuple[list[Cotizacion], float]:
+        return self._cacheado("cotizaciones", "cotizaciones", lambda: [
+            Cotizacion.desde_tango(x)
+            for x in self._cliente.consulta_live(procesos.LIVE_COTIZACIONES, self.DESDE_SIEMPRE, date.today())
+        ], forzar)
+
+    def renglones_cotizaciones(self, forzar: bool = False) -> tuple[list[RenglonCotizacion], float]:
+        return self._cacheado("renglones_cotizaciones", "cotizaciones", lambda: [
+            RenglonCotizacion.desde_tango(x)
+            for x in self._cliente.consulta_live(procesos.LIVE_COTIZACIONES_DETALLE, self.DESDE_SIEMPRE, date.today())
+        ], forzar)
+
+    def pdf_cotizacion(self, id_cotizacion: int) -> tuple[str, bytes]:
+        return self._cliente.pdf(procesos.TABLERO_FICHA_COTIZACION, id_cotizacion)
 
     def ventas(self, desde: date, hasta: date, forzar: bool = False) -> tuple[list[RenglonVenta], float]:
         clave = f"ventas:{desde.isoformat()}:{hasta.isoformat()}"

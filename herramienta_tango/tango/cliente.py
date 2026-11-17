@@ -117,6 +117,16 @@ class ClienteTango:
             parametros["toDate"] = hasta.strftime("%d/%m/%Y")
         return list(self._paginas("api/GetApiLiveQueryData", parametros))
 
+    def pdf(self, proceso: int, id_registro: int) -> tuple[str, bytes]:
+        """PDF de un comprobante tal como lo imprime Tango (Api/GetPdf). Devuelve (nombre, contenido)."""
+        import base64
+        datos = self._get("Api/GetPdf", {"process": proceso, "id": id_registro})
+        archivo = datos.get("fileResult") or {}
+        contenido = archivo.get("fileContents")
+        if not contenido:
+            raise TangoError("Tango no devolvió el PDF.")
+        return (archivo.get("fileDownloadName") or f"{id_registro}.pdf").strip(), base64.b64decode(contenido)
+
     # --------------------------------------------------------------- escrituras
     # Cambian datos en Tango. Solo las usa el editor de precios.
     def crear(self, proceso: int, registro: dict) -> int:

@@ -11,6 +11,7 @@ Hoy es **solo lectura**: no carga ni modifica nada en Tango.
 | Buscar artículo | Listo | Inicio: stock por lote y precio en cada lista de un artículo |
 | Stock por partida | Listo | Stock |
 | Listas de precios | Ver; modificar con perfil | Precios |
+| Cotizaciones | Ver, por estado, y reimprimir el PDF de Tango | Cotizaciones |
 | Perfiles | Administradores | Perfiles |
 
 Las páginas para los usuarios comparten `comun.css` y `comun.js` (navegación: barra lateral en la PC, pestañas abajo en el celular). Un módulo nuevo se agrega en `MODULOS` de `comun.js`. El panel del servidor (`panel.html`) es aparte.

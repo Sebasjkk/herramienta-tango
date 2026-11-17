@@ -57,7 +57,7 @@ body { margin: 0; background: var(--zinc); color: var(--grafito); font: 16px/1.4
 @media (max-width: 959px) {
   .app-nav { position: fixed; z-index: 20; left: 0; right: 0; bottom: 0; border-top: 1px solid var(--linea);
     padding-bottom: env(safe-area-inset-bottom); }
-  .app-nav .marca, .app-nav .nav-pie, .app-nav .conexion { display: none; }
+  .app-nav .marca, .app-nav .nav-pie, .app-nav .conexion, .app-nav .nav-abajo { display: none; }
   .nav-lista { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; }
   .nav-item a { flex-direction: column; gap: 2px; padding: 8px 4px 7px; font-size: .74rem; min-height: 56px; justify-content: center; }
   .nav-item .largo { display: none; }

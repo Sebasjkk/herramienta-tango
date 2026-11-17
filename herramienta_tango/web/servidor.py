@@ -19,6 +19,9 @@ Listas de precios (leidas de las tablas de Tango, no de la consulta 12742):
     GET /api/listas                  listas con cantidad de articulos y clientes asignados
     GET /api/listas/<id>             articulos de una lista, con precios especiales por cliente
     GET /api/articulos/<codigo>/precios   en que listas esta un articulo
+    GET /api/cotizaciones            todas las cotizaciones (consulta 17948)
+    GET /api/cotizaciones/<numero>/renglones
+    GET /cotizacion/<id>.pdf         el PDF del formulario 128, como lo imprime Tango
     GET /api/precios/cambios         registro de cambios hechos desde la herramienta
     GET /api/sesion                  si se pueden modificar precios y quien esta adentro
 
@@ -152,6 +155,7 @@ def crear_rutas(contexto) -> dict[str, Callable[[dict, bool], tuple]]:
         "/api/precios": lambda qs, f: s().precios(f),
         "/api/ventas": ventas,
         "/api/listas": lambda qs, f: (s().editor.listas(f), time.time()),
+        "/api/cotizaciones": lambda qs, f: s().cotizaciones(f),
         "/api/precios/cambios": lambda qs, f: (s().editor.registro.ultimos(300), time.time()),
     }
 
@@ -162,6 +166,12 @@ def ruta_variable(contexto, ruta: str):
     if len(partes) == 3 and partes[:2] == ["api", "listas"] and partes[2].isdigit():
         id_lista = int(partes[2])
         return lambda qs, f: (contexto.servicio().editor.lista(id_lista, f), time.time())
+    if len(partes) == 4 and partes[:2] == ["api", "cotizaciones"] and partes[3] == "renglones":
+        numero = urllib.parse.unquote(partes[2]).strip()
+        def renglones(qs, f):
+            todos, momento = contexto.servicio().renglones_cotizaciones(f)
+            return [r for r in todos if r.numero.strip() == numero], momento
+        return renglones
     if len(partes) == 4 and partes[:2] == ["api", "articulos"] and partes[3] == "precios":
         codigo = urllib.parse.unquote(partes[2])
         return lambda qs, f: (contexto.servicio().editor.precios_de_articulo(codigo), time.time())
@@ -331,6 +341,14 @@ def crear_manejador(contexto):
                     self._estatico("index.html")
                 elif url.path == "/acceso-directo.url":
                     self._acceso_directo()
+                elif url.path.startswith("/cotizacion/") and url.path.endswith(".pdf"):
+                    id_texto = url.path[len("/cotizacion/"):-4]
+                    if not id_texto.isdigit():
+                        raise PedidoInvalido("Número de cotización inválido.")
+                    nombre, contenido = contexto.servicio().pdf_cotizacion(int(id_texto))
+                    nombre = nombre.replace('"', "").encode("ascii", "replace").decode()
+                    self._responder(200, "application/pdf", contenido,
+                                    {"Content-Disposition": f'inline; filename="{nombre}"'})
                 elif url.path == "/icono.ico":
                     icono = ruta_recurso("recursos/icono.ico")
                     if icono.is_file():
