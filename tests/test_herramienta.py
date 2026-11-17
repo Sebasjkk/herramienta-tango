@@ -197,6 +197,12 @@ class TestServidor(unittest.TestCase):
         self.assertEqual(estado, 400)
         self.assertIn("puerto", datos["mensaje"])
 
+    def test_configurar_con_la_direccion_del_programa(self):
+        estado, datos = self._post("/api/sistema/configurar",
+                                   {"servidor": f"http://127.0.0.1:{self.contexto.cfg.puerto}/", "token": TOKEN_OK})
+        self.assertEqual(estado, 400)
+        self.assertIn("17000", datos["mensaje"])
+
     def test_configurar_bien_guarda(self):
         estado, datos = self._post("/api/sistema/configurar",
                                    {"servidor": "http://tango-prueba:17000/company/3/menu", "token": TOKEN_OK})

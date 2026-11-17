@@ -83,6 +83,10 @@ class Contexto:
             token = credenciales.leer_token() or ""   # cambiar solo el servidor
         if not config.servidor_valido(servidor):
             return False, "La dirección tiene que incluir el puerto, por ejemplo http://NOMBRE-PC:17000."
+        if servidor.rstrip("/").endswith(f":{self.cfg.puerto}"):
+            return False, (f"Esa es la dirección de este programa, no la de Tango. "
+                           f"Tango usa otro puerto, normalmente 17000: por ejemplo http://localhost:17000 "
+                           f"si este programa está en el servidor de Tango.")
         if not credenciales.formato_valido(token):
             return False, "El token tiene que tener 36 caracteres, con el formato XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX."
 
