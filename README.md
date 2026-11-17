@@ -10,9 +10,8 @@ Hoy es **solo lectura**: no carga ni modifica nada en Tango.
 |---|---|---|
 | Buscar artículo | Listo | Inicio: stock por lote y precio en cada lista de un artículo |
 | Stock por partida | Listo | Stock |
-| Listas de precios | Ver; modificar con perfil | Precios |
+| Listas de precios | Ver y modificar | Precios |
 | Cotizaciones | Ver, por estado, y reimprimir el PDF de Tango | Cotizaciones |
-| Perfiles | Administradores | Perfiles |
 
 Las páginas para los usuarios comparten `comun.css` y `comun.js` (navegación: barra lateral en la PC, pestañas abajo en el celular). Un módulo nuevo se agrega en `MODULOS` de `comun.js`. El panel del servidor (`panel.html`) es aparte.
 
@@ -132,15 +131,9 @@ Ojo: cualquiera con permiso de escritura en este repositorio puede publicar una 
 
 ## Modificar listas de precios
 
-Para modificar hay que **entrar con un perfil** (nombre y clave). Mirar no necesita entrar.
-
-- **Usuario:** cambia precios, agrega y quita artículos de una lista.
-- **Administrador:** además crea y elimina listas, y maneja los perfiles (página **Perfiles**).
-
-El primer administrador se crea en el panel del servidor (tarjeta Perfiles); ahí también se le puede dar una clave nueva
-a quien se la olvidó. Los demás perfiles los agrega un administrador desde la Herramienta, de a varios con la misma clave
-inicial: cada uno la cambia por una propia la primera vez que entra. Los perfiles se guardan en `usuarios.json`
-(con la clave como hash PBKDF2), en la carpeta del programa.
+Cualquier equipo de la red de la oficina puede modificar: no hay claves (quien llega a la red ya llega a Tango,
+y la Herramienta no sale a internet). La primera vez que alguien modifica desde un equipo, la página le pregunta
+el nombre y el equipo lo recuerda; el registro guarda ese nombre y la IP.
 
 Cómo guarda Tango los precios (verificado el 17/11/2026 con una lista de prueba):
 

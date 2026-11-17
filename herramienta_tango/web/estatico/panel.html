@@ -245,20 +245,6 @@
             </div>
           </div>
         </div>
-        <div class="tarjeta">
-          <h2>Perfiles</h2>
-          <p class="bajada" id="perfiles-bajada"></p>
-          <ul id="perfiles-lista" style="list-style:none;margin:0;padding:0"></ul>
-          <form id="admin-form" style="margin-top:12px">
-            <p class="chico" style="margin-bottom:6px"><strong>Crear un administrador</strong></p>
-            <div id="admin-msg" class="mensaje" hidden></div>
-            <input id="admin-nombre" placeholder="Nombre" required autocomplete="off"
-                   style="font:inherit;padding:8px 10px;border:1.5px solid var(--linea);border-radius:8px;width:100%;margin-bottom:6px">
-            <input id="admin-clave" type="password" placeholder="Clave (6 o más caracteres)" required minlength="6" autocomplete="new-password"
-                   style="font:inherit;padding:8px 10px;border:1.5px solid var(--linea);border-radius:8px;width:100%;margin-bottom:8px">
-            <button type="submit" class="boton primario">Crear administrador</button>
-          </form>
-        </div>
       </div>
     </div>
   </section>
@@ -398,7 +384,7 @@
     $("fila-accesos").hidden = !sis.inicio_automatico_disponible;
     $("inicio").checked = !!sis.inicio_automatico;
     $("servidor-actual").textContent = sis.servidor || "Sin configurar";
-    dibujarPerfiles();
+
 
     const a = sis.actualizacion;
     const det = $("act-detalle");
@@ -524,46 +510,6 @@
     const d = await api("/api/sistema/accesos-directos", {});
     $("accesos-detalle").textContent = d.mensaje || d.error;
     b.disabled = false;
-  });
-
-  // ------------------------------------------------------------ perfiles
-  // Desde el panel: crear un administrador y restablecer claves olvidadas.
-  // El resto (agregar perfiles, roles) lo hace un administrador desde la Herramienta.
-  let firmaPerfiles = "";
-  function dibujarPerfiles() {
-    const us = sis.usuarios || [];
-    const firma = JSON.stringify(us);
-    if (firma === firmaPerfiles) return;          // no redibujar mientras alguien escribe
-    firmaPerfiles = firma;
-    const hayAdmin = us.some(u => u.rol === "administrador");
-    $("perfiles-bajada").textContent = hayAdmin
-      ? "Los perfiles se agregan desde la Herramienta, en Perfiles, entrando como administrador. Acá podés darle una clave nueva a quien se la olvidó."
-      : "Para modificar precios hace falta entrar con un perfil. Creá primero un administrador; después, desde la Herramienta, agregá los demás.";
-    const ul = $("perfiles-lista");
-    ul.replaceChildren();
-    for (const u of us) {
-      const li = document.createElement("li");
-      li.className = "fila";
-      const t = document.createElement("div"); t.className = "fila-texto";
-      const n = document.createElement("strong"); n.textContent = u.nombre;
-      const r = document.createElement("span"); r.textContent = (u.rol === "administrador" ? "Administrador" : "Usuario") + (u.debe_cambiar ? " · con clave inicial" : "");
-      t.append(n, r);
-      const b = document.createElement("button"); b.type = "button"; b.className = "boton"; b.textContent = "Nueva clave";
-      b.addEventListener("click", async () => {
-        const clave = prompt(`Clave inicial nueva para ${u.nombre} (6 o más caracteres). La va a tener que cambiar al entrar.`);
-        if (!clave) return;
-        const d = await api("/api/sistema/restablecer-clave", { id: u.id, clave });
-        alert(d.mensaje || d.error);
-        if (d.ok) { sis = d.sistema; dibujar(); }
-      });
-      li.append(t, b); ul.append(li);
-    }
-  }
-  $("admin-form").addEventListener("submit", async e => {
-    e.preventDefault();
-    const d = await api("/api/sistema/administrador", { nombre: $("admin-nombre").value, clave: $("admin-clave").value });
-    mensaje($("admin-msg"), d.ok ? "bien" : "error", d.mensaje || d.error);
-    if (d.ok) { $("admin-nombre").value = ""; $("admin-clave").value = ""; sis = d.sistema; dibujar(); }
   });
 
   let confirmarDesactivar = 0;

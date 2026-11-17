@@ -14,7 +14,7 @@ import time
 from datetime import datetime
 from typing import Callable
 
-from . import VERSION, autorizacion, config, credenciales, sistema
+from . import VERSION, config, credenciales, sistema
 from .tango import ClienteTango, ServicioTango, SinConexion, TangoError, TokenInvalido
 
 log = logging.getLogger("herramienta_tango")
@@ -184,7 +184,6 @@ class Contexto:
             "puerto": self.cfg.puerto,
             "direcciones": sistema.direcciones_locales(),
             "nombre_equipo": sistema.nombre_equipo(),
-            "usuarios": autorizacion.USUARIOS.todos(),
             "modo_servidor": {
                 "disponible": sistema.es_windows() and inst is not None,
                 "activo": sistema.modo_servidor_activo(),

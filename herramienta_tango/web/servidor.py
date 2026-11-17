@@ -25,28 +25,14 @@ Listas de precios (leidas de las tablas de Tango, no de la consulta 12742):
     GET /api/precios/cambios         registro de cambios hechos desde la herramienta
     GET /api/sesion                  si se pueden modificar precios y quien esta adentro
 
-Perfiles (encabezado X-Sesion con el token de la sesion):
-
-    GET  /api/sesion                 perfiles que hay y el de la sesion
-    POST /api/sesion                 {"nombre": "...", "clave": "..."} -> {"token": "..."}
-    POST /api/sesion/salir
-    POST /api/sesion/clave           {"actual": "...", "nueva": "..."}  cambiar la clave propia
-
-Modificar precios (cualquier perfil; crear y eliminar listas, solo administradores):
+Modificar precios (cualquier equipo de la red; el encabezado X-Nombre, opcional,
+dice quien hace el cambio y queda en el registro junto con la IP):
 
     POST /api/precios/cambiar        {"renglon": id, "precio": n, "cliente": id_cliente|null}
     POST /api/precios/agregar        {"lista": id, "articulo": "codigo", "precio": n, "cliente": id|null, "codigo_cliente": "..."}
     POST /api/precios/quitar         {"renglon": id}
     POST /api/listas/crear           {"nombre": "...", "moneda": "$"|"US$", "numero": n|null}
     POST /api/listas/eliminar        {"lista": id, "confirmar": "NOMBRE"}
-
-Perfiles (solo administradores):
-
-    GET  /api/usuarios
-    POST /api/usuarios/crear         {"nombre": "...", "clave": "...", "rol": "usuario"|"administrador"}
-    POST /api/usuarios/rol           {"id": "...", "rol": "..."}
-    POST /api/usuarios/clave         {"id": "...", "clave": "..."}  restablecer (la cambia al entrar)
-    POST /api/usuarios/eliminar      {"id": "..."}
 
 Con ?refrescar=1 se saltea la cache. Las respuestas tienen la forma
 {"ok": true, "actualizado": "...", "datos": [...]}, o {"ok": false, "error": "..."}.
@@ -61,8 +47,6 @@ Panel de la PC (solo desde la misma PC donde corre el programa):
     POST /api/sistema/buscar-actualizacion
     POST /api/sistema/accesos-directos   crea los accesos directos de nuevo
     POST /api/sistema/modo-servidor   {"activo": true|false}
-    POST /api/sistema/administrador   {"nombre": "...", "clave": "..."}  crear un administrador
-    POST /api/sistema/restablecer-clave   {"id": "...", "clave": "..."}
 
 Para las otras PCs:
     GET /acceso-directo.url           acceso directo de Windows que abre el menu
@@ -86,7 +70,7 @@ from typing import Callable
 
 import time
 
-from .. import VERSION, autorizacion, sistema
+from .. import VERSION, sistema
 from ..precios import PedidoInvalido as DatoInvalido
 from ..config import ruta_recurso
 from ..tango import TangoError
@@ -99,7 +83,7 @@ TIPOS = {".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".j
 MAX_DIAS_VENTAS = 366
 MAX_CUERPO = 10_000
 ENCABEZADO_PANEL = "X-Herramienta-Tango"
-ENCABEZADO_SESION = "X-Sesion"
+ENCABEZADO_NOMBRE = "X-Nombre"
 DIRECCIONES_LOCALES = {"127.0.0.1", "::1", "::ffff:127.0.0.1"}
 
 
@@ -107,12 +91,8 @@ class PedidoInvalido(Exception):
     pass
 
 
-RUTAS_APP = {"/api/sesion", "/api/sesion/salir", "/api/sesion/clave",
-             "/api/precios/cambiar", "/api/precios/agregar", "/api/precios/quitar",
-             "/api/listas/crear", "/api/listas/eliminar",
-             "/api/usuarios/crear", "/api/usuarios/rol", "/api/usuarios/clave", "/api/usuarios/eliminar"}
-SOLO_ADMINISTRADOR = {"/api/listas/crear", "/api/listas/eliminar", "/api/usuarios/crear", "/api/usuarios/rol",
-                      "/api/usuarios/clave", "/api/usuarios/eliminar"}
+RUTAS_APP = {"/api/precios/cambiar", "/api/precios/agregar", "/api/precios/quitar",
+             "/api/listas/crear", "/api/listas/eliminar"}
 
 
 def _a_json(valor) -> object:
@@ -222,22 +202,6 @@ def crear_manejador(contexto):
             ok, mensaje = contexto.desactivar_modo_servidor()
         return (200 if ok else 400), {"ok": ok, "mensaje": mensaje, "sistema": contexto.info()}
 
-    def accion_administrador(datos: dict) -> tuple[int, dict]:
-        try:
-            u = autorizacion.USUARIOS.crear(str(datos.get("nombre", "")), str(datos.get("clave", "")),
-                                            "administrador", debe_cambiar=False)
-        except autorizacion.PedidoInvalido as e:
-            return 400, {"ok": False, "mensaje": str(e), "sistema": contexto.info()}
-        return 200, {"ok": True, "mensaje": f"Listo: {u['nombre']} es administrador.", "sistema": contexto.info()}
-
-    def accion_restablecer(datos: dict) -> tuple[int, dict]:
-        try:
-            u = autorizacion.USUARIOS.restablecer_clave(str(datos.get("id", "")), str(datos.get("clave", "")))
-            autorizacion.SESIONES.cerrar_de(u["id"])
-        except autorizacion.PedidoInvalido as e:
-            return 400, {"ok": False, "mensaje": str(e), "sistema": contexto.info()}
-        return 200, {"ok": True, "mensaje": f"Listo: {u['nombre']} va a tener que cambiarla al entrar.", "sistema": contexto.info()}
-
     def accion_cerrar(datos: dict) -> tuple[int, dict]:
         threading.Timer(0.5, contexto.al_cerrar).start()
         return 200, {"ok": True, "mensaje": "El programa se está cerrando."}
@@ -249,8 +213,6 @@ def crear_manejador(contexto):
         "/api/sistema/buscar-actualizacion": accion_actualizacion,
         "/api/sistema/accesos-directos": accion_accesos,
         "/api/sistema/modo-servidor": accion_modo_servidor,
-        "/api/sistema/administrador": accion_administrador,
-        "/api/sistema/restablecer-clave": accion_restablecer,
         "/api/sistema/cerrar": accion_cerrar,
     }
 
@@ -313,15 +275,6 @@ def crear_manejador(contexto):
                         self._json(403, {"ok": False, "error": "Solo desde la PC donde está instalado el programa."})
                     else:
                         self._json(200, {"ok": True, **contexto.info()})
-                elif url.path == "/api/sesion":
-                    self._json(200, {"ok": True, "nombres": autorizacion.USUARIOS.nombres(),
-                                     "usuario": autorizacion.SESIONES.usuario(self.headers.get(ENCABEZADO_SESION))})
-                elif url.path == "/api/usuarios":
-                    u = autorizacion.SESIONES.usuario(self.headers.get(ENCABEZADO_SESION))
-                    if not u or u["rol"] != "administrador":
-                        self._json(403, {"ok": False, "error": "Solo para administradores."})
-                    else:
-                        self._json(200, {"ok": True, "datos": autorizacion.USUARIOS.todos()})
                 elif url.path in rutas or ruta_variable(contexto, url.path):
                     forzar = qs.get("refrescar") == ["1"]
                     datos, momento = (rutas.get(url.path) or ruta_variable(contexto, url.path))(qs, forzar)
@@ -389,57 +342,20 @@ def crear_manejador(contexto):
                 self._json(400, {"ok": False, "error": "Pedido inválido."})
                 return None
 
+        def _quien(self) -> str:
+            """Nombre que mando la pagina (lo recuerda cada equipo) y la IP, para el registro."""
+            nombre = urllib.parse.unquote(self.headers.get(ENCABEZADO_NOMBRE) or "")
+            nombre = " ".join(nombre.split())[:40]
+            return f"{nombre} ({self.client_address[0]})" if nombre else self.client_address[0]
+
         def _post_app(self, ruta: str) -> None:
             datos = self._leer_cuerpo()
             if datos is None:
                 return
-            sesiones, usuarios = autorizacion.SESIONES, autorizacion.USUARIOS
             texto = lambda clave: str(datos.get(clave) or "")
-            if ruta == "/api/sesion":
-                token, mensaje = sesiones.entrar(texto("nombre"), texto("clave"), self.client_address[0])
-                self._json(200 if token else 403, {"ok": bool(token), "token": token, "mensaje": mensaje,
-                                                    "usuario": sesiones.usuario(token)})
-                return
-            token = self.headers.get(ENCABEZADO_SESION)
-            if ruta == "/api/sesion/salir":
-                sesiones.salir(token)
-                self._json(200, {"ok": True})
-                return
-            u = sesiones.usuario(token)
-            if not u:
-                self._json(401, {"ok": False, "error": "Para modificar hay que entrar con tu perfil."})
-                return
+            entero = lambda clave: int(datos[clave]) if datos.get(clave) not in (None, "") else None
+            quien = self._quien()
             try:
-                if ruta == "/api/sesion/clave":
-                    r = usuarios.cambiar_clave_propia(u["id"], texto("actual"), texto("nueva"))
-                    sesiones.cerrar_de(u["id"], salvo=token)
-                    self._json(200, {"ok": True, "usuario": r})
-                    return
-                if u["debe_cambiar"]:
-                    self._json(403, {"ok": False, "error": "Antes de seguir, cambiá tu clave."})
-                    return
-                if ruta in SOLO_ADMINISTRADOR and u["rol"] != "administrador":
-                    self._json(403, {"ok": False, "error": "Eso lo puede hacer solo un administrador."})
-                    return
-                entero = lambda clave: int(datos[clave]) if datos.get(clave) not in (None, "") else None
-                quien = u["nombre"]
-                if ruta.startswith("/api/usuarios/"):
-                    if ruta == "/api/usuarios/crear":
-                        r = usuarios.crear(texto("nombre"), texto("clave"), texto("rol") or "usuario")
-                    elif ruta == "/api/usuarios/rol":
-                        r = usuarios.cambiar_rol(texto("id"), texto("rol"))
-                    elif ruta == "/api/usuarios/clave":
-                        r = usuarios.restablecer_clave(texto("id"), texto("clave"))
-                        sesiones.cerrar_de(r["id"])
-                    else:
-                        if texto("id") == u["id"]:
-                            raise autorizacion.PedidoInvalido("No podés eliminar tu propio perfil.")
-                        usuarios.eliminar(texto("id"))
-                        sesiones.cerrar_de(texto("id"))
-                        r = None
-                    log.info(f"Perfiles: {quien} - {ruta.rsplit('/', 1)[-1]} - {texto('nombre') or texto('id')}")
-                    self._json(200, {"ok": True, "datos": r, "usuarios": usuarios.todos()})
-                    return
                 editor = contexto.servicio().editor
                 if ruta == "/api/precios/cambiar":
                     r = editor.cambiar_precio(entero("renglon"), datos.get("precio"), quien, entero("cliente"))
@@ -453,7 +369,7 @@ def crear_manejador(contexto):
                 else:
                     r = editor.eliminar_lista(entero("lista"), texto("confirmar"), quien)
                 self._json(200, {"ok": True, "datos": r})
-            except (DatoInvalido, autorizacion.PedidoInvalido) as e:
+            except DatoInvalido as e:
                 self._json(400, {"ok": False, "error": str(e)})
             except (KeyError, TypeError, ValueError):
                 self._json(400, {"ok": False, "error": "Faltan datos en el pedido."})

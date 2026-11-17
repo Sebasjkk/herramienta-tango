@@ -115,33 +115,26 @@
   let articulos = null;     // para agregar: se cargan la primera vez
   let editando = null;      // id del renglon que se esta editando
 
-  // ---------------------------------------------------------------- perfiles (comun.js)
-  const puedeEditar = () => { const u = HT.usuario(); return !!(u && !u.debe_cambiar); };
+  // ---------------------------------------------------------------- modificar (sin claves)
+  const puedeEditar = () => true;
   const escribir = HT.escribir;
   const ventana = HT.ventana;
+  HT.esAdmin = () => true;   // crear y eliminar listas: cualquiera
 
   function dibujarEdicion() {
     const c = ui.edicion;
     c.replaceChildren();
-    const u = HT.usuario();
     const texto = el("span");
+    const n = HT.nombre();
+    texto.append("Cada cambio queda registrado", n ? " como " : ".", ...(n ? [el("span", "quien", n), "."] : []));
     const acc = el("div", "acciones");
+    const nombre = el("button", "boton chico", n ? "Cambiar nombre" : "Poner mi nombre"); nombre.type = "button";
+    nombre.addEventListener("click", () => HT.pedirNombre());
     const ver = el("button", "boton chico", "Ver cambios"); ver.type = "button"; ver.addEventListener("click", verCambios);
-    if (puedeEditar()) {
-      texto.append("Modificando como ", el("span", "quien", u.nombre), ". Cada cambio queda registrado.");
-    } else if (u) {
-      const b = el("button", "boton chico", "Elegí tu clave para modificar"); b.type = "button";
-      b.addEventListener("click", () => HT.cambiarClave(true));
-      acc.append(b);
-    } else {
-      const b = el("button", "boton chico", "Entrar para modificar"); b.type = "button";
-      b.addEventListener("click", () => HT.entrar());
-      acc.append(b);
-    }
-    acc.append(ver);
+    acc.append(nombre, ver);
     c.append(texto, acc);
   }
-  HT.alCambiarSesion(() => { editando = null; dibujarEdicion(); render(); });
+  HT.alCambiarNombre(dibujarEdicion);
 
   async function verCambios() {
     ventana("Cambios hechos desde la Herramienta", async (d, cerrar) => {
