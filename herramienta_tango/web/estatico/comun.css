@@ -153,4 +153,15 @@ select { padding-right: 30px; -webkit-appearance: none; appearance: none;
   .tabla .neg { background: var(--oxido-suave); }
 }
 
+/* Ventana de ayuda */
+.ayuda { max-width: 460px; width: calc(100% - 32px); border: 1px solid var(--linea); border-radius: 14px; padding: 22px 24px; color: var(--grafito); }
+.ayuda::backdrop { background: rgba(27, 36, 44, .35); }
+.ayuda h2 { font-size: 1.15rem; margin: 0 0 6px; }
+.ayuda h3 { font-size: .95rem; margin: 16px 0 4px; }
+.ayuda p, .ayuda li { font-size: .92rem; color: var(--plomo); }
+.ayuda b { color: var(--grafito); }
+.ayuda ol { margin: 0; padding-left: 20px; }
+.ayuda li { margin: 3px 0; }
+.ayuda form { margin-top: 18px; text-align: right; }
+
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

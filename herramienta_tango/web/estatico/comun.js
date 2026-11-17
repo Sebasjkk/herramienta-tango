@@ -91,8 +91,8 @@ window.HT = (() => {
     const pie = el("div", "nav-pie");
     if (!instalada && !esCelular) {
       const a = el("a", "", "Acceso directo para esta PC");
-      a.href = "/acceso-directo.url"; a.setAttribute("download", "");
-      a.title = "Descargalo y copialo al escritorio: abre esta página con doble clic.";
+      a.href = "#";
+      a.addEventListener("click", e => { e.preventDefault(); ayudaAcceso(); });
       pie.append(a, el("br"));
     }
     pie.append(el("span", "", ""));
@@ -111,6 +111,34 @@ window.HT = (() => {
     const aviso = el("div", "info app-aviso");
     aviso.id = "app-aviso"; aviso.hidden = true; aviso.setAttribute("role", "status");
     principal.querySelector(".pagina").prepend(aviso);
+  }
+
+  // Como crear el acceso directo con el icono de la Herramienta: lo hace el
+  // navegador (toma el icono del manifest y abre en una ventana propia, sin pestañas)
+  function ayudaAcceso() {
+    let d = $("ayuda-acceso");
+    if (!d) {
+      d = el("dialog", "ayuda");
+      d.id = "ayuda-acceso";
+      d.innerHTML = `
+        <h2>Acceso directo en esta PC</h2>
+        <p>Queda en el escritorio con el ícono de la Herramienta y se abre como una aplicación, sin pestañas.</p>
+        <h3>En Chrome</h3>
+        <ol>
+          <li>Tocá el menú <b>⋮</b> (arriba a la derecha).</li>
+          <li>Elegí <b>Transmitir, guardar y compartir</b> y después <b>Crear acceso directo…</b><br>
+              <small>En versiones viejas está en <b>Más herramientas</b>.</small></li>
+          <li>Tildá <b>Abrir como ventana</b> y tocá <b>Crear</b>.</li>
+        </ol>
+        <h3>En Edge</h3>
+        <ol>
+          <li>Tocá el menú <b>⋯</b> y elegí <b>Aplicaciones</b>.</li>
+          <li>Elegí <b>Instalar este sitio como aplicación</b> y tocá <b>Instalar</b>.</li>
+        </ol>
+        <form method="dialog"><button class="boton">Listo</button></form>`;
+      document.body.append(d);
+    }
+    d.showModal();
   }
 
   const ESTADOS = {
