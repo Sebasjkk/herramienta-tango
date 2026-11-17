@@ -42,6 +42,11 @@ body { margin: 0; background: var(--zinc); color: var(--grafito); font: 16px/1.4
 .conexion.mal { color: var(--oxido); }
 .conexion.mal::before { background: var(--oxido); }
 .nav-pie { font-size: .8rem; color: var(--plomo); }
+.cuenta-quien { display: inline-flex; align-items: center; gap: 8px; font: inherit; font-size: .9rem; font-weight: 600; color: var(--grafito);
+  background: none; border: 0; padding: 4px 0; cursor: pointer; }
+.cuenta-quien svg { width: 20px; height: 20px; stroke: var(--patina); fill: none; stroke-width: 1.8; }
+.cuenta-quien:hover span { text-decoration: underline; }
+.barra-movil-der { display: flex; align-items: center; gap: 12px; }
 .nav-pie a { color: var(--patina); font-weight: 600; }
 
 .app-principal { min-width: 0; }
@@ -174,7 +179,9 @@ select { padding-right: 30px; -webkit-appearance: none; appearance: none;
 .ayuda b { color: var(--grafito); }
 .ayuda ol { margin: 0; padding-left: 20px; }
 .ayuda li { margin: 3px 0; }
-.ayuda form { margin-top: 18px; text-align: right; }
+.ayuda form { margin-top: 8px; }
+.ayuda select.campo { -webkit-appearance: auto; appearance: auto; }
+.ayuda .boton-texto { margin-top: 10px; }
 .ayuda .acciones { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

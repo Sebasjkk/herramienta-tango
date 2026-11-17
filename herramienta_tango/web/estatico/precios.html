@@ -112,101 +112,36 @@
 
   let listas = [];          // resumen de todas las listas
   let actual = null;        // lista abierta: {lista, cliente, renglones, especiales_leidos}
-  let sesion = { habilitada: false, quien: null };
   let articulos = null;     // para agregar: se cargan la primera vez
   let editando = null;      // id del renglon que se esta editando
 
-  // ---------------------------------------------------------------- sesion
-  const guardarToken = t => { try { t ? localStorage.setItem("ht_sesion", t) : localStorage.removeItem("ht_sesion"); } catch {} };
-  const leerToken = () => { try { return localStorage.getItem("ht_sesion") || ""; } catch { return ""; } };
-
-  async function revisarSesion() {
-    try {
-      const r = await fetch("/api/sesion", { cache: "no-store", headers: { "X-Sesion": leerToken() } });
-      const d = await r.json();
-      sesion = { habilitada: d.edicion_habilitada, quien: d.quien };
-      if (!d.quien) guardarToken("");
-    } catch { sesion = { habilitada: false, quien: null }; }
-    dibujarEdicion();
-  }
-
-  async function escribir(ruta, datos) {
-    const r = await fetch(ruta, { method: "POST", cache: "no-store",
-      headers: { "Content-Type": "application/json", "X-Sesion": leerToken() }, body: JSON.stringify(datos) });
-    const d = await r.json();
-    if (r.status === 401) { await revisarSesion(); }
-    if (!d.ok) throw new Error(d.error || d.mensaje || "No se pudo guardar.");
-    return d;
-  }
+  // ---------------------------------------------------------------- perfiles (comun.js)
+  const puedeEditar = () => { const u = HT.usuario(); return !!(u && !u.debe_cambiar); };
+  const escribir = HT.escribir;
+  const ventana = HT.ventana;
 
   function dibujarEdicion() {
     const c = ui.edicion;
     c.replaceChildren();
-    if (sesion.quien) {
-      const t = el("span");
-      t.append("Modificando como ", el("span", "quien", sesion.quien), ". Cada cambio queda registrado.");
-      const acc = el("div", "acciones");
-      const ver = el("button", "boton chico", "Ver cambios"); ver.type = "button"; ver.addEventListener("click", verCambios);
-      const salir = el("button", "boton chico", "Terminar"); salir.type = "button";
-      salir.addEventListener("click", async () => {
-        try { await escribir("/api/sesion/salir", {}); } catch {}
-        guardarToken(""); sesion.quien = null; editando = null; dibujarEdicion(); render();
-      });
-      acc.append(ver, salir);
-      c.append(t, acc);
-    } else if (sesion.habilitada) {
-      const b = el("button", "boton chico", "Modificar precios"); b.type = "button";
-      b.addEventListener("click", entrar);
-      const ver = el("button", "boton chico", "Ver cambios"); ver.type = "button"; ver.addEventListener("click", verCambios);
-      const acc = el("div", "acciones"); acc.append(b, ver);
-      c.append(el("span", "", ""), acc);
+    const u = HT.usuario();
+    const texto = el("span");
+    const acc = el("div", "acciones");
+    const ver = el("button", "boton chico", "Ver cambios"); ver.type = "button"; ver.addEventListener("click", verCambios);
+    if (puedeEditar()) {
+      texto.append("Modificando como ", el("span", "quien", u.nombre), ". Cada cambio queda registrado.");
+    } else if (u) {
+      const b = el("button", "boton chico", "Elegí tu clave para modificar"); b.type = "button";
+      b.addEventListener("click", () => HT.cambiarClave(true));
+      acc.append(b);
+    } else {
+      const b = el("button", "boton chico", "Entrar para modificar"); b.type = "button";
+      b.addEventListener("click", () => HT.entrar());
+      acc.append(b);
     }
-    c.hidden = !c.childNodes.length;
+    acc.append(ver);
+    c.append(texto, acc);
   }
-
-  // Ventanitas (dialog) armadas en el momento
-  function ventana(titulo, armar) {
-    const d = el("dialog", "ayuda");
-    d.append(el("h2", "", titulo));
-    const cerrar = () => { d.close(); d.remove(); };
-    armar(d, cerrar);
-    d.addEventListener("cancel", () => setTimeout(() => d.remove(), 0));
-    document.body.append(d);
-    d.showModal();
-    return d;
-  }
-
-  function entrar() {
-    ventana("Modificar precios", (d, cerrar) => {
-      d.append(el("p", "", "Escribí tu nombre (queda en el registro de cada cambio) y la clave que se definió en el panel del servidor."));
-      const f = el("form");
-      const n = el("input", "campo"); n.id = "ses-nombre"; n.autocomplete = "name"; n.required = true;
-      const k = el("input", "campo"); k.id = "ses-clave"; k.type = "password"; k.autocomplete = "current-password"; k.required = true;
-      const ln = el("label", "etiqueta", "Tu nombre"); ln.htmlFor = "ses-nombre";
-      const lk = el("label", "etiqueta", "Clave"); lk.htmlFor = "ses-clave";
-      const err = el("p", "mensaje-error"); err.hidden = true;
-      const acc = el("div", "acciones");
-      const cancelar = el("button", "boton", "Cancelar"); cancelar.type = "button"; cancelar.addEventListener("click", cerrar);
-      const ok = el("button", "boton primario", "Entrar"); ok.type = "submit";
-      acc.append(cancelar, ok);
-      try { n.value = localStorage.getItem("ht_nombre") || ""; } catch {}
-      f.append(ln, n, lk, k, err, acc);
-      f.addEventListener("submit", async e => {
-        e.preventDefault(); ok.disabled = true; err.hidden = true;
-        try {
-          const r = await fetch("/api/sesion", { method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ nombre: n.value, clave: k.value }) });
-          const res = await r.json();
-          if (!res.ok) throw new Error(res.mensaje);
-          guardarToken(res.token);
-          try { localStorage.setItem("ht_nombre", n.value); } catch {}
-          sesion.quien = res.quien; cerrar(); dibujarEdicion(); render();
-        } catch (ex) { err.textContent = ex.message; err.hidden = false; ok.disabled = false; }
-      });
-      d.append(f);
-      setTimeout(() => (n.value ? k : n).focus(), 50);
-    });
-  }
+  HT.alCambiarSesion(() => { editando = null; dibujarEdicion(); render(); });
 
   async function verCambios() {
     ventana("Cambios hechos desde la Herramienta", async (d, cerrar) => {
@@ -298,7 +233,7 @@
     const ls = listas.filter(l => ts.every(t => norm(l.nombre + " " + l.numero + " " + l.clientes_asignados.join(" ")).includes(t)));
     const cab = el("div", "edicion");
     cab.append(el("p", "resumen", ts.length ? `${ls.length} de ${listas.length} listas` : `${listas.length} listas`));
-    if (sesion.quien) {
+    if (HT.esAdmin() && puedeEditar()) {
       const b = el("button", "boton chico primario", "Nueva lista"); b.type = "button"; b.addEventListener("click", nuevaLista);
       cab.append(b);
     }
@@ -343,13 +278,13 @@
     const cli = actual.cliente;
     cab.append(el("p", "", `Lista ${l.numero} · ${l.moneda === "$" ? "pesos" : "dólares"} · ${fmt.format(actual.renglones.length)} artículos`));
     cab.append(el("p", "", cli ? `Precios para ${cli.razon_social || cli.codigo} (precio especial del cliente)` : "Precios de lista, iguales para todos los clientes que la usen."));
-    if (sesion.quien) {
+    if (HT.esAdmin() && puedeEditar()) {
       const acc = el("div", "acciones");
       const b = el("button", "boton chico peligro", "Eliminar lista"); b.type = "button"; b.addEventListener("click", eliminarLista);
       acc.append(b); cab.append(acc);
     }
     d.append(cab);
-    if (sesion.quien) d.append(formAgregar());
+    if (puedeEditar()) d.append(formAgregar());
 
     const ts = tokens(ui.q.value);
     const filas = ts.length ? actual.renglones.filter(r => {
@@ -379,7 +314,7 @@
     li.append(v);
     const otros = (r.especiales || []).filter(e => e.id_cliente !== m.cliente);
     if (otros.length) li.append(el("span", "meta", "También: " + otros.map(e => `${e.codigo_cliente} ${fmtPrecio.format(e.precio)}`).join(", ")));
-    if (sesion.quien) {
+    if (puedeEditar()) {
       if (editando === r.id) li.append(editorPrecio(r, m));
       else {
         const b = el("div", "botones");
@@ -567,7 +502,7 @@
 
   const inicial = new URLSearchParams(location.search).get("q");
   if (inicial) { ui.q.value = inicial; ui.limpiar.hidden = false; }
-  revisarSesion();
+  dibujarEdicion();
   cargarListas(false);
   if (idDelHash()) abrirLista(idDelHash());
 })();

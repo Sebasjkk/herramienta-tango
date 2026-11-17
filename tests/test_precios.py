@@ -194,35 +194,52 @@ class TestEditor(unittest.TestCase):
         self.assertEqual([(p["lista"], p["especiales"][0]["razon_social"]) for p in ps], [("SCIPIO", "SCIPIO S.A.")])
 
 
-class TestClave(unittest.TestCase):
+class TestPerfiles(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.parche = mock.patch.object(config, "RUTA_CONFIG", Path(self.tmp.name) / "config.ini")
-        self.parche.start()
-        self.sesiones = autorizacion.Sesiones()
+        self.usuarios = autorizacion.Usuarios(Path(self.tmp.name) / "usuarios.json")
+        self.sesiones = autorizacion.Sesiones(self.usuarios)
 
     def tearDown(self):
-        self.parche.stop()
         self.tmp.cleanup()
 
-    def test_sin_clave_no_se_entra(self):
+    def test_sin_perfiles_no_se_entra(self):
         token, mensaje = self.sesiones.entrar("Gustavo", "lo-que-sea", "10.0.0.5")
         self.assertIsNone(token)
         self.assertIn("panel", mensaje)
 
-    def test_clave(self):
-        self.assertFalse(autorizacion.definir_clave("corta")[0])
-        self.assertTrue(autorizacion.definir_clave("metaliza2026")[0])
-        self.assertNotIn("metaliza2026", config.RUTA_CONFIG.read_text(encoding="utf-8"))
-        self.assertIsNone(self.sesiones.entrar("Gustavo", "otra-clave", "10.0.0.5")[0])
-        token, _ = self.sesiones.entrar("Gustavo", "metaliza2026", "10.0.0.5")
-        self.assertEqual(self.sesiones.quien(token), "Gustavo")
-        self.sesiones.salir(token)
-        self.assertIsNone(self.sesiones.quien(token))
+    def test_perfiles(self):
+        admin = self.usuarios.crear("Sebastián", "clave-admin", "administrador", debe_cambiar=False)
+        for n in ("Estela", "Gustavo", "Francisco"):
+            self.usuarios.crear(n, "inicial123")
+        self.assertEqual(self.usuarios.nombres(), ["Estela", "Francisco", "Gustavo", "Sebastián"])
+        with self.assertRaises(autorizacion.PedidoInvalido):
+            self.usuarios.crear("gustavo", "otra-clave")          # repetido
+        with self.assertRaises(autorizacion.PedidoInvalido):
+            self.usuarios.crear("Ana", "corta")                   # clave corta
+        self.assertNotIn("inicial123", self.usuarios.ruta.read_text(encoding="utf-8"))
+
+        self.assertIsNone(self.sesiones.entrar("Gustavo", "mal-clave", "10.0.0.5")[0])
+        token, _ = self.sesiones.entrar("gustavo", "inicial123", "10.0.0.5")
+        u = self.sesiones.usuario(token)
+        self.assertEqual((u["nombre"], u["rol"], u["debe_cambiar"]), ("Gustavo", "usuario", True))
+        with self.assertRaises(autorizacion.PedidoInvalido):
+            self.usuarios.cambiar_clave_propia(u["id"], "mal", "nueva-clave")
+        self.usuarios.cambiar_clave_propia(u["id"], "inicial123", "nueva-clave")
+        self.assertFalse(self.sesiones.usuario(token)["debe_cambiar"])
+
+        # Tiene que quedar un administrador
+        with self.assertRaises(autorizacion.PedidoInvalido):
+            self.usuarios.cambiar_rol(admin["id"], "usuario")
+        with self.assertRaises(autorizacion.PedidoInvalido):
+            self.usuarios.eliminar(admin["id"])
+        # Eliminado: la sesion deja de valer
+        self.usuarios.eliminar(u["id"])
+        self.assertIsNone(self.sesiones.usuario(token))
 
 
 class TestServidorPrecios(unittest.TestCase):
-    """Los pedidos HTTP para modificar precios, contra el editor con el Tango falso."""
+    """Perfiles y modificaciones por HTTP, contra el editor con el Tango falso."""
 
     @classmethod
     def setUpClass(cls):
@@ -231,8 +248,10 @@ class TestServidorPrecios(unittest.TestCase):
         from test_herramienta import CFG
 
         cls.tmp = tempfile.TemporaryDirectory()
-        cls.parche = mock.patch.object(config, "RUTA_CONFIG", Path(cls.tmp.name) / "config.ini")
-        cls.parche.start()
+        cls.parches = [mock.patch.object(config, "CARPETA", Path(cls.tmp.name)),
+                       mock.patch.object(config, "RUTA_CONFIG", Path(cls.tmp.name) / "config.ini")]
+        for p in cls.parches:
+            p.start()
         cls.tango = TangoFalso()
         servicio = ServicioFalso()
         servicio.editor = EditorPrecios(cls.tango, servicio, RegistroCambios(Path(cls.tmp.name) / "c.jsonl"))
@@ -246,7 +265,8 @@ class TestServidorPrecios(unittest.TestCase):
     def tearDownClass(cls):
         cls.servidor.shutdown()
         cls.servidor.server_close()
-        cls.parche.stop()
+        for p in cls.parches:
+            p.stop()
         cls.tmp.cleanup()
 
     def _pedir(self, ruta, datos=None, encabezados=None):
@@ -259,28 +279,39 @@ class TestServidorPrecios(unittest.TestCase):
         except urllib.error.HTTPError as e:
             return e.code, json.loads(e.read())
 
+    def _entrar(self, nombre, clave):
+        estado, d = self._pedir("/api/sesion", {"nombre": nombre, "clave": clave})
+        self.assertEqual(estado, 200, d)
+        return {"X-Sesion": d["token"]}
+
     def test_circuito(self):
         # Sin sesion no se modifica nada
         estado, _ = self._pedir("/api/precios/cambiar", {"renglon": 10, "precio": 5})
         self.assertEqual(estado, 401)
-        # La clave se define desde el panel (misma PC)
-        estado, _ = self._pedir("/api/sistema/clave-precios", {"clave": "metaliza2026"}, {"X-Herramienta-Tango": "1"})
-        self.assertEqual(estado, 200)
-        estado, d = self._pedir("/api/sesion")
-        self.assertTrue(d["edicion_habilitada"])
-        estado, d = self._pedir("/api/sesion", {"nombre": "Gustavo", "clave": "metaliza2026"})
+        # El primer administrador se crea desde el panel (misma PC)
+        estado, d = self._pedir("/api/sistema/administrador", {"nombre": "Sebastián", "clave": "clave-admin"},
+                                {"X-Herramienta-Tango": "1"})
         self.assertEqual(estado, 200, d)
-        sesion = {"X-Sesion": d["token"]}
-        estado, d = self._pedir("/api/precios/cambiar", {"renglon": 1351, "precio": 260, "cliente": 660}, sesion)
+        admin = self._entrar("Sebastián", "clave-admin")
+        # El administrador crea los perfiles con la misma clave inicial
+        for n in ("Estela", "Gustavo", "Francisco"):
+            estado, d = self._pedir("/api/usuarios/crear", {"nombre": n, "clave": "inicial123"}, admin)
+            self.assertEqual(estado, 200, d)
+        estado, d = self._pedir("/api/sesion")
+        self.assertEqual(d["nombres"], ["Estela", "Francisco", "Gustavo", "Sebastián"])
+
+        gustavo = self._entrar("Gustavo", "inicial123")
+        estado, d = self._pedir("/api/precios/cambiar", {"renglon": 1351, "precio": 260, "cliente": 660}, gustavo)
+        self.assertEqual(estado, 403)                          # primero tiene que cambiar la clave
+        estado, d = self._pedir("/api/sesion/clave", {"actual": "inicial123", "nueva": "gustavo2026"}, gustavo)
+        self.assertEqual(estado, 200, d)
+        estado, d = self._pedir("/api/precios/cambiar", {"renglon": 1351, "precio": 260, "cliente": 660}, gustavo)
         self.assertEqual(estado, 200, d)
         self.assertEqual(self.tango.renglones[1351]["GVA13"][0]["PRECIO"], 260)
-        estado, d = self._pedir("/api/precios/cambiar", {"renglon": 1351, "precio": "x", "cliente": 660}, sesion)
-        self.assertEqual(estado, 400)
-        estado, d = self._pedir("/api/listas/6")
-        self.assertEqual(d["datos"]["cliente"]["codigo"], "SCIPIO")
+        # Un usuario comun no crea listas ni maneja perfiles
+        estado, _ = self._pedir("/api/listas/crear", {"nombre": "X", "moneda": "$"}, gustavo)
+        self.assertEqual(estado, 403)
+        estado, _ = self._pedir("/api/usuarios", None, gustavo)
+        self.assertEqual(estado, 403)
         estado, d = self._pedir("/api/precios/cambios")
         self.assertEqual(d["datos"][0]["quien"], "Gustavo")
-
-
-if __name__ == "__main__":
-    unittest.main()

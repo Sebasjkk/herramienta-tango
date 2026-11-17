@@ -22,16 +22,28 @@ Listas de precios (leidas de las tablas de Tango, no de la consulta 12742):
     GET /api/precios/cambios         registro de cambios hechos desde la herramienta
     GET /api/sesion                  si se pueden modificar precios y quien esta adentro
 
-Modificar precios (desde cualquier equipo de la red, con sesion abierta con
-la clave del panel; encabezado X-Sesion):
+Perfiles (encabezado X-Sesion con el token de la sesion):
 
+    GET  /api/sesion                 perfiles que hay y el de la sesion
     POST /api/sesion                 {"nombre": "...", "clave": "..."} -> {"token": "..."}
     POST /api/sesion/salir
+    POST /api/sesion/clave           {"actual": "...", "nueva": "..."}  cambiar la clave propia
+
+Modificar precios (cualquier perfil; crear y eliminar listas, solo administradores):
+
     POST /api/precios/cambiar        {"renglon": id, "precio": n, "cliente": id_cliente|null}
     POST /api/precios/agregar        {"lista": id, "articulo": "codigo", "precio": n, "cliente": id|null, "codigo_cliente": "..."}
     POST /api/precios/quitar         {"renglon": id}
     POST /api/listas/crear           {"nombre": "...", "moneda": "$"|"US$", "numero": n|null}
     POST /api/listas/eliminar        {"lista": id, "confirmar": "NOMBRE"}
+
+Perfiles (solo administradores):
+
+    GET  /api/usuarios
+    POST /api/usuarios/crear         {"nombre": "...", "clave": "...", "rol": "usuario"|"administrador"}
+    POST /api/usuarios/rol           {"id": "...", "rol": "..."}
+    POST /api/usuarios/clave         {"id": "...", "clave": "..."}  restablecer (la cambia al entrar)
+    POST /api/usuarios/eliminar      {"id": "..."}
 
 Con ?refrescar=1 se saltea la cache. Las respuestas tienen la forma
 {"ok": true, "actualizado": "...", "datos": [...]}, o {"ok": false, "error": "..."}.
@@ -46,7 +58,8 @@ Panel de la PC (solo desde la misma PC donde corre el programa):
     POST /api/sistema/buscar-actualizacion
     POST /api/sistema/accesos-directos   crea los accesos directos de nuevo
     POST /api/sistema/modo-servidor   {"activo": true|false}
-    POST /api/sistema/clave-precios   {"clave": "..."} (vacia: nadie puede modificar precios)
+    POST /api/sistema/administrador   {"nombre": "...", "clave": "..."}  crear un administrador
+    POST /api/sistema/restablecer-clave   {"id": "...", "clave": "..."}
 
 Para las otras PCs:
     GET /acceso-directo.url           acceso directo de Windows que abre el menu
@@ -91,8 +104,12 @@ class PedidoInvalido(Exception):
     pass
 
 
-RUTAS_PRECIOS = {"/api/sesion", "/api/sesion/salir", "/api/precios/cambiar", "/api/precios/agregar",
-                 "/api/precios/quitar", "/api/listas/crear", "/api/listas/eliminar"}
+RUTAS_APP = {"/api/sesion", "/api/sesion/salir", "/api/sesion/clave",
+             "/api/precios/cambiar", "/api/precios/agregar", "/api/precios/quitar",
+             "/api/listas/crear", "/api/listas/eliminar",
+             "/api/usuarios/crear", "/api/usuarios/rol", "/api/usuarios/clave", "/api/usuarios/eliminar"}
+SOLO_ADMINISTRADOR = {"/api/listas/crear", "/api/listas/eliminar", "/api/usuarios/crear", "/api/usuarios/rol",
+                      "/api/usuarios/clave", "/api/usuarios/eliminar"}
 
 
 def _a_json(valor) -> object:
@@ -195,9 +212,21 @@ def crear_manejador(contexto):
             ok, mensaje = contexto.desactivar_modo_servidor()
         return (200 if ok else 400), {"ok": ok, "mensaje": mensaje, "sistema": contexto.info()}
 
-    def accion_clave_precios(datos: dict) -> tuple[int, dict]:
-        ok, mensaje = autorizacion.definir_clave(str(datos.get("clave", "")))
-        return (200 if ok else 400), {"ok": ok, "mensaje": mensaje, "sistema": contexto.info()}
+    def accion_administrador(datos: dict) -> tuple[int, dict]:
+        try:
+            u = autorizacion.USUARIOS.crear(str(datos.get("nombre", "")), str(datos.get("clave", "")),
+                                            "administrador", debe_cambiar=False)
+        except autorizacion.PedidoInvalido as e:
+            return 400, {"ok": False, "mensaje": str(e), "sistema": contexto.info()}
+        return 200, {"ok": True, "mensaje": f"Listo: {u['nombre']} es administrador.", "sistema": contexto.info()}
+
+    def accion_restablecer(datos: dict) -> tuple[int, dict]:
+        try:
+            u = autorizacion.USUARIOS.restablecer_clave(str(datos.get("id", "")), str(datos.get("clave", "")))
+            autorizacion.SESIONES.cerrar_de(u["id"])
+        except autorizacion.PedidoInvalido as e:
+            return 400, {"ok": False, "mensaje": str(e), "sistema": contexto.info()}
+        return 200, {"ok": True, "mensaje": f"Listo: {u['nombre']} va a tener que cambiarla al entrar.", "sistema": contexto.info()}
 
     def accion_cerrar(datos: dict) -> tuple[int, dict]:
         threading.Timer(0.5, contexto.al_cerrar).start()
@@ -210,7 +239,8 @@ def crear_manejador(contexto):
         "/api/sistema/buscar-actualizacion": accion_actualizacion,
         "/api/sistema/accesos-directos": accion_accesos,
         "/api/sistema/modo-servidor": accion_modo_servidor,
-        "/api/sistema/clave-precios": accion_clave_precios,
+        "/api/sistema/administrador": accion_administrador,
+        "/api/sistema/restablecer-clave": accion_restablecer,
         "/api/sistema/cerrar": accion_cerrar,
     }
 
@@ -274,8 +304,14 @@ def crear_manejador(contexto):
                     else:
                         self._json(200, {"ok": True, **contexto.info()})
                 elif url.path == "/api/sesion":
-                    self._json(200, {"ok": True, "edicion_habilitada": autorizacion.edicion_habilitada(),
-                                     "quien": autorizacion.SESIONES.quien(self.headers.get(ENCABEZADO_SESION))})
+                    self._json(200, {"ok": True, "nombres": autorizacion.USUARIOS.nombres(),
+                                     "usuario": autorizacion.SESIONES.usuario(self.headers.get(ENCABEZADO_SESION))})
+                elif url.path == "/api/usuarios":
+                    u = autorizacion.SESIONES.usuario(self.headers.get(ENCABEZADO_SESION))
+                    if not u or u["rol"] != "administrador":
+                        self._json(403, {"ok": False, "error": "Solo para administradores."})
+                    else:
+                        self._json(200, {"ok": True, "datos": autorizacion.USUARIOS.todos()})
                 elif url.path in rutas or ruta_variable(contexto, url.path):
                     forzar = qs.get("refrescar") == ["1"]
                     datos, momento = (rutas.get(url.path) or ruta_variable(contexto, url.path))(qs, forzar)
@@ -335,60 +371,87 @@ def crear_manejador(contexto):
                 self._json(400, {"ok": False, "error": "Pedido inválido."})
                 return None
 
-        def _post_precios(self, ruta: str) -> None:
+        def _post_app(self, ruta: str) -> None:
             datos = self._leer_cuerpo()
             if datos is None:
                 return
-            sesiones = autorizacion.SESIONES
+            sesiones, usuarios = autorizacion.SESIONES, autorizacion.USUARIOS
+            texto = lambda clave: str(datos.get(clave) or "")
             if ruta == "/api/sesion":
-                token, mensaje = sesiones.entrar(str(datos.get("nombre", "")), str(datos.get("clave", "")),
-                                                 self.client_address[0])
+                token, mensaje = sesiones.entrar(texto("nombre"), texto("clave"), self.client_address[0])
                 self._json(200 if token else 403, {"ok": bool(token), "token": token, "mensaje": mensaje,
-                                                    "quien": sesiones.quien(token)})
+                                                    "usuario": sesiones.usuario(token)})
                 return
             token = self.headers.get(ENCABEZADO_SESION)
             if ruta == "/api/sesion/salir":
                 sesiones.salir(token)
                 self._json(200, {"ok": True})
                 return
-            quien = sesiones.quien(token)
-            if not quien:
-                self._json(401, {"ok": False, "error": "Para modificar precios hay que entrar con la clave."})
+            u = sesiones.usuario(token)
+            if not u:
+                self._json(401, {"ok": False, "error": "Para modificar hay que entrar con tu perfil."})
                 return
             try:
-                editor = contexto.servicio().editor
+                if ruta == "/api/sesion/clave":
+                    r = usuarios.cambiar_clave_propia(u["id"], texto("actual"), texto("nueva"))
+                    sesiones.cerrar_de(u["id"], salvo=token)
+                    self._json(200, {"ok": True, "usuario": r})
+                    return
+                if u["debe_cambiar"]:
+                    self._json(403, {"ok": False, "error": "Antes de seguir, cambiá tu clave."})
+                    return
+                if ruta in SOLO_ADMINISTRADOR and u["rol"] != "administrador":
+                    self._json(403, {"ok": False, "error": "Eso lo puede hacer solo un administrador."})
+                    return
                 entero = lambda clave: int(datos[clave]) if datos.get(clave) not in (None, "") else None
+                quien = u["nombre"]
+                if ruta.startswith("/api/usuarios/"):
+                    if ruta == "/api/usuarios/crear":
+                        r = usuarios.crear(texto("nombre"), texto("clave"), texto("rol") or "usuario")
+                    elif ruta == "/api/usuarios/rol":
+                        r = usuarios.cambiar_rol(texto("id"), texto("rol"))
+                    elif ruta == "/api/usuarios/clave":
+                        r = usuarios.restablecer_clave(texto("id"), texto("clave"))
+                        sesiones.cerrar_de(r["id"])
+                    else:
+                        if texto("id") == u["id"]:
+                            raise autorizacion.PedidoInvalido("No podés eliminar tu propio perfil.")
+                        usuarios.eliminar(texto("id"))
+                        sesiones.cerrar_de(texto("id"))
+                        r = None
+                    log.info(f"Perfiles: {quien} - {ruta.rsplit('/', 1)[-1]} - {texto('nombre') or texto('id')}")
+                    self._json(200, {"ok": True, "datos": r, "usuarios": usuarios.todos()})
+                    return
+                editor = contexto.servicio().editor
                 if ruta == "/api/precios/cambiar":
                     r = editor.cambiar_precio(entero("renglon"), datos.get("precio"), quien, entero("cliente"))
                 elif ruta == "/api/precios/agregar":
-                    r = editor.agregar_articulo(entero("lista"), str(datos.get("articulo", "")), datos.get("precio"),
-                                                quien, entero("cliente"), str(datos.get("codigo_cliente") or ""))
+                    r = editor.agregar_articulo(entero("lista"), texto("articulo"), datos.get("precio"),
+                                                quien, entero("cliente"), texto("codigo_cliente"))
                 elif ruta == "/api/precios/quitar":
                     r = editor.quitar_articulo(entero("renglon"), quien)
                 elif ruta == "/api/listas/crear":
-                    r = editor.crear_lista(str(datos.get("nombre", "")), str(datos.get("moneda", "")), quien,
-                                           entero("numero"))
-                elif ruta == "/api/listas/eliminar":
-                    r = editor.eliminar_lista(entero("lista"), str(datos.get("confirmar", "")), quien)
+                    r = editor.crear_lista(texto("nombre"), texto("moneda"), quien, entero("numero"))
                 else:
-                    self._json(404, {"ok": False, "error": "Esa acción no existe."})
-                    return
+                    r = editor.eliminar_lista(entero("lista"), texto("confirmar"), quien)
                 self._json(200, {"ok": True, "datos": r})
-            except (DatoInvalido, KeyError, TypeError, ValueError) as e:
-                self._json(400, {"ok": False, "error": str(e) if isinstance(e, DatoInvalido) else "Faltan datos en el pedido."})
+            except (DatoInvalido, autorizacion.PedidoInvalido) as e:
+                self._json(400, {"ok": False, "error": str(e)})
+            except (KeyError, TypeError, ValueError):
+                self._json(400, {"ok": False, "error": "Faltan datos en el pedido."})
             except NoConfigurado as e:
                 self._json(503, {"ok": False, "error": str(e)})
             except TangoError as e:
                 log.error(f"Precios: {e}")
                 self._json(502, {"ok": False, "error": str(e)})
             except Exception as e:
-                log.exception("Error al modificar precios")
+                log.exception("Error al modificar")
                 self._json(500, {"ok": False, "error": f"Error inesperado: {e.__class__.__name__}"})
 
         def do_POST(self):
             url = urllib.parse.urlparse(self.path)
-            if url.path in RUTAS_PRECIOS:
-                self._post_precios(url.path)
+            if url.path in RUTAS_APP:
+                self._post_app(url.path)
                 return
             accion = acciones.get(url.path)
             if accion is None:

@@ -10,3 +10,6 @@ dist/
 __pycache__/
 *.pyc
 *.zip
+usuarios.json
+cambios_precios.jsonl
+usuarios.tmp

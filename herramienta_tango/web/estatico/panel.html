@@ -207,19 +207,6 @@
           </div>
           <div class="fila">
             <div class="fila-texto">
-              <strong id="clave-titulo">Clave para modificar precios</strong>
-              <span id="clave-detalle">Sin clave nadie puede modificar precios. Con clave, se puede desde cualquier PC o celular de la oficina, y cada cambio queda registrado con el nombre de quien lo hizo.</span>
-              <span id="clave-form" hidden style="margin-top:8px">
-                <input type="password" id="clave-nueva" autocomplete="new-password" placeholder="Clave nueva (6 o más letras)"
-                       style="font:inherit;padding:8px 10px;border:1.5px solid var(--linea);border-radius:8px;width:100%;max-width:260px">
-                <button type="button" class="boton primario" id="clave-guardar" style="margin-top:6px">Guardar clave</button>
-                <button type="button" class="boton" id="clave-quitar" style="margin-top:6px">Quitar clave</button>
-              </span>
-            </div>
-            <button type="button" class="boton" id="clave-boton">Definir</button>
-          </div>
-          <div class="fila">
-            <div class="fila-texto">
               <strong>Servidor y token</strong>
               <span id="servidor-actual"></span>
             </div>
@@ -257,6 +244,20 @@
               <p class="chico">En cada PC, abrí esa dirección y tocá <strong>Acceso directo para esta PC</strong> (abajo a la izquierda). Explica cómo dejarla en el escritorio con el ícono de la Herramienta.</p>
             </div>
           </div>
+        </div>
+        <div class="tarjeta">
+          <h2>Perfiles</h2>
+          <p class="bajada" id="perfiles-bajada"></p>
+          <ul id="perfiles-lista" style="list-style:none;margin:0;padding:0"></ul>
+          <form id="admin-form" style="margin-top:12px">
+            <p class="chico" style="margin-bottom:6px"><strong>Crear un administrador</strong></p>
+            <div id="admin-msg" class="mensaje" hidden></div>
+            <input id="admin-nombre" placeholder="Nombre" required autocomplete="off"
+                   style="font:inherit;padding:8px 10px;border:1.5px solid var(--linea);border-radius:8px;width:100%;margin-bottom:6px">
+            <input id="admin-clave" type="password" placeholder="Clave (6 o más caracteres)" required minlength="6" autocomplete="new-password"
+                   style="font:inherit;padding:8px 10px;border:1.5px solid var(--linea);border-radius:8px;width:100%;margin-bottom:8px">
+            <button type="submit" class="boton primario">Crear administrador</button>
+          </form>
         </div>
       </div>
     </div>
@@ -397,11 +398,7 @@
     $("fila-accesos").hidden = !sis.inicio_automatico_disponible;
     $("inicio").checked = !!sis.inicio_automatico;
     $("servidor-actual").textContent = sis.servidor || "Sin configurar";
-    if (!editandoClave) {
-      $("clave-titulo").textContent = sis.clave_precios_definida ? "Clave para modificar precios: definida" : "Clave para modificar precios";
-      $("clave-boton").textContent = sis.clave_precios_definida ? "Cambiar" : "Definir";
-      $("clave-quitar").hidden = !sis.clave_precios_definida;
-    }
+    dibujarPerfiles();
 
     const a = sis.actualizacion;
     const det = $("act-detalle");
@@ -529,21 +526,45 @@
     b.disabled = false;
   });
 
-  let editandoClave = false;
-  $("clave-boton").addEventListener("click", () => {
-    editandoClave = !editandoClave;
-    $("clave-form").hidden = !editandoClave;
-    $("clave-boton").textContent = editandoClave ? "Cancelar" : (sis.clave_precios_definida ? "Cambiar" : "Definir");
-    if (editandoClave) $("clave-nueva").focus();
-  });
-  async function guardarClave(clave) {
-    const d = await api("/api/sistema/clave-precios", { clave });
-    $("clave-detalle").textContent = d.mensaje || d.error;
-    if (d.ok) { editandoClave = false; $("clave-form").hidden = true; $("clave-nueva").value = ""; sis = d.sistema; dibujar(); }
+  // ------------------------------------------------------------ perfiles
+  // Desde el panel: crear un administrador y restablecer claves olvidadas.
+  // El resto (agregar perfiles, roles) lo hace un administrador desde la Herramienta.
+  let firmaPerfiles = "";
+  function dibujarPerfiles() {
+    const us = sis.usuarios || [];
+    const firma = JSON.stringify(us);
+    if (firma === firmaPerfiles) return;          // no redibujar mientras alguien escribe
+    firmaPerfiles = firma;
+    const hayAdmin = us.some(u => u.rol === "administrador");
+    $("perfiles-bajada").textContent = hayAdmin
+      ? "Los perfiles se agregan desde la Herramienta, en Perfiles, entrando como administrador. Acá podés darle una clave nueva a quien se la olvidó."
+      : "Para modificar precios hace falta entrar con un perfil. Creá primero un administrador; después, desde la Herramienta, agregá los demás.";
+    const ul = $("perfiles-lista");
+    ul.replaceChildren();
+    for (const u of us) {
+      const li = document.createElement("li");
+      li.className = "fila";
+      const t = document.createElement("div"); t.className = "fila-texto";
+      const n = document.createElement("strong"); n.textContent = u.nombre;
+      const r = document.createElement("span"); r.textContent = (u.rol === "administrador" ? "Administrador" : "Usuario") + (u.debe_cambiar ? " · con clave inicial" : "");
+      t.append(n, r);
+      const b = document.createElement("button"); b.type = "button"; b.className = "boton"; b.textContent = "Nueva clave";
+      b.addEventListener("click", async () => {
+        const clave = prompt(`Clave inicial nueva para ${u.nombre} (6 o más caracteres). La va a tener que cambiar al entrar.`);
+        if (!clave) return;
+        const d = await api("/api/sistema/restablecer-clave", { id: u.id, clave });
+        alert(d.mensaje || d.error);
+        if (d.ok) { sis = d.sistema; dibujar(); }
+      });
+      li.append(t, b); ul.append(li);
+    }
   }
-  $("clave-guardar").addEventListener("click", () => guardarClave($("clave-nueva").value));
-  $("clave-nueva").addEventListener("keydown", e => { if (e.key === "Enter") guardarClave($("clave-nueva").value); });
-  $("clave-quitar").addEventListener("click", () => guardarClave(""));
+  $("admin-form").addEventListener("submit", async e => {
+    e.preventDefault();
+    const d = await api("/api/sistema/administrador", { nombre: $("admin-nombre").value, clave: $("admin-clave").value });
+    mensaje($("admin-msg"), d.ok ? "bien" : "error", d.mensaje || d.error);
+    if (d.ok) { $("admin-nombre").value = ""; $("admin-clave").value = ""; sis = d.sistema; dibujar(); }
+  });
 
   let confirmarDesactivar = 0;
   $("servidor-boton").addEventListener("click", async e => {

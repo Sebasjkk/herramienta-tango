@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0B6E69">
+<title>Perfiles | Herramienta Tango</title>
+<link rel="icon" href="/icono-192.png">
+<link rel="apple-touch-icon" href="/icono-192.png">
+<link rel="manifest" href="/manifest.json">
+<link rel="stylesheet" href="/comun.css">
+<style>
+  .contenido { max-width: 860px; display: grid; gap: 14px; }
+  .bloque { padding: 16px 18px; }
+  .bloque h2 { font-size: 1rem; margin: 0 0 4px; }
+  .bloque > p { margin: 0 0 8px; color: var(--plomo); font-size: .9rem; }
+  .agregar { display: grid; grid-template-columns: 1.4fr 1fr auto auto; gap: 8px; align-items: end; }
+  .agregar .etiqueta { margin-top: 0; }
+  .agregar select.campo { min-height: 42px; -webkit-appearance: auto; appearance: auto; border-radius: 8px; background-image: none; padding-right: 12px; }
+  .perfiles { list-style: none; margin: 0; padding: 0; }
+  .perfil { display: grid; grid-template-columns: 1fr auto; gap: 2px 14px; padding: 12px 0; align-items: center; }
+  .perfil + .perfil { border-top: 1px solid var(--linea-suave); }
+  .perfil .nombre { font-weight: 650; }
+  .perfil .meta { font-size: .82rem; color: var(--plomo); }
+  .perfil .meta .alerta { color: var(--oxido); }
+  .perfil .rol { display: inline-block; font-size: .76rem; font-weight: 600; padding: 1px 8px; border-radius: 999px; margin-left: 8px;
+    background: var(--zinc); color: var(--plomo); vertical-align: 1px; }
+  .perfil .rol.admin { background: var(--patina-suave); color: var(--patina); }
+  .perfil .acciones { grid-column: 2; grid-row: 1 / span 2; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  @media (max-width: 700px) {
+    .agregar { grid-template-columns: 1fr 1fr; }
+    .agregar .nombres { grid-column: 1 / -1; }
+    .perfil { grid-template-columns: 1fr; }
+    .perfil .acciones { grid-column: 1; grid-row: auto; justify-content: flex-start; margin-top: 6px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="app-nav" id="app-nav"></nav>
+  <div class="app-principal">
+    <div class="pagina">
+      <header class="cabecera">
+        <div class="cabecera-sup"><h1>Perfiles</h1></div>
+      </header>
+      <main id="contenido" class="contenido" aria-live="polite"></main>
+    </div>
+  </div>
+</div>
+
+<script src="/comun.js"></script>
+<script>
+(() => {
+  "use strict";
+  HT.iniciar("usuarios");
+  const { $, el, fecha, textoError, escribir } = HT;
+  let perfiles = [];
+
+  async function cargar() {
+    const c = $("contenido");
+    if (!HT.esAdmin()) {
+      c.replaceChildren(el("p", "aviso", HT.usuario() ? "Esta sección es solo para administradores." : "Entrá con un perfil de administrador para manejar los perfiles."));
+      return;
+    }
+    try { perfiles = (await HT.pedirConSesion("/api/usuarios")).datos; }
+    catch (e) { c.replaceChildren(HT.cajaError(textoError(e), cargar)); return; }
+    dibujar();
+  }
+
+  function dibujar() {
+    const c = $("contenido");
+    const yo = HT.usuario();
+
+    // Agregar
+    const a = el("section", "tarjeta bloque");
+    a.append(el("h2", "", "Agregar perfiles"),
+      el("p", "", "Podés agregar varios a la vez, separados por coma, con la misma clave inicial. Cada uno la cambia por una propia la primera vez que entra."));
+    const f = el("form", "agregar");
+    const caja = (clase, etiqueta, nodo) => { const d = el("div", clase); const l = el("label", "etiqueta", etiqueta); nodo.id = "a" + Math.random().toString(36).slice(2, 7); l.htmlFor = nodo.id; d.append(l, nodo); return d; };
+    const nombres = el("input", "campo"); nombres.placeholder = "Estela, Gustavo, Francisco"; nombres.required = true;
+    const clave = el("input", "campo"); clave.type = "text"; clave.autocomplete = "off"; clave.placeholder = "6 o más caracteres"; clave.required = true; clave.minLength = 6;
+    const rol = el("select", "campo");
+    for (const [v, t] of [["usuario", "Usuario"], ["administrador", "Administrador"]]) { const o = el("option", "", t); o.value = v; rol.append(o); }
+    const ok = el("button", "boton primario", "Agregar"); ok.type = "submit";
+    f.append(caja("nombres", "Nombres", nombres), caja("", "Clave inicial", clave), caja("", "Rol", rol), ok);
+    const msg = el("p", "mensaje-error"); msg.hidden = true;
+    f.addEventListener("submit", async e => {
+      e.preventDefault(); ok.disabled = true; msg.hidden = true;
+      const lista = nombres.value.split(/[,;\n]/).map(x => x.trim()).filter(Boolean);
+      const errores = [];
+      for (const n of lista) {
+        try { const r = await escribir("/api/usuarios/crear", { nombre: n, clave: clave.value, rol: rol.value }); perfiles = r.usuarios; }
+        catch (ex) { errores.push(`${n}: ${ex.message}`); }
+      }
+      ok.disabled = false;
+      if (errores.length) { msg.textContent = errores.join(" "); msg.hidden = false; }
+      else { nombres.value = ""; clave.value = ""; }
+      dibujarLista();
+    });
+    a.append(f, msg);
+
+    // Lista
+    const l = el("section", "tarjeta bloque");
+    l.append(el("h2", "", "Perfiles"),
+      el("p", "", "Usuario: modifica precios. Administrador: además crea y elimina listas y maneja los perfiles."));
+    const ul = el("ul", "perfiles"); ul.id = "perfiles";
+    l.append(ul);
+    c.replaceChildren(a, l);
+    dibujarLista();
+  }
+
+  function dibujarLista() {
+    const ul = $("perfiles");
+    const yo = HT.usuario();
+    ul.replaceChildren();
+    for (const p of [...perfiles].sort((x, y) => x.nombre.localeCompare(y.nombre, "es"))) {
+      const li = el("li", "perfil");
+      const n = el("div", "nombre", p.nombre + (yo && p.id === yo.id ? " (vos)" : ""));
+      n.append(el("span", "rol" + (p.rol === "administrador" ? " admin" : ""), p.rol === "administrador" ? "Administrador" : "Usuario"));
+      const meta = el("div", "meta");
+      if (p.debe_cambiar) meta.append(el("span", "alerta", "Todavía con la clave inicial. "));
+      meta.append(p.ultimo_ingreso ? `Último ingreso: ${new Date(p.ultimo_ingreso).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}` : "Nunca entró");
+      const acc = el("div", "acciones");
+      const rolB = el("button", "boton chico", p.rol === "administrador" ? "Hacer usuario" : "Hacer administrador"); rolB.type = "button";
+      rolB.addEventListener("click", () => accion(li, "/api/usuarios/rol", { id: p.id, rol: p.rol === "administrador" ? "usuario" : "administrador" }));
+      const claveB = el("button", "boton chico", "Nueva clave"); claveB.type = "button";
+      claveB.addEventListener("click", () => nuevaClave(p));
+      acc.append(rolB, claveB);
+      if (!yo || p.id !== yo.id) {
+        const elim = el("button", "boton chico peligro", "Eliminar"); elim.type = "button";
+        let hasta = 0;
+        elim.addEventListener("click", () => {
+          if (Date.now() > hasta) { hasta = Date.now() + 4000; elim.classList.add("confirmar"); elim.textContent = "¿Eliminar? Tocá de nuevo";
+            setTimeout(() => { elim.classList.remove("confirmar"); elim.textContent = "Eliminar"; }, 4000); return; }
+          accion(li, "/api/usuarios/eliminar", { id: p.id });
+        });
+        acc.append(elim);
+      }
+      li.append(n, acc, meta);
+      ul.append(li);
+    }
+  }
+
+  async function accion(li, ruta, datos) {
+    li.querySelectorAll(".mensaje-error").forEach(x => x.remove());
+    try { const r = await escribir(ruta, datos); perfiles = r.usuarios; dibujarLista(); }
+    catch (e) { const p = el("p", "mensaje-error", e.message); p.style.gridColumn = "1 / -1"; li.append(p); }
+  }
+
+  function nuevaClave(p) {
+    HT.ventana("Nueva clave para " + p.nombre, (d, cerrar) => {
+      d.append(el("p", "", "Es una clave inicial: " + p.nombre + " la va a tener que cambiar por una propia la próxima vez que entre."));
+      const f = el("form");
+      const c = HT.campo(f, "Clave inicial", { type: "text", autocomplete: "off", required: true, minLength: 6 });
+      const b = HT.botones(f, "Guardar", cerrar);
+      f.addEventListener("submit", async e => {
+        e.preventDefault(); b.ok.disabled = true; b.error("");
+        try { const r = await escribir("/api/usuarios/clave", { id: p.id, clave: c.value }); perfiles = r.usuarios; cerrar(); dibujarLista(); }
+        catch (ex) { b.error(ex.message); b.ok.disabled = false; }
+      });
+      d.append(f);
+      setTimeout(() => c.focus(), 50);
+    });
+  }
+
+  HT.alCambiarSesion(cargar);
+})();
+</script>
+</body>
+</html>
