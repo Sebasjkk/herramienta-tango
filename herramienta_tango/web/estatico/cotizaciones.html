@@ -10,6 +10,7 @@
 <link rel="manifest" href="/manifest.json">
 <link rel="stylesheet" href="/comun.css">
 <style>
+  .explica { margin: 8px 0 0; font-size: .86rem; max-width: 70ch; }
   .pestanas { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
   .pestana { font: inherit; font-size: .88rem; font-weight: 600; min-height: 36px; padding: 4px 14px; border-radius: 999px;
     border: 1px solid var(--linea); background: var(--papel); color: var(--plomo); cursor: pointer; }
@@ -75,6 +76,7 @@
           <button type="button" class="limpiar" id="limpiar" aria-label="Borrar búsqueda" hidden>×</button>
         </div>
         <div class="pestanas" id="pestanas" role="tablist"></div>
+        <p class="nota explica" id="explica"></p>
       </div>
       <div class="contenido-cot" id="contenido">
         <div class="col-lista" id="col-lista" aria-live="polite"></div>
@@ -95,10 +97,14 @@
 
   // Grupos que se muestran: los estados de Tango, mas "Vencida" (autorizada con vigencia pasada)
   const GRUPOS = [
-    { id: "autorizada", titulo: "En curso", f: c => c.estado === 2 && !(c.vigencia && c.vigencia < hoy) },
-    { id: "vencida", titulo: "Vencidas", f: c => c.estado === 2 && c.vigencia && c.vigencia < hoy },
-    { id: "procesada", titulo: "Procesadas", f: c => c.estado === 4 },
-    { id: "anulada", titulo: "Anuladas", f: c => c.estado === 5 },
+    { id: "autorizada", titulo: "En curso", f: c => c.estado === 2 && !(c.vigencia && c.vigencia < hoy),
+      ayuda: "En curso: cotizaciones emitidas, todavía vigentes, que no se pasaron a pedido. Son las que hay que seguir con el cliente." },
+    { id: "vencida", titulo: "Vencidas", f: c => c.estado === 2 && c.vigencia && c.vigencia < hoy,
+      ayuda: "Vencidas: se emitieron, pero ya pasó su fecha de vigencia sin que se convirtieran en pedido. Para venderle al cliente conviene hacerle una nueva." },
+    { id: "procesada", titulo: "Procesadas", f: c => c.estado === 4,
+      ayuda: "Procesadas: el cliente aceptó y la cotización ya se pasó a pedido en Tango. Desde ahí sigue el circuito de pedido, remito y factura." },
+    { id: "anulada", titulo: "Anuladas", f: c => c.estado === 5,
+      ayuda: "Anuladas: se dieron de baja en Tango (por error, por un cambio o porque el cliente no siguió). Quedan solo como registro." },
     { id: "todas", titulo: "Todas", f: () => true },
   ];
   const claseEstado = c => c.estado === 2 ? (c.vigencia && c.vigencia < hoy ? "vencida" : "autorizada")
@@ -143,6 +149,8 @@
       b.addEventListener("click", () => { grupo = g.id; elegida = null; render(); });
       p.append(b);
     }
+    const g = GRUPOS.find(x => x.id === grupo);
+    $("explica").textContent = (g && g.ayuda) || "Todas: las cotizaciones de cualquier estado.";
     const lista = filtradas();
     const col = $("col-lista");
     if (!lista.length) {
