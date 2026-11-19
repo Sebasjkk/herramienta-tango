@@ -9,6 +9,7 @@
 <link rel="apple-touch-icon" href="/icono-192.png">
 <link rel="manifest" href="/manifest.json">
 <link rel="stylesheet" href="/comun.css">
+<link rel="stylesheet" href="/etiqueta-codigo.css">
 <style>
   /* Lista de resultados */
   .resultados { list-style: none; margin: 0; padding: 0; }
@@ -24,6 +25,20 @@
   .res-stock small { font-size: .78rem; color: var(--plomo); }
   .res-stock.neg b { color: var(--oxido); }
   .res-stock.nada b { color: var(--plomo); font-weight: 500; font-size: .9rem; }
+
+  /* Codigo de barras en la ficha */
+  .codigo-art { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin: 8px 0 4px; }
+  .codigo-art .barras { background: #fff; border: 1px solid var(--linea); border-radius: 8px; padding: 6px 10px 4px; line-height: 0; }
+  .codigo-art .barras svg { margin-left: 0 !important; max-width: 100%; }
+  .codigo-art .acciones { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .tanda-linea { font-size: .82rem; color: var(--plomo); display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin-top: 6px; }
+  .dlg-partidas { list-style: none; margin: 0 0 8px; padding: 0; max-height: 40vh; overflow-y: auto; }
+  .dlg-partidas li { display: grid; grid-template-columns: 1fr auto; gap: 0 12px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--linea-suave); }
+  .dlg-partidas b { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .dlg-partidas small { grid-column: 1; color: var(--plomo); font-size: .8rem; }
+  .dlg-partidas .campo, .dlg-otra .campo.n { width: 72px; text-align: center; }
+  .dlg-partidas .n { grid-column: 2; grid-row: 1 / span 2; }
+  .dlg-otra { display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; align-items: end; margin-bottom: 8px; }
 
   /* Ficha del articulo */
   .ficha { padding: 18px 18px 8px; }
@@ -100,10 +115,13 @@
 </div>
 
 <script src="/comun.js"></script>
+<script src="/codigo128.js"></script>
+<script src="/etiqueta-codigo.js"></script>
 <script>
 (() => {
   "use strict";
   const { $, el, norm, sinCeros, tokens, fmt, fmtPrecio, num, fecha, unidad, pedir, textoError, cajaError } = HT;
+  const EC = window.EtiquetaCodigo;
   HT.iniciar("inicio");
 
   const MAX_RESULTADOS = 60;
@@ -185,7 +203,9 @@
   }
   function reindexarTexto() {
     for (const a of arts.values()) {
-      a._txt = norm([a.cod, a.desc, a.adic, a.sin, a.barras].join(" "));
+      const lotes = (stockPor.get(a.cod) || []).map(l => l.partida);
+      const txt = norm([a.cod, a.desc, a.adic, a.sin, a.barras, ...lotes].join(" "));
+      a._txt = txt + " " + txt.replace(/[^\p{L}\p{N} ]/gu, "");     // "oring" encuentra "O'Ring"
       a._cod = sinCeros(norm(a.cod));
     }
   }
@@ -292,6 +312,149 @@
     return li;
   }
 
+  // ---------------------------------------------------------------- codigo de barras
+  // El codigo de barras es el mismo codigo de articulo de Tango (Code-128)
+  function codigoDeBarras(a) {
+    const c = el("div", "codigo-art");
+    const b = el("div", "barras");
+    try { b.append(EC.barras(a.cod, 9)); } catch { b.textContent = "El código tiene caracteres que no van en un código de barras."; }
+    const acc = el("div", "acciones");
+    const imp = el("button", "boton chico", "Imprimir etiquetas"); imp.type = "button";
+    imp.addEventListener("click", () => dialogoEtiquetas(a));
+    acc.append(imp);
+    c.append(b, acc);
+    const caja = el("div"); caja.append(c, lineaTanda());
+    return caja;
+  }
+
+  function lineaTanda() {
+    const t = EC.tanda.leer();
+    const linea = el("div", "tanda-linea");
+    if (!t.length) return linea;
+    const n = EC.total(t);
+    linea.append(`En la tanda: ${n} ${n === 1 ? "etiqueta" : "etiquetas"} de ${t.length} ${t.length === 1 ? "renglón" : "renglones"}.`);
+    const ver = el("button", "boton-texto", "Ver e imprimir"); ver.type = "button"; ver.addEventListener("click", dialogoTanda);
+    linea.append(ver);
+    return linea;
+  }
+  EC.tanda.alCambiar(() => { if (seleccion) dibujarFicha(); });
+
+  function partidasDe(a) {
+    const porPartida = new Map();
+    for (const l of stockDe(a.cod).lotes) {
+      if (!(l.saldo > EPS) || !l.partida) continue;
+      const x = porPartida.get(l.partida) || { partida: l.partida, saldo: 0, depositos: [] };
+      x.saldo += l.saldo;
+      if (!x.depositos.includes(l.deposito)) x.depositos.push(l.deposito);
+      porPartida.set(l.partida, x);
+    }
+    return [...porPartida.values()].sort((x, y) => x.partida.localeCompare(y.partida, "es", { numeric: true }));
+  }
+
+  function campoN(valor, alCambiar) {
+    const n = el("input", "campo n"); n.type = "number"; n.min = 0; n.max = 200; n.inputMode = "numeric"; n.value = valor;
+    n.setAttribute("aria-label", "Cantidad de etiquetas");
+    n.addEventListener("focus", () => n.select());
+    n.addEventListener("input", () => alCambiar(Math.max(0, Math.min(200, parseInt(n.value) || 0))));
+    return n;
+  }
+
+  function dialogoEtiquetas(a) {
+    HT.ventana("Etiquetas de " + a.cod, (d, cerrar) => {
+      const cant = new Map();                 // partida ("" = sin partida) -> cantidad
+      let otra = "", nOtra = 0;
+      const pedido = () => {
+        const lista = [...cant].filter(([, n]) => n > 0).map(([p, n]) => ({ codigo: a.cod, descripcion: a.desc, partida: p, cantidad: n }));
+        if (otra && nOtra > 0) lista.push({ codigo: a.cod, descripcion: a.desc, partida: otra, cantidad: nOtra });
+        return lista;
+      };
+      const vista = el("div");
+      const resumen = el("p", "nota");
+      const imp = el("button", "boton primario", "Imprimir"); imp.type = "button";
+      const sumar = el("button", "boton", "Agregar a la tanda"); sumar.type = "button";
+      const actualizar = () => {
+        const p = pedido();
+        const muestra = p[0] || { codigo: a.cod, descripcion: a.desc, partida: a.usaPart ? ((partidasDe(a)[0] || {}).partida || "") : "" };
+        try { EC.vista(vista, muestra); } catch (e) { vista.textContent = e.message; }
+        const n = EC.total(p);
+        imp.disabled = sumar.disabled = !n;
+        resumen.textContent = !n ? "Poné cuántas etiquetas querés." : n === 1 ? "Sale 1 etiqueta." : `Salen ${n} etiquetas.`;
+      };
+
+      if (a.usaPart) {
+        const ps = partidasDe(a);
+        d.append(el("p", "", ps.length ? "Una etiqueta por tambor o bulto: poné cuántas de cada partida."
+                                        : "No tiene partidas con stock en Tango. Si llegó mercadería nueva, escribí la partida."));
+        const ul = el("ul", "dlg-partidas");
+        for (const p of ps) {
+          const li = el("li");
+          li.append(el("b", "", p.partida), campoN(0, n => { cant.set(p.partida, n); actualizar(); }),
+                    el("small", "", `${num(p.saldo)} ${unidad(a.um)} · ${p.depositos.map(x => x.charAt(0) + x.slice(1).toLowerCase()).join(", ")}`));
+          ul.append(li);
+        }
+        if (ps.length) d.append(ul);
+        const o = el("div", "dlg-otra");
+        const caja = el("div");
+        const inp = HT.campo(caja, "Otra partida", { maxLength: 30, autocomplete: "off" });
+        const n = campoN(0, v => { nOtra = v; actualizar(); });
+        inp.addEventListener("input", () => {
+          otra = inp.value.trim().toUpperCase();
+          if (otra && !nOtra) { nOtra = 1; n.value = 1; }
+          actualizar();
+        });
+        o.append(caja, n);
+        d.append(o);
+      } else {
+        d.append(el("p", "", "Este artículo no lleva partidas: la etiqueta lleva solo su código."));
+        const ul = el("ul", "dlg-partidas"); const li = el("li");
+        cant.set("", 1);
+        li.append(el("b", "", "Etiquetas"), campoN(1, n => { cant.set("", n); actualizar(); }));
+        ul.append(li); d.append(ul);
+      }
+      const acc = el("div", "acciones");
+      const c = el("button", "boton", "Cerrar"); c.type = "button"; c.addEventListener("click", cerrar);
+      imp.addEventListener("click", () => EC.imprimir(pedido()));
+      sumar.addEventListener("click", () => { EC.tanda.agregar(pedido()); cerrar(); });
+      acc.append(c, sumar, imp);
+      d.append(vista, resumen, acc);
+      actualizar();
+      requestAnimationFrame(actualizar);       // la vista previa necesita la ventana ya abierta para medir el ancho
+    });
+  }
+
+  function dialogoTanda() {
+    HT.ventana("Tanda para imprimir", (dlg, cerrar) => {
+      const d = el("div"); dlg.append(d);
+      const dibujar = () => {
+        const t = EC.tanda.leer();
+        d.replaceChildren();
+        if (!t.length) { d.append(el("p", "", "La tanda está vacía.")); }
+        const ul = el("ul", "dlg-partidas");
+        t.forEach((x, i) => {
+          const li = el("li");
+          const txt = el("span"); txt.append(el("b", "", `${x.cantidad} × ${x.codigo}`), x.partida ? ` · partida ${x.partida}` : "");
+          const q = el("button", "boton chico peligro", "Quitar"); q.type = "button"; q.classList.add("n");
+          q.addEventListener("click", () => { EC.tanda.quitar(i); dibujar(); });
+          li.append(txt, q, el("small", "", x.descripcion));
+          ul.append(li);
+        });
+        if (t.length) d.append(ul);
+        const acc = el("div", "acciones");
+        const c = el("button", "boton", "Cerrar"); c.type = "button"; c.addEventListener("click", cerrar);
+        acc.append(c);
+        if (t.length) {
+          const v = el("button", "boton", "Vaciar"); v.type = "button";
+          v.addEventListener("click", () => { if (confirm("¿Vaciar la tanda?")) { EC.tanda.vaciar(); dibujar(); } });
+          const imp = el("button", "boton primario", `Imprimir ${EC.total(t)}`); imp.type = "button";
+          imp.addEventListener("click", () => EC.imprimir(EC.tanda.leer()));
+          acc.append(v, imp);
+        }
+        d.append(acc);
+      };
+      dibujar();
+    });
+  }
+
   function dibujarFicha() {
     const cont = $("detalle");
     const a = seleccion && arts.get(seleccion);
@@ -312,9 +475,7 @@
     dato("Código de barras", a.barras);
     if (a.puntoPedido) dato("Punto de pedido", num(a.puntoPedido));
     if (datos.childNodes.length) t.append(datos);
-    const imp = el("a", "boton chico", "Imprimir etiqueta con código de barras");
-    imp.href = "/codigos?art=" + encodeURIComponent(a.cod); imp.style.margin = "4px 0 6px";
-    t.append(imp);
+    t.append(codigoDeBarras(a));
 
     t.append(seccionStock(a), seccionPrecios(a));
     cont.replaceChildren(t);

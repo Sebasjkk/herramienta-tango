@@ -270,12 +270,13 @@ class TestServidor(unittest.TestCase):
         estado, cuerpo = self._get("/stock")
         self.assertEqual(estado, 200)
         self.assertIn(b"Stock por partida", cuerpo)
-        estado, cuerpo = self._get("/codigos")
-        self.assertEqual(estado, 200)
-        self.assertIn(b"/codigo128.js", cuerpo)
-        estado, cuerpo = self._get("/codigo128.js")
-        self.assertEqual(estado, 200)
-        self.assertIn(b"Codigo128", cuerpo)
+        _, inicio = self._get("/")
+        self.assertIn(b"/etiqueta-codigo.js", inicio)       # codigo de barras en la ficha del articulo
+        for archivo, texto in (("/codigo128.js", b"Codigo128"), ("/etiqueta-codigo.js", b"EtiquetaCodigo"),
+                               ("/etiqueta-codigo.css", b"@page")):
+            estado, cuerpo = self._get(archivo)
+            self.assertEqual(estado, 200, archivo)
+            self.assertIn(texto, cuerpo)
 
     def test_precios(self):
         estado, cuerpo = self._get("/api/precios")

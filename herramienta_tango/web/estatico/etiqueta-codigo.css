@@ -1,0 +1,23 @@
+/* Etiqueta con codigo de barras: 100 x 50 mm (Zebra). Se usa desde la ficha del articulo. */
+.cb { width: 100mm; height: 50mm; box-sizing: border-box; padding: 3mm 4mm 2.5mm; background: #fff; color: #000;
+  font-family: Arial, "Helvetica Neue", Helvetica, sans-serif; overflow: hidden; display: flex; flex-direction: column; }
+.cb-des { font-weight: 700; font-size: 10.5pt; line-height: 1.12; max-height: 2.3em; overflow: hidden; margin-bottom: 1.5mm; }
+.cb-bloque { display: flex; flex-direction: column; align-items: flex-start; }
+.cb-bloque + .cb-bloque { margin-top: 1.2mm; }
+.cb-bloque svg { display: block; }
+.cb-txt { font-size: 9pt; line-height: 1.1; margin-top: .6mm; }
+.cb-txt b { font-size: 10.5pt; letter-spacing: .02em; }
+.cb.sola .cb-txt b { font-size: 15pt; }
+.vista-cb { overflow: hidden; padding: 4px 0 6px; }
+.vista-cb .cb { border: 1px dashed #9AA6AF; transform-origin: top left; }
+
+#impresion-cb { display: none; }
+@media print {
+  @page { size: 100mm 50mm; margin: 0; }
+  html, body { background: #fff !important; margin: 0; }
+  .app, dialog { display: none !important; }
+  #impresion-cb { display: block; }
+  /* 48 mm y no 50: Chrome deja un margen de redondeo y con 50 se corta a la hoja siguiente */
+  #impresion-cb .cb { height: 48mm; break-inside: avoid; }
+  #impresion-cb .cb + .cb { break-before: page; page-break-before: always; }
+}

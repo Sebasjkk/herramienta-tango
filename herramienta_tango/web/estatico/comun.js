@@ -23,8 +23,7 @@ window.HT = (() => {
     { id: "stock", titulo: "Stock por partida", corto: "Stock", href: "/stock", icono: "stock" },
     { id: "precios", titulo: "Listas de precios", corto: "Precios", href: "/precios", icono: "precios" },
     { id: "cotizaciones", titulo: "Cotizaciones", corto: "Cotiz.", href: "/cotizaciones", icono: "cotizaciones" },
-    { id: "etiquetas", titulo: "Etiquetas de envío", corto: "Envíos", href: "/etiquetas", icono: "etiquetas" },
-    { id: "codigos", titulo: "Códigos de barras", corto: "Códigos", href: "/codigos", icono: "codigos" },
+    { id: "etiquetas", titulo: "Etiquetas de envío", corto: "Etiquetas", href: "/etiquetas", icono: "etiquetas" },
   ];
 
   // ---------------------------------------------------------------- utilidades
