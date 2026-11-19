@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0B6E69">
+<title>Códigos de barras | Herramienta Tango</title>
+<link rel="icon" href="/icono-192.png">
+<link rel="apple-touch-icon" href="/icono-192.png">
+<link rel="manifest" href="/manifest.json">
+<link rel="stylesheet" href="/comun.css">
+<style>
+  .contenido-cb { display: grid; gap: 16px; }
+  .contenido-cb > div { min-width: 0; }
+  @media (min-width: 1100px) { .contenido-cb { grid-template-columns: minmax(280px, 360px) 1fr; align-items: start; } }
+  .lista-art { list-style: none; margin: 0; padding: 0; max-height: 70vh; overflow-y: auto; }
+  .art { width: 100%; display: grid; grid-template-columns: 1fr auto; gap: 1px 12px; text-align: left; font: inherit; color: inherit;
+    background: var(--papel); border: 1px solid var(--linea); border-radius: var(--radio); padding: 10px 13px; margin-bottom: 7px; cursor: pointer; }
+  .art:hover { border-color: var(--patina); }
+  .art[aria-pressed="true"] { border-color: var(--patina); box-shadow: inset 3px 0 0 var(--patina); background: #F6FBFA; }
+  .art .cod { font-size: .8rem; color: var(--plomo); font-variant-numeric: tabular-nums; }
+  .art .des { font-weight: 600; font-size: .93rem; overflow-wrap: anywhere; }
+  .art .tag { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-size: .75rem; color: var(--plomo); }
+
+  .armado { padding: 16px 18px; }
+  .armado h2 { font-size: 1.1rem; margin: 0 0 2px; overflow-wrap: anywhere; }
+  .seccion-cb { border-top: 1px solid var(--linea); margin: 16px -18px 0; padding: 14px 18px 0; }
+  .seccion-cb h3 { font-size: .95rem; margin: 0 0 6px; }
+  .partidas { list-style: none; margin: 0; padding: 0; }
+  .partida { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--linea-suave); }
+  .partida:last-child { border-bottom: 0; }
+  .partida .num { font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .partida small { grid-column: 1; color: var(--plomo); font-size: .8rem; }
+  .partida .cant { grid-column: 2; grid-row: 1 / span 2; display: flex; align-items: center; gap: 6px; }
+  .cant .campo { width: 70px; text-align: center; }
+  .cant span { font-size: .8rem; color: var(--plomo); }
+  .otra { display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; align-items: end; margin-top: 10px; }
+  .acciones-cb { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
+
+  .tanda { padding: 14px 18px; margin-bottom: 16px; }
+  .tanda h2 { font-size: 1rem; margin: 0 0 6px; }
+  .tanda ul { list-style: none; margin: 0; padding: 0; }
+  .tanda li { display: grid; grid-template-columns: 1fr auto; gap: 0 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--linea-suave); font-size: .9rem; }
+  .tanda li small { color: var(--plomo); }
+
+  /* La etiqueta impresa: 100 x 50 mm */
+  .vista { overflow-x: auto; padding: 4px 0 6px; }
+  .cb { width: 100mm; height: 50mm; box-sizing: border-box; padding: 3mm 4mm 2.5mm; background: #fff; color: #000;
+    font-family: Arial, "Helvetica Neue", Helvetica, sans-serif; overflow: hidden; display: flex; flex-direction: column; }
+  .vista .cb { border: 1px dashed #9AA6AF; transform-origin: top left; }
+  .cb-des { font-weight: 700; font-size: 10.5pt; line-height: 1.12; max-height: 2.3em; overflow: hidden; margin-bottom: 1.5mm; }
+  .cb-bloque { display: flex; flex-direction: column; align-items: flex-start; }
+  .cb-bloque + .cb-bloque { margin-top: 1.2mm; }
+  .cb-bloque svg { display: block; }
+  .cb-txt { font-size: 9pt; line-height: 1.1; margin-top: .6mm; }
+  .cb-txt b { font-size: 10.5pt; letter-spacing: .02em; }
+  .cb.sola .cb-txt b { font-size: 15pt; }
+
+  #impresion { display: none; }
+  @media print {
+    @page { size: 100mm 50mm; margin: 0; }
+    html, body { background: #fff !important; margin: 0; }
+    .app { display: none !important; }
+    #impresion { display: block; }
+    /* 48 mm y no 50: Chrome deja un margen de redondeo y con 50 se corta a la hoja siguiente */
+    #impresion .cb { height: 48mm; break-inside: avoid; }
+    #impresion .cb + .cb { break-before: page; page-break-before: always; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="app-nav" id="app-nav"></nav>
+  <div class="app-principal">
+    <div class="pagina">
+      <header class="cabecera">
+        <div class="cabecera-sup">
+          <h1>Códigos de barras</h1>
+          <div class="datos"><span id="estado">Consultando Tango…</span><button type="button" class="boton-texto" id="actualizar">Actualizar</button></div>
+        </div>
+      </header>
+      <div class="contenido-cb">
+        <div>
+          <div class="buscador" style="margin-bottom:10px">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>
+            <label for="q" style="position:absolute;left:-9999px">Buscar artículo</label>
+            <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="Código o descripción del artículo" enterkeyhint="search">
+            <button type="button" class="limpiar" id="limpiar" aria-label="Borrar búsqueda" hidden>×</button>
+          </div>
+          <div id="articulos" aria-live="polite"></div>
+        </div>
+        <div>
+          <div id="tanda"></div>
+          <div id="armado"><p class="aviso">Buscá un artículo para armar sus etiquetas.</p></div>
+        </div>
+      </div>
+      <p class="pie">La etiqueta mide 10 × 5 cm. Al imprimir, elegí la Zebra; en sus preferencias tiene que estar el papel de 100 × 50 mm. El código de barras es el mismo código de Tango: el lector lo escribe tal cual en el remito o en el buscador.</p>
+    </div>
+  </div>
+</div>
+<div id="impresion"></div>
+
+<script src="/comun.js"></script>
+<script src="/codigo128.js"></script>
+<script>
+(() => {
+  "use strict";
+  HT.iniciar("codigos");
+  const { $, el, norm, tokens, sinCeros, fmt, pedir, textoError, cajaError } = HT;
+  const MAX = 60;
+  const ANCHO_UTIL = 92;              // mm disponibles para el codigo (100 - margenes)
+  const CLAVE_TANDA = "ht_codigos_tanda";
+
+  let articulos = [];
+  let partidas = null;                 // Map codigo -> [{partida, saldo, unidad, depositos}]
+  let elegido = null;
+  let cantidades = {};                 // partida ("" = sin partida) -> etiquetas
+  let tanda = leerTanda();
+
+  function leerTanda() { try { return JSON.parse(localStorage.getItem(CLAVE_TANDA)) || []; } catch { return []; } }
+  function guardarTanda() { try { localStorage.setItem(CLAVE_TANDA, JSON.stringify(tanda)); } catch {} dibujarTanda(); }
+
+  // ---------------------------------------------------------------- datos
+  async function cargar(forzar) {
+    $("estado").textContent = "Consultando Tango…";
+    try {
+      const [a, p] = await Promise.all([pedir("/api/articulos", forzar), pedir("/api/stock/partidas", forzar)]);
+      // Con y sin puntuacion, para que "oring" encuentre "O'Ring"
+      articulos = a.datos.map(x => { const t = norm(x.codigo + " " + x.descripcion + " " + (x.sinonimo || ""));
+                                     return { ...x, _t: t + " " + t.replace(/[^\p{L}\p{N} ]/gu, "") }; });
+      partidas = new Map();
+      for (const s of p.datos) {
+        if (!(s.saldo > 0) || !s.partida) continue;
+        const lista = partidas.get(s.codigo_articulo) || [];
+        let x = lista.find(y => y.partida === s.partida);
+        if (!x) { x = { partida: s.partida, saldo: 0, unidad: s.unidad, depositos: [] }; lista.push(x); }
+        x.saldo += s.saldo;
+        if (s.deposito && !x.depositos.includes(s.deposito)) x.depositos.push(s.deposito);
+        partidas.set(s.codigo_articulo, lista);
+      }
+      $("estado").textContent = "Datos de Tango de las " + HT.hora(new Date(a.actualizado)) + " h";
+      dibujarLista();
+      const inicial = new URLSearchParams(location.search).get("art");
+      if (inicial && !elegido) { const x = articulos.find(y => y.codigo === inicial); if (x) elegir(x); }
+      else if (elegido) elegir(articulos.find(y => y.codigo === elegido.codigo) || elegido);
+    } catch (e) {
+      $("estado").textContent = "Sin datos";
+      $("articulos").replaceChildren(cajaError(textoError(e), () => cargar(true)));
+    }
+  }
+
+  // ---------------------------------------------------------------- lista de articulos
+  function dibujarLista() {
+    const q = $("q").value;
+    const ts = tokens(q);
+    if (!ts.length) {
+      $("articulos").replaceChildren(el("p", "nota", `${fmt.format(articulos.length)} artículos. Escribí el código o parte de la descripción.`));
+      return;
+    }
+    const lista = articulos.filter(a => ts.every(t => a._t.includes(t) || sinCeros(norm(a.codigo)).includes(sinCeros(t))));
+    if (!lista.length) { $("articulos").replaceChildren(el("p", "aviso", "Ningún artículo coincide.")); return; }
+    const ul = el("ul", "lista-art");
+    for (const a of lista.slice(0, MAX)) {
+      const li = el("li");
+      const b = el("button", "art"); b.type = "button"; b.setAttribute("aria-pressed", String(!!elegido && elegido.codigo === a.codigo));
+      b.append(el("span", "cod", a.codigo), el("span", "des", a.descripcion));
+      if (a.usa_partidas) { const n = (partidas.get(a.codigo) || []).length; b.append(el("span", "tag", n ? `${n} ${n === 1 ? "partida" : "partidas"}` : "sin stock")); }
+      b.addEventListener("click", () => elegir(a));
+      li.append(b); ul.append(li);
+    }
+    $("articulos").replaceChildren(ul);
+    if (lista.length > MAX) $("articulos").append(el("p", "mas", `Se muestran ${MAX} de ${fmt.format(lista.length)}. Escribí más para achicar la búsqueda.`));
+  }
+
+  // ---------------------------------------------------------------- armado
+  function elegir(a) {
+    if (!elegido || elegido.codigo !== a.codigo) cantidades = a.usa_partidas ? {} : { "": 1 };
+    elegido = a;
+    dibujarLista();
+    dibujarArmado();
+    if (window.matchMedia("(max-width: 1099px)").matches) $("armado").scrollIntoView({ behavior: "smooth" });
+  }
+
+  function campoCantidad(clave) {
+    const c = el("div", "cant");
+    const n = el("input", "campo"); n.type = "number"; n.min = 0; n.max = 200; n.inputMode = "numeric";
+    n.value = cantidades[clave] || 0; n.setAttribute("aria-label", "Cantidad de etiquetas");
+    n.addEventListener("input", () => { cantidades[clave] = Math.max(0, Math.min(200, parseInt(n.value) || 0)); vista(); });
+    n.addEventListener("focus", () => n.select());
+    c.append(n, el("span", "", "etiq."));
+    return c;
+  }
+
+  function dibujarArmado() {
+    const a = elegido;
+    const t = el("section", "tarjeta armado");
+    t.append(el("h2", "", a.descripcion), el("p", "nota", "Código " + a.codigo + (a.unidad ? " · " + a.unidad : "")));
+
+    const s1 = el("div", "seccion-cb");
+    if (a.usa_partidas) {
+      const ps = (partidas.get(a.codigo) || []).slice().sort((x, y) => x.partida.localeCompare(y.partida, "es", { numeric: true }));
+      s1.append(el("h3", "", "Partidas"));
+      s1.append(el("p", "nota", ps.length
+        ? "Una etiqueta por tambor o bulto: poné cuántas de cada partida."
+        : "No tiene partidas con stock en Tango. Si llegó mercadería nueva, escribí la partida abajo."));
+      const ul = el("ul", "partidas");
+      for (const p of ps) {
+        const li = el("li", "partida");
+        li.append(el("span", "num", p.partida),
+                  campoCantidad(p.partida),
+                  el("small", "", `${fmt.format(p.saldo)} ${p.unidad || ""} · ${p.depositos.join(", ")}`));
+        ul.append(li);
+      }
+      s1.append(ul);
+      const otra = el("div", "otra");
+      const caja = el("div");
+      const inp = HT.campo(caja, "Otra partida", { value: "", maxLength: 30, autocomplete: "off" });
+      let previa = "";
+      const cant = campoCantidad("\u0000otra");
+      const sync = () => {
+        const v = inp.value.trim().toUpperCase();
+        const n = cantidades["\u0000otra"] || 0;
+        if (previa && previa !== v && !ps.some(p => p.partida === previa)) delete cantidades[previa];
+        if (v && !ps.some(p => p.partida === v)) cantidades[v] = n;
+        previa = v; vista();
+      };
+      inp.addEventListener("input", () => { if (inp.value.trim() && !(cantidades["\u0000otra"] > 0)) { cantidades["\u0000otra"] = 1; cant.querySelector("input").value = 1; } sync(); });
+      cant.querySelector("input").addEventListener("input", sync);
+      otra.append(caja, cant);
+      s1.append(otra);
+    } else {
+      s1.append(el("h3", "", "Cantidad"));
+      s1.append(el("p", "nota", "Este artículo no usa partidas: la etiqueta lleva solo su código."));
+      const fila = el("div", "partida"); fila.append(el("span", "num", "Etiquetas"), campoCantidad(""));
+      s1.append(fila);
+    }
+    t.append(s1);
+
+    const s2 = el("div", "seccion-cb"); s2.append(el("h3", "", "Vista previa"));
+    const v = el("div", "vista"); v.id = "vista"; s2.append(v);
+    const acc = el("div", "acciones-cb");
+    const imp = el("button", "boton primario", "Imprimir"); imp.type = "button"; imp.id = "imprimir";
+    imp.addEventListener("click", () => imprimir(pedidoActual()));
+    const sumar = el("button", "boton", "Agregar a la tanda"); sumar.type = "button"; sumar.id = "sumar";
+    sumar.addEventListener("click", agregarATanda);
+    const cuantas = el("span", "nota"); cuantas.id = "cuantas";
+    acc.append(imp, sumar, cuantas);
+    s2.append(acc);
+    t.append(s2);
+    $("armado").replaceChildren(t);
+    vista();
+  }
+
+  // [{codigo, descripcion, partida, cantidad}] de lo que esta cargado en pantalla
+  function pedidoActual() {
+    if (!elegido) return [];
+    return Object.entries(cantidades)
+      .filter(([k, n]) => n > 0 && !k.startsWith("\u0000"))
+      .map(([k, n]) => ({ codigo: elegido.codigo, descripcion: elegido.descripcion, partida: k, cantidad: n }));
+  }
+
+  const totalDe = pedido => pedido.reduce((s, x) => s + x.cantidad, 0);
+
+  function vista() {
+    const v = $("vista"); if (!v) return;
+    const pedido = pedidoActual();
+    const muestra = pedido[0] || { codigo: elegido.codigo, descripcion: elegido.descripcion,
+                                   partida: elegido.usa_partidas ? (((partidas.get(elegido.codigo) || [])[0] || {}).partida || "") : "" };
+    const e = etiqueta(muestra);
+    v.replaceChildren(e);
+    const escala = Math.min(1.4, (v.clientWidth - 4) / 378);          // 100 mm ≈ 378 px
+    e.style.transform = `scale(${escala})`;
+    v.style.height = Math.ceil(189 * escala + 10) + "px";
+    const total = totalDe(pedido);
+    $("imprimir").disabled = $("sumar").disabled = !total;
+    $("cuantas").textContent = !total ? (elegido.usa_partidas ? "Poné la cantidad de alguna partida." : "Poné la cantidad.")
+      : total === 1 ? "Sale 1 etiqueta." : `Salen ${total} etiquetas.`;
+  }
+
+  // ---------------------------------------------------------------- la etiqueta
+  function codigo(texto, alto) {
+    const largo = Codigo128.largo(texto);
+    const modulo = [0.375, 0.25, 0.2].find(m => largo * m <= ANCHO_UTIL + 7.5) || 0.2;   // 0,375 y 0,25 mm = 3 y 2 puntos de la Zebra
+    const svg = Codigo128.svg(texto, { modulo, alto });
+    svg.style.marginLeft = `-${(10 * modulo).toFixed(2)}mm`;   // el margen blanco del codigo cae sobre el borde de la etiqueta
+    return svg;
+  }
+
+  function etiqueta(x) {
+    const e = el("div", "cb" + (x.partida ? "" : " sola"));
+    e.append(el("div", "cb-des", x.descripcion));
+    const b1 = el("div", "cb-bloque");
+    const t1 = el("div", "cb-txt"); t1.append("Artículo ", el("b", "", x.codigo));
+    b1.append(codigo(x.codigo, x.partida ? 12.5 : 24), t1);
+    e.append(b1);
+    if (x.partida) {
+      const b2 = el("div", "cb-bloque");
+      const t2 = el("div", "cb-txt"); t2.append("Partida ", el("b", "", x.partida));
+      b2.append(codigo(x.partida, 12.5), t2);
+      e.append(b2);
+    }
+    return e;
+  }
+
+  function imprimir(pedido) {
+    if (!totalDe(pedido)) return;
+    const cont = $("impresion");
+    const hojas = [];
+    for (const x of pedido) for (let i = 0; i < x.cantidad; i++) hojas.push(etiqueta(x));
+    cont.replaceChildren(...hojas);
+    window.print();
+  }
+
+  // ---------------------------------------------------------------- tanda
+  function agregarATanda() {
+    for (const x of pedidoActual()) {
+      const y = tanda.find(z => z.codigo === x.codigo && z.partida === x.partida);
+      if (y) y.cantidad += x.cantidad; else tanda.push(x);
+    }
+    cantidades = elegido.usa_partidas ? {} : { "": 1 };
+    guardarTanda();
+    dibujarArmado();
+    $("tanda").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  function dibujarTanda() {
+    const c = $("tanda");
+    if (!tanda.length) { c.replaceChildren(); return; }
+    const t = el("section", "tarjeta tanda");
+    const total = totalDe(tanda);
+    t.append(el("h2", "", `Tanda para imprimir: ${total} ${total === 1 ? "etiqueta" : "etiquetas"}`));
+    const ul = el("ul");
+    tanda.forEach((x, i) => {
+      const li = el("li");
+      const txt = el("span"); txt.append(`${x.cantidad} × ${x.codigo}`, x.partida ? ` · partida ${x.partida}` : "", el("br"), el("small", "", x.descripcion));
+      const q = el("button", "boton chico peligro", "Quitar"); q.type = "button";
+      q.addEventListener("click", () => { tanda.splice(i, 1); guardarTanda(); });
+      li.append(txt, q); ul.append(li);
+    });
+    const acc = el("div", "acciones-cb");
+    const imp = el("button", "boton primario", "Imprimir la tanda"); imp.type = "button"; imp.addEventListener("click", () => imprimir(tanda));
+    const vac = el("button", "boton", "Vaciar"); vac.type = "button";
+    vac.addEventListener("click", () => { if (confirm("¿Vaciar la tanda?")) { tanda = []; guardarTanda(); } });
+    acc.append(imp, vac);
+    t.append(ul, acc);
+    c.replaceChildren(t);
+  }
+
+  window.addEventListener("resize", vista);
+  HT.conectarBuscador($("q"), $("limpiar"), dibujarLista);
+  $("actualizar").addEventListener("click", () => cargar(true));
+  dibujarTanda();
+  cargar(false);
+})();
+</script>
+</body>
+</html>

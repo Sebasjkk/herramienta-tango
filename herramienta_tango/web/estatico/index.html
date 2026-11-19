@@ -295,6 +295,9 @@
     dato("Código de barras", a.barras);
     if (a.puntoPedido) dato("Punto de pedido", num(a.puntoPedido));
     if (datos.childNodes.length) t.append(datos);
+    const imp = el("a", "boton chico", "Imprimir etiqueta con código de barras");
+    imp.href = "/codigos?art=" + encodeURIComponent(a.cod); imp.style.margin = "4px 0 6px";
+    t.append(imp);
 
     t.append(seccionStock(a), seccionPrecios(a));
     cont.replaceChildren(t);

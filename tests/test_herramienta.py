@@ -255,6 +255,12 @@ class TestServidor(unittest.TestCase):
         estado, cuerpo = self._get("/stock")
         self.assertEqual(estado, 200)
         self.assertIn(b"Stock por partida", cuerpo)
+        estado, cuerpo = self._get("/codigos")
+        self.assertEqual(estado, 200)
+        self.assertIn(b"/codigo128.js", cuerpo)
+        estado, cuerpo = self._get("/codigo128.js")
+        self.assertEqual(estado, 200)
+        self.assertIn(b"Codigo128", cuerpo)
 
     def test_precios(self):
         estado, cuerpo = self._get("/api/precios")
