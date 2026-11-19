@@ -71,6 +71,31 @@
     .agregar-fila { grid-template-columns: 1fr 1fr; }
     .agregar-fila .campo-art { grid-column: 1 / -1; }
   }
+  /* Importar desde Excel */
+  dialog.ayuda.ancha { max-width: 860px; }
+  .imp-resumen { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin: 12px 0; }
+  .imp-resumen div { border: 1px solid var(--linea); border-radius: 8px; padding: 8px 10px; }
+  .imp-resumen b { display: block; font-size: 1.3rem; font-variant-numeric: tabular-nums; }
+  .imp-resumen span { font-size: .8rem; color: var(--plomo); }
+  .imp-resumen .mal b { color: var(--oxido); }
+  .imp-listas { list-style: none; margin: 8px 0; padding: 0; max-height: 46vh; overflow-y: auto; border-top: 1px solid var(--linea); }
+  .imp-listas > li { border-bottom: 1px solid var(--linea-suave); }
+  .imp-listas details > summary { cursor: pointer; padding: 8px 2px; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+  .imp-listas summary b { min-width: 9em; }
+  .imp-listas summary small { color: var(--plomo); }
+  .imp-listas .err { color: var(--oxido); font-size: .85rem; }
+  .imp-renglones { list-style: none; margin: 0 0 8px; padding: 0 0 0 10px; font-size: .84rem; }
+  .imp-renglones li { display: grid; grid-template-columns: 6.5em 1fr auto; gap: 8px; padding: 3px 0; border-top: 1px dotted var(--linea-suave); }
+  .imp-renglones .est { font-weight: 600; }
+  .imp-renglones .agregar .est { color: var(--patina-oscura); }
+  .imp-renglones .distinto .est { color: #7A4A00; }
+  .imp-renglones .error .est, .imp-renglones .no_cargar .est { color: var(--oxido); }
+  .imp-renglones .igual { color: var(--plomo); }
+  .imp-renglones small { display: block; color: var(--plomo); }
+  .imp-op { display: flex; gap: 8px; align-items: flex-start; margin: 6px 0; font-size: .92rem; }
+  .imp-op input { margin-top: 3px; }
+  .avance { height: 10px; background: var(--linea-suave); border-radius: 99px; overflow: hidden; margin: 10px 0 6px; }
+  .avance > div { height: 100%; background: var(--patina); width: 0; transition: width .3s; }
 </style>
 </head>
 <body>
@@ -231,8 +256,9 @@
     const cab = el("div", "edicion");
     cab.append(el("p", "resumen", ts.length ? `${ls.length} de ${listas.length} listas` : `${listas.length} listas`));
     if (HT.esAdmin() && puedeEditar()) {
+      const imp = el("button", "boton chico", "Importar Excel"); imp.type = "button"; imp.addEventListener("click", importarExcel);
       const b = el("button", "boton chico primario", "Nueva lista"); b.type = "button"; b.addEventListener("click", nuevaLista);
-      cab.append(b);
+      cab.append(imp, b);
     }
     frag.append(cab);
     if (ls.length) {
@@ -429,6 +455,125 @@
     });
     t.append(fila, sug, elegido);
     return t;
+  }
+
+  // ---------------------------------------------------------------- importar desde Excel
+  const ESTADOS_IMP = { agregar: "Agregar", igual: "Ya está", distinto: "Distinto", error: "Error", no_cargar: "No cargar" };
+
+  function importarExcel() {
+    const dlg = ventana("Importar listas desde Excel", async (d, cerrar) => {
+      d.classList.add("ancha");
+      const cuerpo = el("div"); d.append(cuerpo);
+      const pie = el("div", "acciones"); d.append(pie);
+      const cerrarB = el("button", "boton", "Cerrar"); cerrarB.type = "button"; cerrarB.addEventListener("click", cerrar);
+
+      // Si hay una importacion en curso, mostrar el avance directamente
+      try { const e = (await pedir("/api/listas/importar/estado", true)).datos; if (e.corriendo) return seguir(); } catch {}
+      elegir();
+
+      function elegir(mensaje) {
+        cuerpo.replaceChildren(
+          el("p", "", "Elegí el Excel con las listas. Primero vas a ver qué cambiaría en Tango; no se graba nada hasta que confirmes."),
+          el("p", "nota", "Tiene que tener una hoja con las columnas Lista, Cliente, Artículo y Precio (y opcionalmente Cargar, Precio corregido y Observaciones), y puede tener una hoja Listas con Nro lista y Descripción."));
+        const f = el("input"); f.type = "file"; f.accept = ".xlsx";
+        cuerpo.append(f);
+        if (mensaje) cuerpo.append(el("p", "mensaje-error", mensaje));
+        pie.replaceChildren(cerrarB);
+        f.addEventListener("change", async () => {
+          const archivo = f.files[0]; if (!archivo) return;
+          cuerpo.append(el("p", "nota", "Leyendo el Excel y comparando con Tango…"));
+          try {
+            const b64 = await new Promise((ok, mal) => { const r = new FileReader();
+              r.onload = () => ok(String(r.result).split(",")[1]); r.onerror = mal; r.readAsDataURL(archivo); });
+            const plan = (await HT.escribir("/api/listas/importar/analizar", { archivo: b64 })).datos;
+            vistaPrevia(plan);
+          } catch (e) { elegir(e.message); }
+        });
+      }
+
+      function vistaPrevia(plan) {
+        const r = plan.resumen;
+        const caja = (n, txt, mal) => { const x = el("div", mal && n ? "mal" : ""); x.append(el("b", "", fmt.format(n)), el("span", "", txt)); return x; };
+        const res = el("div", "imp-resumen");
+        res.append(caja(r.listas_nuevas, "listas nuevas"), caja(r.listas_existentes, "listas que ya existen"),
+                   caja(r.agregar, "precios para agregar"), caja(r.igual, "ya cargados igual"),
+                   caja(r.distinto, "ya cargados con otro precio"), caja(r.asignaciones, "clientes a los que se asigna la lista"),
+                   caja(r.error + r.listas_con_error, "errores (no se cargan)", true));
+        const ul = el("ul", "imp-listas");
+        for (const l of plan.listas) {
+          const li = el("li"); const det = el("details"); const sum = el("summary");
+          const cuenta = e => l.renglones.filter(x => x.estado === e).length;
+          sum.append(el("b", "", `${l.numero} · ${l.nombre}`),
+            el("small", "", (l.existe ? "existe" : "nueva") + ` · ${l.razon_social || l.cliente}`),
+            el("small", "", [cuenta("agregar") && `${cuenta("agregar")} a agregar`, cuenta("igual") && `${cuenta("igual")} iguales`,
+                              cuenta("distinto") && `${cuenta("distinto")} distintos`, cuenta("error") && `${cuenta("error")} con error`]
+                              .filter(Boolean).join(" · ")));
+          if (l.asignar_de) sum.append(el("small", "", `asigna la lista (hoy usa ${l.asignar_de})`));
+          if (l.nota) sum.append(el("small", "", l.nota));
+          if (l.error) sum.append(el("span", "err", l.error));
+          det.append(sum);
+          const rs = el("ul", "imp-renglones");
+          for (const x of l.renglones) {
+            const fila = el("li", x.estado);
+            const desc = el("span"); desc.append(`${x.articulo} ${x.descripcion}`);
+            if (x.motivo) desc.append(el("small", "", x.motivo));
+            if (x.observacion) desc.append(el("small", "", "Obs.: " + x.observacion));
+            const fp = v => v == null ? "—" : fmtPrecio.format(v);
+            const precio = x.estado === "distinto" ? `${fp(x.actual)} → ${fp(x.precio)}` : (x.precio ? fp(x.precio) : "—");
+            fila.append(el("span", "est", ESTADOS_IMP[x.estado]), desc, el("span", "", precio));
+            rs.append(fila);
+          }
+          det.append(rs); li.append(det); ul.append(li);
+        }
+        const op1 = el("label", "imp-op"); const c1 = el("input"); c1.type = "checkbox";
+        op1.append(c1, el("span", "", `Cambiar también los ${r.distinto} precios que ya están cargados con otro valor`));
+        const op2 = el("label", "imp-op"); const c2 = el("input"); c2.type = "checkbox";
+        op2.append(c2, el("span", "", `Saltear los ${r.con_observaciones} precios que tienen observaciones (para cargarlos después de revisarlos)`));
+        const total = el("p", "nota");
+        const aplicar = el("button", "boton primario", "Cargar en Tango"); aplicar.type = "button";
+        const cuenta = () => {
+          const n = plan.listas.filter(l => !l.error).flatMap(l => l.renglones)
+            .filter(x => (x.estado === "agregar" || (c1.checked && x.estado === "distinto")) && !(c2.checked && x.observacion)).length;
+          total.textContent = `Se van a grabar ${n} precios en Tango, además de crear las listas nuevas y asignarlas a sus clientes. Lleva unos minutos.`;
+          aplicar.disabled = !n;
+        };
+        c1.addEventListener("change", cuenta); c2.addEventListener("change", cuenta);
+        cuenta();
+        cuerpo.replaceChildren(res, ul);
+        if (r.distinto) cuerpo.append(op1);
+        if (r.con_observaciones) cuerpo.append(op2);
+        cuerpo.append(total);
+        const otro = el("button", "boton", "Elegir otro archivo"); otro.type = "button"; otro.addEventListener("click", () => elegir());
+        aplicar.addEventListener("click", async () => {
+          if (!confirm("¿Cargar estos precios en Tango? Cada cambio queda en el registro de cambios.")) return;
+          aplicar.disabled = true;
+          try {
+            await HT.escribir("/api/listas/importar/aplicar", { plan: plan.id, actualizar_distintos: c1.checked, saltear_observaciones: c2.checked });
+            seguir();
+          } catch (e) { alert(e.message); aplicar.disabled = false; }
+        });
+        pie.replaceChildren(cerrarB, otro, aplicar);
+      }
+
+      async function seguir() {
+        const barra = el("div", "avance"); const relleno = el("div"); barra.append(relleno);
+        const txt = el("p", "nota"); const errs = el("ul", "imp-renglones");
+        cuerpo.replaceChildren(el("p", "", "Cargando en Tango. Podés cerrar esta ventana: la carga sigue en el servidor."), barra, txt, errs);
+        pie.replaceChildren(cerrarB);
+        while (document.body.contains(d)) {
+          let e;
+          try { e = (await pedir("/api/listas/importar/estado", true)).datos; } catch { await new Promise(r => setTimeout(r, 2000)); continue; }
+          relleno.style.width = (e.total ? Math.round(100 * e.hechos / e.total) : 0) + "%";
+          txt.textContent = e.corriendo ? `${e.hechos} de ${e.total} · ${e.actual}`
+            : `Terminado: ${e.hechos - e.errores.length} de ${e.total} pasos sin errores.`;
+          errs.replaceChildren(...e.errores.map(x => { const li = el("li", "error");
+            li.append(el("span", "est", "Error"), el("span", "", `${x.lista} ${x.articulo}`), el("span", "", x.error)); return li; }));
+          if (!e.corriendo) { cargarListas(true).then(() => render()); break; }
+          await new Promise(r => setTimeout(r, 1500));
+        }
+      }
+    });
+    return dlg;
   }
 
   function nuevaLista() {

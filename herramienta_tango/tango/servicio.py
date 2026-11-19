@@ -85,6 +85,14 @@ class ServicioTango:
         return self._editor
 
     @property
+    def importador(self):
+        """Importacion de listas de precios desde Excel."""
+        if getattr(self, "_importador", None) is None:
+            from ..importar_listas import ImportadorListas
+            self._importador = ImportadorListas(self.editor, self)
+        return self._importador
+
+    @property
     def mezclas(self):
         """Mezclas de polvos: historial y planilla de egreso para Tango."""
         if getattr(self, "_mezclas", None) is None:

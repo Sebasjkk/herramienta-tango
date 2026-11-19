@@ -38,6 +38,9 @@ dice quien hace el cambio y queda en el registro junto con la IP):
     POST /api/precios/quitar         {"renglon": id}
     POST /api/listas/crear           {"nombre": "...", "moneda": "$"|"US$", "numero": n|null, "cliente": id|null}
     POST /api/listas/asignar         {"lista": id, "cliente": id}   cambia la lista en la ficha del cliente
+    POST /api/listas/importar/analizar  {"archivo": base64 del .xlsx}   vista previa, no escribe
+    POST /api/listas/importar/aplicar   {"plan": id, "actualizar_distintos": bool, "saltear_observaciones": bool}
+    GET  /api/listas/importar/estado    avance de la importacion
     POST /api/mezclas/crear          {"referencia": "...", "renglones": [{"articulo", "partida", "cantidad"}]}
     POST /api/mezclas/subidas        {"ids": [..]}   ya se importaron en Tango
     POST /api/mezclas/borrar         {"id": n}       solo las que no se subieron
@@ -67,6 +70,8 @@ cualquiera abierta en la PC no pueda dispararlos.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import logging
 import mimetypes
@@ -91,6 +96,7 @@ TIPOS = {".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".j
          ".png": "image/png", ".ico": "image/x-icon", ".svg": "image/svg+xml"}
 MAX_DIAS_VENTAS = 366
 MAX_CUERPO = 10_000
+MAX_CUERPO_ARCHIVO = 8_000_000      # Excel en base64 para importar listas
 ENCABEZADO_PANEL = "X-Herramienta-Tango"
 ENCABEZADO_NOMBRE = "X-Nombre"
 DIRECCIONES_LOCALES = {"127.0.0.1", "::1", "::ffff:127.0.0.1"}
@@ -102,7 +108,8 @@ class PedidoInvalido(Exception):
 
 RUTAS_APP = {"/api/precios/cambiar", "/api/precios/agregar", "/api/precios/quitar",
              "/api/listas/crear", "/api/listas/eliminar", "/api/listas/asignar",
-             "/api/mezclas/crear", "/api/mezclas/subidas", "/api/mezclas/borrar"}
+             "/api/mezclas/crear", "/api/mezclas/subidas", "/api/mezclas/borrar",
+             "/api/listas/importar/analizar", "/api/listas/importar/aplicar"}
 
 
 def _a_json(valor) -> object:
@@ -150,6 +157,7 @@ def crear_rutas(contexto) -> dict[str, Callable[[dict, bool], tuple]]:
         "/api/remitos": lambda qs, f: s().remitos(f),
         "/api/precios/cambios": lambda qs, f: (s().editor.registro.ultimos(300), time.time()),
         "/api/mezclas": lambda qs, f: (s().mezclas.registro.todas(), time.time()),
+        "/api/listas/importar/estado": lambda qs, f: (s().importador.estado(), time.time()),
     }
 
 
@@ -351,10 +359,10 @@ def crear_manejador(contexto):
                 self._json(500, {"ok": False, "error": f"Error inesperado en el programa: {e.__class__.__name__}"})
 
         # --------------------------------------------------------- POST (solo panel)
-        def _leer_cuerpo(self) -> dict | None:
+        def _leer_cuerpo(self, maximo: int = MAX_CUERPO) -> dict | None:
             try:
                 largo = int(self.headers.get("Content-Length") or 0)
-                if largo > MAX_CUERPO:
+                if largo > maximo:
                     self._json(413, {"ok": False, "error": "Pedido demasiado grande."})
                     return None
                 cuerpo = self.rfile.read(largo) if largo else b"{}"
@@ -373,7 +381,7 @@ def crear_manejador(contexto):
             return f"{nombre} ({self.client_address[0]})" if nombre else self.client_address[0]
 
         def _post_app(self, ruta: str) -> None:
-            datos = self._leer_cuerpo()
+            datos = self._leer_cuerpo(MAX_CUERPO_ARCHIVO if ruta == "/api/listas/importar/analizar" else MAX_CUERPO)
             if datos is None:
                 return
             texto = lambda clave: str(datos.get(clave) or "")
@@ -392,6 +400,15 @@ def crear_manejador(contexto):
                     r = editor.crear_lista(texto("nombre"), texto("moneda"), quien, entero("numero"), entero("cliente"))
                 elif ruta == "/api/listas/asignar":
                     r = editor.asignar_lista(entero("lista"), entero("cliente"), quien)
+                elif ruta == "/api/listas/importar/analizar":
+                    try:
+                        contenido = base64.b64decode(texto("archivo"), validate=True)
+                    except (binascii.Error, ValueError):
+                        raise DatoInvalido("No se pudo leer el archivo.") from None
+                    r = contexto.servicio().importador.analizar(contenido)
+                elif ruta == "/api/listas/importar/aplicar":
+                    r = contexto.servicio().importador.aplicar(texto("plan"), quien, bool(datos.get("actualizar_distintos")),
+                                                               bool(datos.get("saltear_observaciones")))
                 elif ruta == "/api/mezclas/crear":
                     r = contexto.servicio().mezclas.crear(texto("referencia"), datos.get("renglones"), quien)
                 elif ruta == "/api/mezclas/subidas":

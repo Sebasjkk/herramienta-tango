@@ -262,27 +262,39 @@ class EditorPrecios:
                                      if r["ID_GVA17"] in detalles])
                 if dueno:
                     id_cliente, codigo_cliente = dueno["id"], dueno["codigo"]
-            registro = {
-                "ID_STA11": art.id, "DECIMALES_RESTO": None, "DECIMALES_GVA17": lista.get("DECIMALES") or 2,
-                "NRO_DE_LIS": lista.get("NRO_DE_LIS"), "COD_ARTICU": art.codigo, "ID_GVA10": id_lista,
-                "PRECIO": 0 if id_cliente is not None else nuevo_precio, "BASE": False, "FILLER": "", "GVA13": [],
-            }
-            nuevo_id = self._c.crear(PROCESO_RENGLONES, registro)
-            if not nuevo_id:
-                raise TangoError("Tango no devolvió el número del renglón nuevo.")
-            if id_cliente is not None:
-                creado = self._leer_renglon(nuevo_id)
-                creado["GVA13"] = [{
-                    "ACTUALIZAR_CONTROL_PRECIOS": False, "ID_GVA10": id_lista, "ID_STA11": art.id, "ID_GVA14": id_cliente,
-                    "FILLER": "", "COD_ARTICU": art.codigo, "COD_CLIENT": codigo_cliente,
-                    "NRO_LISTA": lista.get("NRO_DE_LIS"), "PRECIO": nuevo_precio, "ID_GVA17": nuevo_id,
-                }]
-                self._c.actualizar(PROCESO_RENGLONES, creado)
-            despues = _resumen(self._leer_renglon(nuevo_id))
+            r = self._crear_renglon(lista, art, nuevo_precio, quien, id_cliente, codigo_cliente)
             self._invalidar()
-            self.registro.anotar(quien, "agregar artículo", lista=lista.get("NOMBRE_LIS"), articulo=art.codigo,
-                                 cliente=codigo_cliente or None, despues=despues)
-            return {"id": nuevo_id, "despues": despues}
+            return r
+
+    def _crear_renglon(self, lista: dict, art, precio: float, quien: str,
+                       id_cliente: int | None = None, codigo_cliente: str = "") -> dict:
+        """Crea el renglon en Tango (sin controles; los hace quien llama, con el lock tomado)."""
+        id_lista = lista["ID_GVA10"]
+        registro = {
+            "ID_STA11": art.id, "DECIMALES_RESTO": None, "DECIMALES_GVA17": lista.get("DECIMALES") or 2,
+            "NRO_DE_LIS": lista.get("NRO_DE_LIS"), "COD_ARTICU": art.codigo, "ID_GVA10": id_lista,
+            "PRECIO": 0 if id_cliente is not None else precio, "BASE": False, "FILLER": "", "GVA13": [],
+        }
+        nuevo_id = self._c.crear(PROCESO_RENGLONES, registro)
+        if not nuevo_id:
+            raise TangoError("Tango no devolvió el número del renglón nuevo.")
+        if id_cliente is not None:
+            creado = self._leer_renglon(nuevo_id)
+            creado["GVA13"] = [{
+                "ACTUALIZAR_CONTROL_PRECIOS": False, "ID_GVA10": id_lista, "ID_STA11": art.id, "ID_GVA14": id_cliente,
+                "FILLER": "", "COD_ARTICU": art.codigo, "COD_CLIENT": codigo_cliente,
+                "NRO_LISTA": lista.get("NRO_DE_LIS"), "PRECIO": precio, "ID_GVA17": nuevo_id,
+            }]
+            self._c.actualizar(PROCESO_RENGLONES, creado)
+        despues_crudo = self._leer_renglon(nuevo_id)
+        despues = _resumen(despues_crudo)
+        self.registro.anotar(quien, "agregar artículo", lista=lista.get("NOMBRE_LIS"), articulo=art.codigo,
+                             cliente=codigo_cliente or None, despues=despues)
+        guardado = (despues_crudo.get("PRECIO") if id_cliente is None else
+                    next((c.get("PRECIO") for c in despues_crudo.get("GVA13") or [] if c.get("ID_GVA14") == id_cliente), None))
+        if guardado != precio:
+            raise TangoError(f"Se creó el renglón de {art.codigo} pero el precio guardado no coincide. Revisalo en Tango.")
+        return {"id": nuevo_id, "despues": despues}
 
     def quitar_articulo(self, id_renglon: int, quien: str) -> dict:
         with self._lock:
