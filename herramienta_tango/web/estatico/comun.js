@@ -14,6 +14,7 @@ window.HT = (() => {
     precios: '<path d="M3.5 12.2V4.5a1 1 0 0 1 1-1h7.7l8.3 8.3a1 1 0 0 1 0 1.4l-7.2 7.2a1 1 0 0 1-1.4 0z"/><circle cx="8" cy="8" r="1.4"/>',
     etiquetas: '<path d="M3.5 6.5h11l6 5.5-6 5.5h-11z"/><circle cx="8" cy="12" r="1.3"/>',
     codigos: '<path d="M4 5.5v13M7 5.5v13M10.5 5.5v13M13 5.5v13M16.5 5.5v13M20 5.5v13"/>',
+    mezclas: '<path d="M9 3.5h6M10 3.5v5.2L5 18a1.6 1.6 0 0 0 1.4 2.5h11.2A1.6 1.6 0 0 0 19 18l-5-9.3V3.5"/><path d="M7.2 14h9.6"/>',
     cotizaciones: '<path d="M6 3.5h8.5L19 8v12.5H6z"/><path d="M14 3.5V8h5M9 12.5h7M9 16h5"/>',
     usuarios: '<circle cx="9" cy="8" r="3.2"/><path d="M3 19c.6-3.3 3-5 6-5s5.4 1.7 6 5"/><path d="M16 5.2a3 3 0 0 1 0 5.6M18 14.4c1.6.7 2.6 2.2 3 4.6"/>',
     persona: '<circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c.8-3.9 3.7-6 7.5-6s6.7 2.1 7.5 6"/>',
@@ -23,6 +24,7 @@ window.HT = (() => {
     { id: "stock", titulo: "Stock por partida", corto: "Stock", href: "/stock", icono: "stock" },
     { id: "precios", titulo: "Listas de precios", corto: "Precios", href: "/precios", icono: "precios" },
     { id: "cotizaciones", titulo: "Cotizaciones", corto: "Cotiz.", href: "/cotizaciones", icono: "cotizaciones" },
+    { id: "mezclas", titulo: "Mezclas", corto: "Mezclas", href: "/mezclas", icono: "mezclas" },
     { id: "etiquetas", titulo: "Etiquetas de envío", corto: "Etiquetas", href: "/etiquetas", icono: "etiquetas" },
   ];
 

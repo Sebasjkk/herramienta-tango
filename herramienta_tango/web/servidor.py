@@ -26,6 +26,8 @@ Listas de precios (leidas de las tablas de Tango, no de la consulta 12742):
     GET /api/remitos                 remitos del ultimo año (consulta 17965), con la OC del pedido
     GET /api/clientes/<id>/envio     direcciones de entrega y contacto, para las etiquetas
     GET /api/precios/cambios         registro de cambios hechos desde la herramienta
+    GET /api/mezclas                 mezclas de polvos cargadas (historial)
+    GET /mezclas/planilla.xlsx?ids=1,2   planilla de Egresos de Stock para importar en Tango
     GET /api/sesion                  si se pueden modificar precios y quien esta adentro
 
 Modificar precios (cualquier equipo de la red; el encabezado X-Nombre, opcional,
@@ -36,6 +38,9 @@ dice quien hace el cambio y queda en el registro junto con la IP):
     POST /api/precios/quitar         {"renglon": id}
     POST /api/listas/crear           {"nombre": "...", "moneda": "$"|"US$", "numero": n|null, "cliente": id|null}
     POST /api/listas/asignar         {"lista": id, "cliente": id}   cambia la lista en la ficha del cliente
+    POST /api/mezclas/crear          {"referencia": "...", "renglones": [{"articulo", "partida", "cantidad"}]}
+    POST /api/mezclas/subidas        {"ids": [..]}   ya se importaron en Tango
+    POST /api/mezclas/borrar         {"id": n}       solo las que no se subieron
     POST /api/listas/eliminar        {"lista": id, "confirmar": "NOMBRE"}
 
 Con ?refrescar=1 se saltea la cache. Las respuestas tienen la forma
@@ -96,7 +101,8 @@ class PedidoInvalido(Exception):
 
 
 RUTAS_APP = {"/api/precios/cambiar", "/api/precios/agregar", "/api/precios/quitar",
-             "/api/listas/crear", "/api/listas/eliminar", "/api/listas/asignar"}
+             "/api/listas/crear", "/api/listas/eliminar", "/api/listas/asignar",
+             "/api/mezclas/crear", "/api/mezclas/subidas", "/api/mezclas/borrar"}
 
 
 def _a_json(valor) -> object:
@@ -143,6 +149,7 @@ def crear_rutas(contexto) -> dict[str, Callable[[dict, bool], tuple]]:
         "/api/cotizaciones": lambda qs, f: s().cotizaciones(f),
         "/api/remitos": lambda qs, f: s().remitos(f),
         "/api/precios/cambios": lambda qs, f: (s().editor.registro.ultimos(300), time.time()),
+        "/api/mezclas": lambda qs, f: (s().mezclas.registro.todas(), time.time()),
     }
 
 
@@ -311,6 +318,14 @@ def crear_manejador(contexto):
                     nombre = nombre.replace('"', "").encode("ascii", "replace").decode()
                     self._responder(200, "application/pdf", contenido,
                                     {"Content-Disposition": f'inline; filename="{nombre}"'})
+                elif url.path == "/mezclas/planilla.xlsx":
+                    try:
+                        ids = [int(x) for x in (qs.get("ids") or [""])[0].split(",") if x.strip()]
+                    except ValueError:
+                        raise PedidoInvalido("Mezclas inválidas.") from None
+                    nombre, contenido = contexto.servicio().mezclas.planilla(ids)
+                    self._responder(200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", contenido,
+                                    {"Content-Disposition": f'attachment; filename="{nombre}"'})
                 elif url.path == "/icono.ico":
                     icono = ruta_recurso("recursos/icono.ico")
                     if icono.is_file():
@@ -377,6 +392,12 @@ def crear_manejador(contexto):
                     r = editor.crear_lista(texto("nombre"), texto("moneda"), quien, entero("numero"), entero("cliente"))
                 elif ruta == "/api/listas/asignar":
                     r = editor.asignar_lista(entero("lista"), entero("cliente"), quien)
+                elif ruta == "/api/mezclas/crear":
+                    r = contexto.servicio().mezclas.crear(texto("referencia"), datos.get("renglones"), quien)
+                elif ruta == "/api/mezclas/subidas":
+                    r = contexto.servicio().mezclas.marcar_subidas([int(x) for x in datos.get("ids") or []], quien)
+                elif ruta == "/api/mezclas/borrar":
+                    contexto.servicio().mezclas.borrar(entero("id"), quien); r = None
                 else:
                     r = editor.eliminar_lista(entero("lista"), texto("confirmar"), quien)
                 self._json(200, {"ok": True, "datos": r})

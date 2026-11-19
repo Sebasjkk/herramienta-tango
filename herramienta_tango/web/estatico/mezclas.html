@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0B6E69">
+<title>Mezclas | Herramienta Tango</title>
+<link rel="icon" href="/icono-192.png">
+<link rel="apple-touch-icon" href="/icono-192.png">
+<link rel="manifest" href="/manifest.json">
+<link rel="stylesheet" href="/comun.css">
+<style>
+  .contenido-mz { display: grid; gap: 16px; }
+  .contenido-mz > * { min-width: 0; }
+  @media (min-width: 1100px) { .contenido-mz { grid-template-columns: minmax(420px, 1fr) minmax(340px, 440px); align-items: start; } }
+  .nueva { padding: 16px 18px; }
+  .nueva h2, .historial h2 { font-size: 1.1rem; margin: 0 0 4px; }
+  .seccion-mz { border-top: 1px solid var(--linea); margin: 14px -18px 0; padding: 14px 18px 0; }
+  .seccion-mz h3 { font-size: .95rem; margin: 0 0 8px; }
+  .sugerencias { list-style: none; margin: 4px 0 0; padding: 0; border: 1px solid var(--linea); border-radius: 8px; max-height: 240px; overflow-y: auto; background: var(--papel); }
+  .sugerencias button { width: 100%; text-align: left; font: inherit; font-size: .9rem; background: var(--papel); border: 0; padding: 8px 12px; cursor: pointer; color: inherit; }
+  .sugerencias li + li button { border-top: 1px solid var(--linea-suave); }
+  .sugerencias button:hover, .sugerencias button:focus-visible { background: var(--patina-suave); }
+  .sugerencias small { color: var(--plomo); margin-right: 8px; }
+  .sugerencias .vacio { padding: 8px 12px; color: var(--plomo); font-size: .9rem; }
+
+  .producto { border: 1px solid var(--linea); border-radius: var(--radio); padding: 10px 12px 12px; margin-bottom: 10px; background: #FBFCFC; }
+  .producto-cab { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .producto-cab b { font-size: .85rem; color: var(--plomo); }
+  .producto .elegido { font-weight: 600; overflow-wrap: anywhere; margin: 2px 0 8px; }
+  .producto .elegido small { display: block; color: var(--plomo); font-weight: 400; }
+  .fila-pc { display: grid; grid-template-columns: 1fr 130px; gap: 10px; align-items: end; }
+  @media (max-width: 480px) { .fila-pc { grid-template-columns: 1fr 100px; } }
+  .fila-pc select.campo { -webkit-appearance: auto; appearance: auto; background-image: none; }
+  .aviso-saldo { color: var(--oxido); font-size: .82rem; margin: 6px 0 0; }
+  .total-mz { display: flex; justify-content: space-between; align-items: baseline; margin: 6px 0 0; font-size: .95rem; }
+  .total-mz b { font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+  .acciones-mz { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 14px; }
+
+  .historial { padding: 14px 18px; }
+  .lista-mz { list-style: none; margin: 8px 0 0; padding: 0; }
+  .mz { border-top: 1px solid var(--linea); padding: 12px 0; }
+  .mz-cab { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+  .mz-cab b { overflow-wrap: anywhere; }
+  .mz small { color: var(--plomo); font-size: .8rem; }
+  .mz ul { list-style: none; margin: 6px 0; padding: 0; font-size: .88rem; }
+  .mz ul li { padding: 2px 0; overflow-wrap: anywhere; }
+  .estado { font-size: .75rem; font-weight: 700; padding: 2px 8px; border-radius: 99px; white-space: nowrap; }
+  .estado.pendiente { background: #FFF2D6; color: #7A4A00; }
+  .estado.subida { background: var(--patina-suave); color: var(--patina-oscura); }
+  .mz .acciones { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+  .pasos { margin: 8px 0 0; padding-left: 20px; font-size: .88rem; color: var(--plomo); }
+  .listo { border-left: 3px solid var(--patina); background: #F6FBFA; padding: 10px 12px; border-radius: 6px; margin-top: 12px; font-size: .92rem; }
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="app-nav" id="app-nav"></nav>
+  <div class="app-principal">
+    <div class="pagina">
+      <header class="cabecera">
+        <div class="cabecera-sup">
+          <h1>Mezclas</h1>
+          <div class="datos"><span id="estado">Consultando Tango…</span><button type="button" class="boton-texto" id="actualizar">Actualizar</button></div>
+        </div>
+      </header>
+      <div class="contenido-mz">
+        <section class="tarjeta nueva" id="nueva"></section>
+        <section class="tarjeta historial" id="historial"><p class="nota">Cargando mezclas…</p></section>
+      </div>
+      <p class="pie">Tango no deja registrar egresos de a uno por la API: la Herramienta arma la planilla de Egresos de Stock y se sube en Tango. Hasta que se sube, el stock de los polvos no baja.</p>
+    </div>
+  </div>
+</div>
+
+<script src="/comun.js"></script>
+<script>
+(() => {
+  "use strict";
+  HT.iniciar("mezclas");
+  const { $, el, norm, tokens, sinCeros, num, unidad, pedir, textoError, cajaError } = HT;
+  const EPS = 0.0001;
+
+  let articulos = [];               // con _t para buscar
+  let partidasDe = new Map();       // codigo -> [{partida, saldo, unidad, deposito}]
+  let remitos = [];
+  let mezclas = [];
+  let referencia = "";
+  let productos = [nuevoProducto(), nuevoProducto()];
+  let recienGuardada = null;
+
+  function nuevoProducto() { return { art: null, partida: "", cantidad: "" }; }
+  const leerNumero = t => { t = String(t || "").trim(); if (!t) return NaN; return Number(t.includes(",") ? t.replace(/\./g, "").replace(",", ".") : t); };
+  const fechaHora = iso => iso ? new Date(iso).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" }) : "";
+  const titulo = d => d ? d.charAt(0) + d.slice(1).toLowerCase() : "";
+
+  // ---------------------------------------------------------------- datos
+  async function cargar(forzar) {
+    $("estado").textContent = "Consultando Tango…";
+    try {
+      const [a, p] = await Promise.all([pedir("/api/articulos", forzar), pedir("/api/stock/partidas", forzar)]);
+      articulos = a.datos.map(x => { const t = norm(x.codigo + " " + x.descripcion + " " + (x.sinonimo || ""));
+                                     return { ...x, _t: t + " " + t.replace(/[^\p{L}\p{N} ]/gu, "") }; });
+      partidasDe = new Map();
+      for (const s of p.datos) {
+        if (!(s.saldo > EPS) || !s.partida) continue;
+        const l = partidasDe.get(s.codigo_articulo) || [];
+        const x = l.find(y => y.partida === s.partida);
+        if (x) x.saldo += s.saldo; else l.push({ partida: s.partida, saldo: s.saldo, unidad: s.unidad, deposito: s.deposito });
+        partidasDe.set(s.codigo_articulo, l);
+      }
+      for (const l of partidasDe.values()) l.sort((x, y) => x.partida.localeCompare(y.partida, "es", { numeric: true }));
+      $("estado").textContent = "Datos de Tango de las " + HT.hora(new Date(p.actualizado)) + " h";
+      dibujarNueva();
+    } catch (e) {
+      $("estado").textContent = "Sin datos";
+      $("nueva").replaceChildren(cajaError(textoError(e), () => cargar(true)));
+    }
+    pedir("/api/remitos").then(d => { remitos = d.datos; }).catch(() => {});
+  }
+
+  async function cargarMezclas() {
+    try { mezclas = (await pedir("/api/mezclas", true)).datos; dibujarHistorial(); }
+    catch (e) { $("historial").replaceChildren(cajaError(textoError(e), cargarMezclas)); }
+  }
+
+  // ---------------------------------------------------------------- buscador con sugerencias
+  function buscador(placeholder, buscar, alElegir, valor) {
+    const caja = el("div");
+    const inp = el("input", "campo"); inp.placeholder = placeholder; inp.autocomplete = "off"; inp.value = valor || "";
+    inp.setAttribute("aria-label", placeholder);
+    const sug = el("ul", "sugerencias"); sug.hidden = true;
+    inp.addEventListener("input", () => {
+      const ts = tokens(inp.value);
+      sug.replaceChildren();
+      if (!ts.length) { sug.hidden = true; return; }
+      const res = buscar(ts).slice(0, 25);
+      for (const r of res) {
+        const li = el("li"); const b = el("button"); b.type = "button";
+        b.append(el("small", "", r.chico), r.texto);
+        b.addEventListener("click", () => { sug.hidden = true; alElegir(r.valor, inp); });
+        li.append(b); sug.append(li);
+      }
+      if (!res.length) sug.append(el("li", "vacio", "No hay coincidencias."));
+      sug.hidden = false;
+    });
+    caja.append(inp, sug);
+    return { caja, inp };
+  }
+
+  // ---------------------------------------------------------------- nueva mezcla
+  function dibujarNueva() {
+    const t = $("nueva");
+    t.replaceChildren(el("h2", "", "Nueva mezcla"),
+      el("p", "nota", "Cargá los polvos que usaste, de qué partida salió cada uno y cuántos kilos."));
+
+    // Remito o cliente
+    const s1 = el("div", "seccion-mz"); s1.append(el("h3", "", "Remito o cliente"));
+    const ref = buscador("Número de remito o cliente", ts => remitos
+      .filter(r => ts.every(x => norm(r.numero + " " + r.numero_corto + " " + r.cliente).includes(x) ||
+                                 sinCeros(r.numero.replace(/\D/g, "")).includes(sinCeros(x.replace(/\D/g, "")) || "\u0000")))
+      .map(r => ({ chico: r.numero_corto, texto: r.cliente, valor: `Remito ${r.numero_corto} · ${r.cliente}` })),
+      (v, inp) => { referencia = v; inp.value = v; }, referencia);
+    ref.inp.addEventListener("input", () => { referencia = ref.inp.value; });
+    s1.append(ref.caja, el("p", "nota", "Si el remito todavía no está hecho, escribí el cliente."));
+    t.append(s1);
+
+    // Productos
+    const s2 = el("div", "seccion-mz"); s2.append(el("h3", "", "Productos"));
+    productos.forEach((p, i) => s2.append(filaProducto(p, i)));
+    const mas = el("button", "boton chico", "+ Agregar producto"); mas.type = "button";
+    mas.addEventListener("click", () => { productos.push(nuevoProducto()); dibujarNueva();
+      const ins = document.querySelectorAll(".producto .campo"); ins.length && ins[ins.length - 3] && ins[ins.length - 3].focus(); });
+    s2.append(mas);
+    const tot = el("div", "total-mz"); tot.id = "total";
+    s2.append(tot);
+    t.append(s2);
+
+    const acc = el("div", "acciones-mz");
+    const guardar = el("button", "boton primario", "Guardar mezcla"); guardar.type = "button"; guardar.id = "guardar";
+    guardar.addEventListener("click", guardarMezcla);
+    const err = el("p", "mensaje-error"); err.id = "error"; err.hidden = true;
+    acc.append(guardar);
+    t.append(acc, err);
+    if (recienGuardada) t.append(cajaListo(recienGuardada));
+    actualizarTotal();
+  }
+
+  function filaProducto(p, i) {
+    const c = el("div", "producto");
+    const cab = el("div", "producto-cab"); cab.append(el("b", "", `Producto ${i + 1}`));
+    if (productos.length > 1) {
+      const q = el("button", "boton chico peligro", "Quitar"); q.type = "button";
+      q.addEventListener("click", () => { productos.splice(i, 1); dibujarNueva(); });
+      cab.append(q);
+    }
+    c.append(cab);
+    if (!p.art) {
+      const b = buscador("Código o descripción del polvo", ts => articulos
+        .filter(a => ts.every(x => a._t.includes(x) || sinCeros(norm(a.codigo)).includes(sinCeros(x))))
+        .sort((x, y) => (partidasDe.has(y.codigo) ? 1 : 0) - (partidasDe.has(x.codigo) ? 1 : 0))
+        .map(a => ({ chico: a.codigo, texto: a.descripcion + (a.usa_partidas && !partidasDe.has(a.codigo) ? " (sin stock)" : ""), valor: a })),
+        a => { p.art = a; const ps = partidasDe.get(a.codigo) || []; p.partida = ps.length === 1 ? ps[0].partida : ""; dibujarNueva(); });
+      c.append(b.caja);
+      return c;
+    }
+    const a = p.art;
+    const eleg = el("div", "elegido"); eleg.append(a.descripcion, el("small", "", a.codigo));
+    const cambiar = el("button", "boton-texto", "Cambiar"); cambiar.type = "button";
+    cambiar.addEventListener("click", () => { p.art = null; p.partida = ""; dibujarNueva(); });
+    eleg.append(cambiar);
+    c.append(eleg);
+
+    const fila = el("div", "fila-pc");
+    const cajaP = el("div");
+    if (a.usa_partidas) {
+      const ps = partidasDe.get(a.codigo) || [];
+      const l = el("label", "etiqueta", "Partida"); l.htmlFor = "p" + i;
+      const sel = el("select", "campo"); sel.id = "p" + i;
+      sel.append(new Option(ps.length ? "Elegí la partida" : "No tiene partidas con stock", ""));
+      for (const x of ps) sel.append(new Option(`${x.partida} — ${num(x.saldo)} ${unidad(x.unidad)} · ${titulo(x.deposito)}`, x.partida));
+      sel.value = p.partida;
+      sel.addEventListener("change", () => { p.partida = sel.value; actualizarTotal(); });
+      cajaP.append(l, sel);
+    } else {
+      cajaP.append(el("p", "nota", "No lleva partidas."));
+    }
+    const cajaC = el("div");
+    const lc = el("label", "etiqueta", "Cantidad (" + (unidad(a.unidad) || "kg") + ")"); lc.htmlFor = "c" + i;
+    const n = el("input", "campo"); n.id = "c" + i; n.inputMode = "decimal"; n.value = p.cantidad; n.placeholder = "0";
+    n.addEventListener("input", () => { p.cantidad = n.value; actualizarTotal(); });
+    cajaC.append(lc, n);
+    fila.append(cajaP, cajaC);
+    c.append(fila);
+    const av = el("p", "aviso-saldo"); av.hidden = true; av.dataset.i = i;
+    c.append(av);
+    return c;
+  }
+
+  function actualizarTotal() {
+    let total = 0, unid = new Set(), completos = 0;
+    document.querySelectorAll(".aviso-saldo").forEach(av => {
+      const p = productos[+av.dataset.i]; av.hidden = true;
+      if (!p || !p.art) return;
+      const n = leerNumero(p.cantidad);
+      const x = (partidasDe.get(p.art.codigo) || []).find(y => y.partida === p.partida);
+      if (x && n > x.saldo + EPS) {
+        av.textContent = `En Tango esa partida tiene ${num(x.saldo)} ${unidad(x.unidad)}: quedaría en negativo. Revisá la partida o la cantidad.`;
+        av.hidden = false;
+      }
+    });
+    for (const p of productos) {
+      const n = leerNumero(p.cantidad);
+      if (p.art && n > 0) { total += n; unid.add(unidad(p.art.unidad) || "kg"); }
+      if (p.art && n > 0 && (!p.art.usa_partidas || p.partida)) completos++;
+    }
+    const tot = $("total");
+    if (tot) {
+      tot.replaceChildren(el("span", "", "Total de la mezcla"),
+        el("b", "", total ? `${num(total)} ${unid.size === 1 ? [...unid][0] : ""}` : "—"));
+    }
+    const g = $("guardar");
+    if (g) g.disabled = !completos || completos !== productos.filter(p => p.art || p.cantidad).length;
+  }
+
+  async function guardarMezcla() {
+    const err = $("error"); err.hidden = true;
+    const usados = productos.filter(p => p.art);
+    if (!referencia.trim()) { err.textContent = "Escribí el remito o el cliente de la mezcla."; err.hidden = false; return; }
+    const g = $("guardar"); g.disabled = true; g.textContent = "Guardando…";
+    try {
+      const d = await HT.escribir("/api/mezclas/crear", {
+        referencia, renglones: usados.map(p => ({ articulo: p.art.codigo, partida: p.partida, cantidad: leerNumero(p.cantidad) })) });
+      recienGuardada = d.datos;
+      referencia = ""; productos = [nuevoProducto(), nuevoProducto()];
+      dibujarNueva();
+      await cargarMezclas();
+      $("nueva").scrollIntoView({ behavior: "smooth", block: "end" });
+    } catch (e) {
+      err.textContent = e.message; err.hidden = false; g.disabled = false; g.textContent = "Guardar mezcla";
+    }
+  }
+
+  function pasos() {
+    const ol = el("ol", "pasos");
+    for (const x of ["Descargá la planilla.", "En Tango web abrí Egresos de Stock y elegí «Registrar egreso de Stock».",
+                     "Subí el archivo y confirmá. Si Tango devuelve una planilla de errores, no se registró nada de esos renglones.",
+                     "Volvé acá y tocá «Ya la subí»."]) ol.append(el("li", "", x));
+    return ol;
+  }
+
+  function cajaListo(m) {
+    const c = el("div", "listo");
+    c.append(el("b", "", `Mezcla ${m.id} guardada.`), " Falta subirla a Tango para que baje el stock:", pasos());
+    const acc = el("div", "acciones-mz");
+    acc.append(botonPlanilla([m.id], "Descargar planilla"));
+    const ok = el("button", "boton-texto", "Cerrar"); ok.type = "button"; ok.addEventListener("click", () => { recienGuardada = null; dibujarNueva(); });
+    acc.append(ok);
+    c.append(acc);
+    return c;
+  }
+
+  function botonPlanilla(ids, texto) {
+    const a = el("a", "boton primario chico", texto);
+    a.href = "/mezclas/planilla.xlsx?ids=" + ids.join(",");
+    a.setAttribute("download", "");
+    return a;
+  }
+
+  // ---------------------------------------------------------------- historial
+  function dibujarHistorial() {
+    const t = $("historial");
+    const pend = mezclas.filter(m => m.estado !== "subida");
+    t.replaceChildren(el("h2", "", "Mezclas cargadas"));
+    if (pend.length > 1) {
+      const acc = el("div", "acciones-mz");
+      acc.append(botonPlanilla(pend.map(m => m.id), `Planilla de las ${pend.length} pendientes`));
+      const todas = el("button", "boton chico", "Marcar todas como subidas"); todas.type = "button";
+      todas.addEventListener("click", () => marcarSubidas(pend.map(m => m.id), `¿Ya subiste a Tango la planilla con las ${pend.length} mezclas pendientes?`));
+      acc.append(todas);
+      t.append(acc);
+    }
+    if (!mezclas.length) { t.append(el("p", "nota", "Todavía no se cargó ninguna mezcla.")); return; }
+    const ul = el("ul", "lista-mz");
+    for (const m of mezclas.slice(0, 100)) {
+      const li = el("li", "mz");
+      const cab = el("div", "mz-cab");
+      cab.append(el("b", "", `${m.id}. ${m.referencia}`),
+                 el("span", "estado " + (m.estado === "subida" ? "subida" : "pendiente"), m.estado === "subida" ? "Subida a Tango" : "Falta subir"));
+      li.append(cab, el("small", "", `${fechaHora(m.fecha)} · ${m.quien}`));
+      const r = el("ul");
+      let total = 0;
+      for (const x of m.renglones) {
+        total += x.cantidad;
+        r.append(el("li", "", `${num(x.cantidad)} ${unidad(x.unidad)} de ${x.codigo} ${x.descripcion}${x.partida ? " · partida " + x.partida : ""}`));
+      }
+      li.append(r);
+      if (m.estado === "subida") {
+        li.append(el("small", "", `Subida por ${m.subida_por} el ${fechaHora(m.subida_fecha)}`));
+      } else {
+        const acc = el("div", "acciones");
+        acc.append(botonPlanilla([m.id], "Planilla"));
+        const ok = el("button", "boton chico", "Ya la subí"); ok.type = "button";
+        ok.addEventListener("click", () => marcarSubidas([m.id], `¿Ya subiste a Tango la planilla de la mezcla ${m.id}?`));
+        const b = el("button", "boton chico peligro", "Borrar"); b.type = "button";
+        b.addEventListener("click", async () => {
+          if (!confirm(`¿Borrar la mezcla ${m.id}? Solo hacelo si no la subiste a Tango.`)) return;
+          try { await HT.escribir("/api/mezclas/borrar", { id: m.id }); if (recienGuardada && recienGuardada.id === m.id) { recienGuardada = null; dibujarNueva(); } cargarMezclas(); }
+          catch (e) { alert(e.message); }
+        });
+        acc.append(ok, b);
+        li.append(acc);
+      }
+      ul.append(li);
+    }
+    t.append(ul);
+  }
+
+  async function marcarSubidas(ids, pregunta) {
+    if (!confirm(pregunta)) return;
+    try {
+      await HT.escribir("/api/mezclas/subidas", { ids });
+      if (recienGuardada && ids.includes(recienGuardada.id)) { recienGuardada = null; dibujarNueva(); }
+      await cargarMezclas();
+      cargar(true);       // los saldos de las partidas cambian cuando Tango registra el egreso
+    } catch (e) { alert(e.message); }
+  }
+
+  $("actualizar").addEventListener("click", () => { cargar(true); cargarMezclas(); });
+  dibujarNueva();
+  cargar(false);
+  cargarMezclas();
+})();
+</script>
+</body>
+</html>

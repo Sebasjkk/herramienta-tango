@@ -84,6 +84,14 @@ class ServicioTango:
             self._editor = EditorPrecios(self._cliente, self)
         return self._editor
 
+    @property
+    def mezclas(self):
+        """Mezclas de polvos: historial y planilla de egreso para Tango."""
+        if getattr(self, "_mezclas", None) is None:
+            from ..mezclas import EditorMezclas
+            self._mezclas = EditorMezclas(self)
+        return self._mezclas
+
     def _cacheado(self, clave: str, tipo: str, cargar: Callable[[], T], forzar: bool) -> tuple[T, float]:
         return self._cache.obtener(clave, self.vigencia[tipo], cargar, forzar)
 
