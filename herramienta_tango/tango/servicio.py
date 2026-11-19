@@ -19,7 +19,7 @@ from typing import Callable, TypeVar
 from . import procesos
 from .cliente import ClienteTango, TangoError
 from .modelos import (Articulo, Cliente, Cotizacion, DatosEnvio, Deposito, ListaPrecios, Pedido,
-                      PrecioVigente, Remito, RenglonCotizacion, RenglonVenta, SaldoPartida, solo_digitos)
+                      PrecioVigente, Remito, RenglonCotizacion, RenglonVenta, SaldoArticulo, SaldoPartida, solo_digitos)
 
 T = TypeVar("T")
 
@@ -92,6 +92,13 @@ class ServicioTango:
         return self._cacheado("saldos_partida", "saldos_partida", lambda: [
             SaldoPartida.desde_tango(x)
             for x in self._cliente.consulta_live(procesos.LIVE_SALDOS_POR_PARTIDA)
+        ], forzar)
+
+    def saldos_por_articulo(self, forzar: bool = False) -> tuple[list[SaldoArticulo], float]:
+        """Saldo por articulo y deposito: sirve para los articulos que no llevan partidas."""
+        return self._cacheado("saldos_articulo", "saldos_partida", lambda: [
+            SaldoArticulo.desde_tango(x)
+            for x in self._cliente.consulta_live(procesos.LIVE_SALDOS_POR_ARTICULO)
         ], forzar)
 
     def articulos(self, forzar: bool = False) -> tuple[list[Articulo], float]:

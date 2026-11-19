@@ -68,6 +68,32 @@ class SaldoPartida:
 
 
 @dataclass(frozen=True)
+class SaldoArticulo:
+    """Saldo de un articulo en un deposito (consulta Live 17668), lleve o no partidas."""
+    id_articulo: int | None
+    codigo_articulo: str
+    descripcion: str
+    deposito: str
+    unidad: str
+    saldo: float
+    comprometido: float
+    a_recibir: float
+
+    @classmethod
+    def desde_tango(cls, x: dict) -> "SaldoArticulo":
+        return cls(
+            id_articulo=x.get("ID_STA11"),
+            codigo_articulo=_txt(x.get("COD_ARTICULO")),
+            descripcion=_txt(x.get("DESCRIPCION")),
+            deposito=_txt(x.get("DESCRIPCION_DEPOSITO")),
+            unidad=_txt(x.get("UM_CONTROL_STOCK")),
+            saldo=round(_num(x.get("SALDO_CONTROL_STOCK")), 4),
+            comprometido=round(_num(x.get("CANTIDAD_COMPROMETIDA_CONTROL_STOCK")), 4),
+            a_recibir=round(_num(x.get("CANTIDAD_A_RECIBIR_CONTROL_STOCK")), 4),
+        )
+
+
+@dataclass(frozen=True)
 class Articulo:
     id: int | None
     codigo: str

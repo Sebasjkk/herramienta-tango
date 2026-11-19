@@ -6,6 +6,7 @@ de la empresa consulte Tango sin conocer su API:
 
     GET /api/estado                  version y estado de las actualizaciones
     GET /api/stock/partidas          saldos por partida
+    GET /api/stock/articulos         saldos por articulo y deposito (tambien los que no llevan partidas)
     GET /api/articulos
     GET /api/depositos
     GET /api/clientes
@@ -130,6 +131,7 @@ def crear_rutas(contexto) -> dict[str, Callable[[dict, bool], tuple]]:
 
     return {
         "/api/stock/partidas": lambda qs, f: s().saldos_por_partida(f),
+        "/api/stock/articulos": lambda qs, f: s().saldos_por_articulo(f),
         "/api/articulos": lambda qs, f: s().articulos(f),
         "/api/depositos": lambda qs, f: s().depositos(f),
         "/api/clientes": lambda qs, f: s().clientes(f),

@@ -94,7 +94,7 @@
         <section class="detalle" id="detalle" aria-live="polite"></section>
       </div>
 
-      <p class="pie">Solo lectura: los datos salen de Tango y no se modifica nada. El stock sale de los saldos por partida: los artículos que no llevan partidas todavía no muestran stock acá.</p>
+      <p class="pie">Esta pantalla solo consulta: los datos salen de Tango y no se modifica nada. Los artículos con partidas muestran el stock por lote; los que no llevan partidas, por depósito.</p>
     </div>
   </div>
 </div>
@@ -110,8 +110,9 @@
   const EPS = 0.0001;
   let arts = new Map();        // codigo -> articulo
   let stockPor = new Map();    // codigo -> [lotes]
+  let stockArt = new Map();    // codigo -> [saldo por deposito], para los que no llevan partidas
   let preciosPor = new Map();  // codigo -> [precios]
-  let cargado = { articulos: false, stock: false, precios: false };
+  let cargado = { articulos: false, stock: false, stockArt: false, precios: false };
   let errores = [];
   let seleccion = null;        // codigo elegido
   let resultados = [];
@@ -124,6 +125,7 @@
     const tareas = [
       pedir("/api/articulos", forzar).then(d => { indexarArticulos(d.datos); cargado.articulos = true; return d; }),
       pedir("/api/stock/partidas", forzar).then(d => { indexarStock(d.datos); cargado.stock = true; return d; }),
+      pedir("/api/stock/articulos", forzar).then(d => { indexarStockArt(d.datos); cargado.stockArt = true; return d; }),
       pedir("/api/precios", forzar).then(d => { indexarPrecios(d.datos); cargado.precios = true; return d; }),
     ].map(p => p.then(d => { render(); return d; }, e => { errores.push(textoError(e)); render(); return null; }));
     const listos = (await Promise.all(tareas)).filter(Boolean);
@@ -159,6 +161,15 @@
     }
     reindexarTexto();
   }
+  function indexarStockArt(lista) {
+    stockArt = new Map();
+    for (const x of lista) {
+      if (!stockArt.has(x.codigo_articulo)) stockArt.set(x.codigo_articulo, []);
+      stockArt.get(x.codigo_articulo).push(x);
+      const a = arts.get(x.codigo_articulo);
+      if (a && !a.um) a.um = x.unidad;
+    }
+  }
   function indexarPrecios(lista) {
     preciosPor = new Map();
     const vistos = new Set();
@@ -179,8 +190,14 @@
     }
   }
 
+  // Los articulos con partidas se ven por lote; los demas, por deposito (consulta 17668)
   function stockDe(cod) {
     const lotes = stockPor.get(cod) || [];
+    const a = arts.get(cod);
+    if (!lotes.length && a && a.usaPart === false && stockArt.has(cod)) {
+      const deps = stockArt.get(cod);
+      return { lotes: [], deps, porDeposito: true, total: deps.reduce((s, d) => s + d.saldo, 0), conSaldo: [] };
+    }
     const total = lotes.reduce((s, l) => s + l.saldo, 0);
     return { lotes, total, conSaldo: lotes.filter(l => Math.abs(l.saldo) > EPS) };
   }
@@ -250,7 +267,7 @@
     b.append(el("span", "res-cod", a.cod), el("span", "res-desc", a.desc || "(sin descripción)"));
     const st = stockDe(a.cod);
     const caja = el("span", "res-stock");
-    if (st.lotes.length) {
+    if (st.lotes.length || st.porDeposito) {
       if (st.total < -EPS) caja.classList.add("neg");
       if (Math.abs(st.total) <= EPS) caja.classList.add("nada");
       caja.append(el("b", "", Math.abs(st.total) <= EPS ? "Sin stock" : num(st.total) + " " + unidad(a.um)));
@@ -303,6 +320,24 @@
     cont.replaceChildren(t);
   }
 
+  // Articulos sin partidas: total y saldo por deposito
+  function stockPorDeposito(s, a, st) {
+    const tot = el("div", "total" + (st.total < -EPS ? " neg" : ""));
+    tot.append(el("b", "", num(st.total)), el("span", "", unidad(a.um) + " en total"));
+    s.append(tot);
+    const conMov = st.deps.filter(d => Math.abs(d.saldo) > EPS || d.comprometido > EPS || d.a_recibir > EPS);
+    if (conMov.length > 1 || (conMov.length === 1 && titulo(conMov[0].deposito) !== "Central")) {
+      s.append(el("p", "nota", conMov.map(d => `${titulo(d.deposito)}: ${num(d.saldo)} ${unidad(a.um)}`).join(" · ")));
+    }
+    const comp = st.deps.reduce((x, d) => x + d.comprometido, 0);
+    const rec = st.deps.reduce((x, d) => x + d.a_recibir, 0);
+    const extra = [comp > EPS ? `Comprometido en pedidos: ${num(comp)}` : "", rec > EPS ? `A recibir: ${num(rec)}` : ""].filter(Boolean);
+    if (extra.length) s.append(el("p", "nota", extra.join(". ") + "."));
+    if (st.total < -EPS) s.append(el("p", "nota alerta", "Saldo negativo: en Tango salió más de lo que entró. Suele pasar cuando se remite algo cuyo ingreso nunca se cargó."));
+    s.append(el("p", "nota", "Este artículo no lleva partidas: el stock se ve por depósito, sin lotes."));
+    return s;
+  }
+
   function seccionStock(a) {
     const s = el("section", "seccion");
     const cab = el("div", "seccion-cab");
@@ -315,10 +350,11 @@
     }
     s.append(cab);
 
-    if (!cargado.stock) { s.append(el("p", "nota", "Cargando stock…")); return s; }
+    if (!cargado.stock || (a.usaPart === false && !cargado.stockArt)) { s.append(el("p", "nota", "Cargando stock…")); return s; }
+    if (st.porDeposito) return stockPorDeposito(s, a, st);
     if (!st.lotes.length) {
       s.append(el("p", "nota", a.usaPart === false
-        ? "Este artículo no lleva partidas. Su stock todavía no se consulta desde acá."
+        ? "Este artículo no lleva partidas y Tango no le registra saldo."
         : "No tiene lotes registrados en Tango."));
       return s;
     }
@@ -330,7 +366,7 @@
     const porDep = new Map();
     for (const l of st.conSaldo) porDep.set(l.deposito, (porDep.get(l.deposito) || 0) + l.saldo);
     if (porDep.size > 1) {
-      s.append(el("p", "nota", [...porDep].map(([d, v]) => `${titulo(d)}: ${num(v)} ${unidad(a.um)}`).join(". ") + "."));
+      s.append(el("p", "nota", [...porDep].map(([d, v]) => `${titulo(d)}: ${num(v)} ${unidad(a.um)}`).join(" · ")));
     }
     const negs = st.conSaldo.filter(l => l.saldo < -EPS);
     if (negs.length) {

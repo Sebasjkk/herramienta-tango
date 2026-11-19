@@ -49,6 +49,15 @@ PRECIO = {"COD_ARTICULO": "0039812", "DESCRIPCION": "CORREA PRUEBA", "NRO_LISTA_
           "ID_STA11": 3655, "ID_GVA14": 660}
 
 
+SALDO_ART = {"ID_STA11": 1, "ID_STA22": 1, "COD_ARTICULO": "1PAR00001", "DESCRIPCION": "11E108   O'Ring (2)",
+             "DESCRIPCION_DEPOSITO": "CENTRAL", "UM_CONTROL_STOCK": "C/U", "SALDO_CONTROL_STOCK": -41,
+             "CANTIDAD_COMPROMETIDA_CONTROL_STOCK": 2, "CANTIDAD_A_RECIBIR_CONTROL_STOCK": 0, "PUNTO_DE_PEDIDO": 0}
+
+
+def _live(proceso):
+    return {procesos.LIVE_PRECIOS_VIGENTES: [PRECIO], procesos.LIVE_SALDOS_POR_ARTICULO: [SALDO_ART]}.get(proceso, [SALDO])
+
+
 class ClienteFalso:
     """Reemplaza al cliente HTTP: cuenta cuantas veces se le pidio cada proceso."""
 
@@ -57,7 +66,7 @@ class ClienteFalso:
 
     def consulta_live(self, proceso, desde=None, hasta=None):
         self.llamadas.append((proceso, desde, hasta))
-        return [PRECIO] if proceso == procesos.LIVE_PRECIOS_VIGENTES else [SALDO]
+        return _live(proceso)
 
     def listar(self, proceso, vista=""):
         self.llamadas.append((proceso,))
@@ -155,7 +164,7 @@ class ClienteConToken:
         return []
 
     def consulta_live(self, proceso, desde=None, hasta=None):
-        return [PRECIO] if proceso == procesos.LIVE_PRECIOS_VIGENTES else [SALDO]
+        return _live(proceso)
 
 
 class TestServidor(unittest.TestCase):
@@ -246,6 +255,12 @@ class TestServidor(unittest.TestCase):
         self.assertEqual(estado, 200)
         self.assertTrue(datos["ok"])
         self.assertEqual(datos["datos"][0]["partida"], "709")
+
+    def test_stock_por_articulo(self):
+        estado, cuerpo = self._get("/api/stock/articulos")
+        d = json.loads(cuerpo)["datos"][0]
+        self.assertEqual(estado, 200)
+        self.assertEqual((d["codigo_articulo"], d["saldo"], d["comprometido"], d["deposito"]), ("1PAR00001", -41, 2, "CENTRAL"))
 
     def test_pagina(self):
         estado, cuerpo = self._get("/")

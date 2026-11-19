@@ -22,6 +22,7 @@ LISTAS_PRECIOS = 984
 
 # Consultas Live (endpoint api/GetApiLiveQueryData)
 LIVE_SALDOS_POR_PARTIDA = 17686
+LIVE_SALDOS_POR_ARTICULO = 17668     # por articulo y deposito, tambien los que no llevan partidas
 LIVE_VENTAS_DETALLE = 17839  # renglones de comprobantes de venta, por fecha
 LIVE_COTIZACIONES = 17948      # Ventas > Consultas > Cotizaciones > Consulta (una por fila)
 LIVE_COTIZACIONES_DETALLE = 12481  # Ventas > Consultas > Cotizaciones > Detalle (renglones)
