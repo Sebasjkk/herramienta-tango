@@ -40,6 +40,8 @@
   .sugerencias li + li button { border-top: 1px solid var(--linea-suave); }
   .sugerencias button:hover, .sugerencias button:focus-visible { background: var(--patina-suave); }
   .sugerencias small { color: var(--plomo); margin-right: 8px; }
+  .sugerencias .vacio { padding: 8px 12px; color: var(--plomo); font-size: .9rem; }
+  .selector-cliente { margin-bottom: 12px; }
   .elegido { font-size: .9rem; padding: 8px 0 0; }
 
   .renglones { list-style: none; margin: 0; padding: 0; }
@@ -114,6 +116,7 @@
   let actual = null;        // lista abierta: {lista, cliente, renglones, especiales_leidos}
   let articulos = null;     // para agregar: se cargan la primera vez
   let editando = null;      // id del renglon que se esta editando
+  let clientes = null;      // para asignar listas: se cargan la primera vez
 
   // ---------------------------------------------------------------- modificar (sin claves)
   const puedeEditar = () => true;
@@ -167,6 +170,7 @@
     if (c.accion === "quitar artículo") return `${c.lista}: se quitó${art} (estaba a ${p(precioDe(c.antes))})`;
     if (c.accion === "crear lista") return `Se creó la lista ${c.lista} (número ${c.numero}, ${c.moneda})`;
     if (c.accion === "eliminar lista") return `Se eliminó la lista ${c.lista} con ${c.articulos} artículos`;
+    if (c.accion === "asignar lista") return `${c.razon_social || c.cliente}: pasó de la lista ${c.lista_anterior} a ${c.lista}`;
     return `${c.accion} ${c.lista || ""}`;
   }
 
@@ -271,10 +275,16 @@
     const cli = actual.cliente;
     cab.append(el("p", "", `Lista ${l.numero} · ${l.moneda === "$" ? "pesos" : "dólares"} · ${fmt.format(actual.renglones.length)} artículos`));
     cab.append(el("p", "", cli ? `Precios para ${cli.razon_social || cli.codigo} (precio especial del cliente)` : "Precios de lista, iguales para todos los clientes que la usen."));
+    const resumen = listas.find(x => x.id === l.id);
+    const asignados = resumen ? resumen.clientes_asignados : [];
+    cab.append(el("p", "", asignados.length
+      ? `La usa${asignados.length > 1 ? "n" : ""} en Tango: ${asignados.length > 3 ? asignados.slice(0, 3).join(", ") + ` y ${asignados.length - 3} más` : asignados.join(", ")}`.replace(/\.?$/, ".")
+      : "Ningún cliente la tiene asignada en Tango."));
     if (HT.esAdmin() && puedeEditar()) {
       const acc = el("div", "acciones");
+      const asig = el("button", "boton chico", "Asignar a un cliente"); asig.type = "button"; asig.addEventListener("click", asignarLista);
       const b = el("button", "boton chico peligro", "Eliminar lista"); b.type = "button"; b.addEventListener("click", eliminarLista);
-      acc.append(b); cab.append(acc);
+      acc.append(asig, b); cab.append(acc);
     }
     d.append(cab);
     if (puedeEditar()) d.append(formAgregar());
@@ -435,18 +445,24 @@
       const sig = Math.max(0, ...listas.map(l => l.numero || 0)) + 1;
       const nro = el("input", "campo"); nro.id = "nl-numero"; nro.inputMode = "numeric"; nro.placeholder = String(sig);
       const lnro = el("label", "etiqueta", "Número de lista (si lo dejás vacío, " + sig + ")"); lnro.htmlFor = "nl-numero";
-      const nota = el("p", "", "Para que un cliente la use, después asignásela en su ficha en Tango (campo Lista de precios).");
+      const lc = el("label", "etiqueta", "Cliente que la va a usar (opcional)"); lc.htmlFor = "sc-cliente";
+      const sel = selectorCliente();
+      const nota = el("p", "", "Si elegís un cliente, la lista queda asignada en su ficha de Tango. Si no, la podés asignar después.");
       const err = el("p", "mensaje-error"); err.hidden = true;
       const acc = el("div", "acciones");
       const c = el("button", "boton", "Cancelar"); c.type = "button"; c.addEventListener("click", cerrar);
       const ok = el("button", "boton primario", "Crear lista"); ok.type = "submit";
       acc.append(c, ok);
-      f.append(ln, n, lm, radios, lnro, nro, nota, err, acc);
+      f.append(ln, n, lm, radios, lnro, nro, lc, sel.nodo, nota, err, acc);
       f.addEventListener("submit", async e => {
         e.preventDefault(); ok.disabled = true; err.hidden = true;
         try {
+          const elegido = sel.valor();
           const res = await escribir("/api/listas/crear", { nombre: n.value, moneda: f.moneda.value,
-                                                            numero: nro.value.trim() ? Number(nro.value) : null });
+                                                            numero: nro.value.trim() ? Number(nro.value) : null,
+                                                            cliente: elegido ? elegido.id : null });
+          if (res.datos.error_asignacion) alert("La lista se creó, pero no se pudo asignar al cliente: " + res.datos.error_asignacion);
+          if (elegido) clientes = null;
           cerrar();
           await cargarListas(true);
           location.hash = "lista=" + res.datos.id;
@@ -454,6 +470,77 @@
       });
       d.append(f);
       setTimeout(() => n.focus(), 50);
+    });
+  }
+
+  // Buscador de clientes con su lista actual. valor() = cliente elegido o null
+  function selectorCliente(alCambiar) {
+    const nodo = el("div", "selector-cliente");
+    const q = el("input", "campo"); q.id = "sc-cliente"; q.autocomplete = "off"; q.placeholder = "Código o razón social";
+    const sug = el("ul", "sugerencias"); sug.hidden = true;
+    let elegido = null;
+    const cambiar = c => { elegido = c; alCambiar && alCambiar(c); };
+    let cargando = null;
+    const cargar = () => cargando || (cargando = pedir("/api/clientes", true).then(d => {
+      clientes = d.datos.filter(c => c.habilitado).map(c => ({ ...c, _t: norm(c.codigo + " " + c.razon_social + " " + c.cuit) }));
+      mostrar();
+    }).catch(e => { cargando = null; alertar(nodo, textoError(e)); }));
+    q.addEventListener("focus", () => { if (!clientes) cargar(); });
+    q.addEventListener("input", () => { cambiar(null); if (!clientes) cargar(); mostrar(); });
+    function mostrar() {
+      if (elegido) return;
+      const ts = tokens(q.value);
+      sug.replaceChildren();
+      if (!ts.length) { sug.hidden = true; return; }
+      if (!clientes) { sug.append(el("li", "vacio", "Cargando clientes…")); sug.hidden = false; return; }
+      const res = clientes.filter(c => ts.every(x => c._t.includes(x))).slice(0, 30);
+      for (const c of res) {
+        const li = el("li"); const b = el("button"); b.type = "button";
+        b.append(el("small", "", c.codigo + (c.lista_precios ? " · hoy usa " + c.lista_precios : " · sin lista")), c.razon_social);
+        b.addEventListener("click", () => { q.value = c.razon_social; sug.hidden = true; cambiar(c); });
+        li.append(b); sug.append(li);
+      }
+      if (!res.length) sug.append(el("li", "vacio", "Ningún cliente coincide."));
+      sug.hidden = false;
+    }
+    nodo.append(q, sug);
+    return { nodo, valor: () => elegido, foco: () => q.focus() };
+  }
+
+  function asignarLista() {
+    const l = actual.lista;
+    ventana("Asignar la lista " + l.nombre, (d, cerrar) => {
+      const f = el("form");
+      const lc = el("label", "etiqueta", "Cliente"); lc.htmlFor = "sc-cliente";
+      const info = el("p", "", "Se cambia el campo Lista de precios en la ficha del cliente en Tango. Desde ese momento, sus cotizaciones y pedidos nuevos toman esta lista.");
+      const err = el("p", "mensaje-error"); err.hidden = true;
+      const acc = el("div", "acciones");
+      const c = el("button", "boton", "Cancelar"); c.type = "button"; c.addEventListener("click", cerrar);
+      const ok = el("button", "boton primario", "Asignar"); ok.type = "submit"; ok.disabled = true;
+      const sel = selectorCliente(cli => {
+        err.hidden = true;
+        ok.disabled = !cli || norm(cli.lista_precios || "") === norm(l.nombre);
+        info.textContent = !cli ? "Se cambia el campo Lista de precios en la ficha del cliente en Tango."
+          : norm(cli.lista_precios || "") === norm(l.nombre) ? `${cli.razon_social} ya usa esta lista.`
+          : `${cli.razon_social} deja de usar ${cli.lista_precios || "la lista que tiene"} y pasa a usar ${l.nombre}. Sus cotizaciones y pedidos nuevos toman esta lista.`;
+        const dueno = actual.cliente;
+        aviso.hidden = !(cli && dueno && dueno.id !== cli.id);
+        if (!aviso.hidden) aviso.textContent = `Ojo: en esta lista los precios están cargados como especiales de ${dueno.razon_social || dueno.codigo} y el precio de lista está en 0. ${cli.razon_social} vería los artículos a 0 hasta que le cargues sus precios.`;
+      });
+      const aviso = el("p", "mensaje-error"); aviso.hidden = true;
+      acc.append(c, ok);
+      f.append(lc, sel.nodo, info, aviso, err, acc);
+      f.addEventListener("submit", async e => {
+        e.preventDefault(); const cli = sel.valor(); if (!cli) return;
+        ok.disabled = true; ok.textContent = "Asignando…"; err.hidden = true;
+        try {
+          await escribir("/api/listas/asignar", { lista: l.id, cliente: cli.id });
+          clientes = null; cerrar();
+          await cargarListas(true); render();
+        } catch (ex) { err.textContent = ex.message; err.hidden = false; ok.disabled = false; ok.textContent = "Asignar"; }
+      });
+      d.append(f);
+      setTimeout(sel.foco, 50);
     });
   }
 

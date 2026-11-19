@@ -33,7 +33,8 @@ dice quien hace el cambio y queda en el registro junto con la IP):
     POST /api/precios/cambiar        {"renglon": id, "precio": n, "cliente": id_cliente|null}
     POST /api/precios/agregar        {"lista": id, "articulo": "codigo", "precio": n, "cliente": id|null, "codigo_cliente": "..."}
     POST /api/precios/quitar         {"renglon": id}
-    POST /api/listas/crear           {"nombre": "...", "moneda": "$"|"US$", "numero": n|null}
+    POST /api/listas/crear           {"nombre": "...", "moneda": "$"|"US$", "numero": n|null, "cliente": id|null}
+    POST /api/listas/asignar         {"lista": id, "cliente": id}   cambia la lista en la ficha del cliente
     POST /api/listas/eliminar        {"lista": id, "confirmar": "NOMBRE"}
 
 Con ?refrescar=1 se saltea la cache. Las respuestas tienen la forma
@@ -94,7 +95,7 @@ class PedidoInvalido(Exception):
 
 
 RUTAS_APP = {"/api/precios/cambiar", "/api/precios/agregar", "/api/precios/quitar",
-             "/api/listas/crear", "/api/listas/eliminar"}
+             "/api/listas/crear", "/api/listas/eliminar", "/api/listas/asignar"}
 
 
 def _a_json(valor) -> object:
@@ -371,7 +372,9 @@ def crear_manejador(contexto):
                 elif ruta == "/api/precios/quitar":
                     r = editor.quitar_articulo(entero("renglon"), quien)
                 elif ruta == "/api/listas/crear":
-                    r = editor.crear_lista(texto("nombre"), texto("moneda"), quien, entero("numero"))
+                    r = editor.crear_lista(texto("nombre"), texto("moneda"), quien, entero("numero"), entero("cliente"))
+                elif ruta == "/api/listas/asignar":
+                    r = editor.asignar_lista(entero("lista"), entero("cliente"), quien)
                 else:
                     r = editor.eliminar_lista(entero("lista"), texto("confirmar"), quien)
                 self._json(200, {"ok": True, "datos": r})

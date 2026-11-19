@@ -44,11 +44,16 @@ class TangoFalso:
             1351: renglon(1351, 6, 10, 3655, "0039812", 0, [(660, "SCIPIO", 241.78)]),
             1352: renglon(1352, 6, 10, 3656, "0039813", 0, [(660, "SCIPIO", 241.78)]),
         }
+        # Fichas de clientes (2117): la lista va en ID_GVA10 y NRO_LISTA
+        self.fichas = {309: {"ID_GVA14": 309, "COD_GVA14": "AERARG", "RAZON_SOCI": "AEROLINEAS ARG", "ID_GVA10": 1,
+                             "NRO_LISTA": 1, "FECHA_MODI": "2019-08-07T15:33:34", "DIRECCION_ENTREGA": [{"ID": 1}]}}
         self.escrituras = []
         self._sig = 2000
 
+    _CLAVES = {984: "ID_GVA10", 20091: "ID_GVA17", 2117: "ID_GVA14"}
+
     def _tabla(self, proceso):
-        return self.listas if proceso == 984 else self.renglones
+        return {984: self.listas, 2117: self.fichas}.get(proceso, self.renglones)
 
     def listar(self, proceso, vista=""):
         if proceso == 984:
@@ -74,7 +79,9 @@ class TangoFalso:
         return self._sig
 
     def actualizar(self, proceso, registro):
-        clave = "ID_GVA10" if proceso == 984 else "ID_GVA17"
+        clave = self._CLAVES[proceso]
+        if proceso == 2117:
+            registro = {**registro, "FECHA_MODI": "2026-11-19T07:44:24"}
         self._tabla(proceso)[registro[clave]] = copy.deepcopy(registro)
         self.escrituras.append(("actualizar", proceso, registro[clave], len(registro.get("GVA13") or [])))
 
@@ -189,6 +196,26 @@ class TestEditor(unittest.TestCase):
         self.assertFalse(any(x["ID_GVA10"] == 6 for x in self.tango.renglones.values()))
         self.assertEqual(len(self.registro.ultimos()[0]["contenido"]), 2)   # queda copia de lo borrado
 
+    def test_asignar_lista_a_cliente(self):
+        r = self.editor.asignar_lista(6, 309, "Estela")
+        ficha = self.tango.fichas[309]
+        self.assertEqual((ficha["ID_GVA10"], ficha["NRO_LISTA"]), (6, 10))
+        self.assertEqual(ficha["DIRECCION_ENTREGA"], [{"ID": 1}])        # se manda la ficha entera
+        self.assertEqual(r["anterior"], "METCO")
+        c = self.registro.ultimos()[0]
+        self.assertEqual((c["accion"], c["cliente"], c["lista_anterior"], c["lista"]), ("asignar lista", "AERARG", "METCO", "SCIPIO"))
+        n = len(self.tango.escrituras)
+        self.assertTrue(self.editor.asignar_lista(6, 309, "Estela")["sin_cambios"])   # ya la tiene: no escribe
+        self.assertEqual(len(self.tango.escrituras), n)
+        with self.assertRaises(PedidoInvalido):
+            self.editor.asignar_lista(6, 999, "Estela")                   # cliente que no existe
+
+    def test_crear_lista_para_un_cliente(self):
+        r = self.editor.crear_lista("aerarg", "US$", "Estela", id_cliente=309)
+        self.assertEqual(self.tango.fichas[309]["ID_GVA10"], r["id"])
+        self.assertEqual(self.tango.fichas[309]["NRO_LISTA"], r["numero"])
+        self.assertEqual(r["asignada"]["anterior"], "METCO")
+
     def test_precios_de_articulo(self):
         ps = self.editor.precios_de_articulo("0039812")
         self.assertEqual([(p["lista"], p["especiales"][0]["razon_social"]) for p in ps], [("SCIPIO", "SCIPIO S.A.")])
@@ -247,5 +274,10 @@ class TestServidorPrecios(unittest.TestCase):
         self.assertEqual(d["datos"]["cliente"]["codigo"], "SCIPIO")
         estado, d = self._pedir("/api/precios/cambios")
         self.assertEqual(d["datos"][0]["quien"], "Gustavo Ruiz (127.0.0.1)")
+        estado, d = self._pedir("/api/listas/asignar", {"lista": 6, "cliente": 309})
+        self.assertEqual(estado, 200, d)
+        self.assertEqual(self.tango.fichas[309]["NRO_LISTA"], 10)
+        estado, _ = self._pedir("/api/listas/asignar", {"lista": 6})
+        self.assertEqual(estado, 400)
         estado, _ = self._pedir("/api/sesion")
         self.assertEqual(estado, 404)                        # ya no hay perfiles

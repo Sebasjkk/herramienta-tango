@@ -38,6 +38,7 @@ log = logging.getLogger("herramienta_tango")
 
 PROCESO_LISTAS = procesos.LISTAS_PRECIOS     # 984
 PROCESO_RENGLONES = procesos.PRECIOS_ABM     # 20091
+PROCESO_CLIENTES = procesos.CLIENTES         # 2117 (ficha completa con GetById)
 LIMITE_DETALLE = 400        # listas con hasta tantos articulos se leen con los precios especiales
 VIGENCIA_RENGLONES = 60     # segundos
 MAX_NOMBRE_LISTA = 20
@@ -302,7 +303,8 @@ class EditorPrecios:
         if self._c.obtener(PROCESO_RENGLONES, actual["ID_GVA17"]):
             raise TangoError("Tango no borró el artículo de la lista.")
 
-    def crear_lista(self, nombre: str, moneda: str, quien: str, numero: int | None = None) -> dict:
+    def crear_lista(self, nombre: str, moneda: str, quien: str, numero: int | None = None,
+                    id_cliente: int | None = None) -> dict:
         nombre = " ".join((nombre or "").split()).upper()
         if not nombre:
             raise PedidoInvalido("Escribí el nombre de la lista.")
@@ -334,7 +336,14 @@ class EditorPrecios:
                 raise TangoError("Tango no creó la lista.")
             self._invalidar()
             self.registro.anotar(quien, "crear lista", lista=nombre, numero=int(numero), moneda=moneda)
-            return {"id": nuevo_id, "numero": int(numero), "nombre": nombre}
+        salida = {"id": nuevo_id, "numero": int(numero), "nombre": nombre}
+        if id_cliente:
+            # La lista ya quedo creada; si falla la asignacion se avisa, pero no se deshace
+            try:
+                salida["asignada"] = self.asignar_lista(nuevo_id, id_cliente, quien)
+            except (PedidoInvalido, TangoError) as e:
+                salida["error_asignacion"] = str(e)
+        return salida
 
     def eliminar_lista(self, id_lista: int, confirmar_nombre: str, quien: str) -> dict:
         with self._lock:
@@ -366,3 +375,36 @@ class EditorPrecios:
             if sigue:
                 raise TangoError("Se quitaron los artículos, pero Tango no borró la lista.")
             return {"articulos_quitados": len(copia)}
+
+    def asignar_lista(self, id_lista: int, id_cliente: int, quien: str) -> dict:
+        """Cambia la lista de precios en la ficha del cliente (proceso 2117).
+
+        La ficha guarda la lista en dos campos: ID_GVA10 (id interno) y NRO_LISTA
+        (numero). Se lee la ficha completa, se cambian solo esos dos y se manda
+        entera; probado el 19/11/2026 con AERARG: no cambia nada mas que FECHA_MODI.
+        """
+        if not id_lista or not id_cliente:
+            raise PedidoInvalido("Elegí la lista y el cliente.")
+        with self._lock:
+            lista = self._lista(id_lista)
+            ficha = self._c.obtener(PROCESO_CLIENTES, id_cliente)
+            if not ficha:
+                raise PedidoInvalido("Ese cliente ya no existe en Tango.")
+            nro = lista.get("NRO_DE_LIS")
+            antes = {"id": ficha.get("ID_GVA10"), "numero": ficha.get("NRO_LISTA")}
+            cliente = {"id": id_cliente, "codigo": (ficha.get("COD_GVA14") or "").strip(),
+                       "razon_social": (ficha.get("RAZON_SOCI") or "").strip()}
+            if antes["id"] == id_lista:
+                return {"cliente": cliente, "lista": lista.get("NOMBRE_LIS"), "sin_cambios": True}
+            nombres = {x.get("ID_GVA10"): (x.get("NOMBRE_LIS") or "").strip() for x in self._listas_crudas()}
+            self._c.actualizar(PROCESO_CLIENTES, {**ficha, "ID_GVA10": id_lista, "NRO_LISTA": nro})
+            despues = self._c.obtener(PROCESO_CLIENTES, id_cliente) or {}
+            self._servicio.olvidar("clientes")
+            if despues.get("ID_GVA10") != id_lista:
+                raise TangoError("Tango no guardó la lista en la ficha del cliente.")
+            self.registro.anotar(quien, "asignar lista", cliente=cliente["codigo"], razon_social=cliente["razon_social"],
+                                 lista=(lista.get("NOMBRE_LIS") or "").strip(), numero=nro,
+                                 lista_anterior=nombres.get(antes["id"]) or antes["numero"],
+                                 numero_anterior=antes["numero"])
+            return {"cliente": cliente, "lista": (lista.get("NOMBRE_LIS") or "").strip(),
+                    "anterior": nombres.get(antes["id"]) or f"Lista {antes['numero']}"}
