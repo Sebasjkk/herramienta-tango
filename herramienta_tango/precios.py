@@ -411,13 +411,20 @@ class EditorPrecios:
                 self._c.borrar(PROCESO_LISTAS, id_lista)
                 borrada = not self._c.obtener(PROCESO_LISTAS, id_lista)
             except TangoError as e:
-                if re.search(r"\bpedidos\b", str(e).lower()):     # "...datos relacionados en Pedidos"
+                motivo = str(e).lower()
+                # "No es posible eliminar el registro porque existen datos relacionados en X":
+                # si X no son los precios de la propia lista (Pedidos, Cotizaciones de Ventas,
+                # facturas...), quitar los articulos no lo destraba. Se frena sin tocar nada.
+                # (REPOSICION, 20/11/2026: se quitaron 619 articulos por no frenar con Cotizaciones.)
+                relacion = re.search(r"relacionad\w* (?:en|con) (.+?)\.?$", motivo)
+                if relacion and not re.search(r"precio|art[ií]culo", relacion.group(1)):
                     self.registro.anotar(quien, "error al eliminar lista", lista=nombre, articulos_quitados=0, error=str(e))
                     self._invalidar()
-                    raise TangoError(f"Tango no dejó eliminar la lista {nombre}: {str(e).rstrip('.')}. Aunque estén "
-                                     "anulados, los pedidos siguen apuntando a la lista. No se tocó nada. "
-                                     "Los pedidos anulados se borran con Depuración de pedidos (Tango web, "
-                                     "proceso 12331); después volvé a eliminar la lista.") from None
+                    extra = (" Aunque estén anulados, los pedidos siguen apuntando a la lista: los anulados se borran con "
+                             "Depuración de pedidos (Tango web, proceso 12331)." if "pedido" in relacion.group(1) else
+                             " Mientras existan esos comprobantes, aunque estén anulados, Tango no deja borrarla.")
+                    raise TangoError(f"Tango no dejó eliminar la lista {nombre}: {str(e).rstrip('.')}. No se tocó nada."
+                                     f"{extra}") from None
                 borrada = False
             if borrada:
                 sueltos = 0

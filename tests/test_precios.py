@@ -213,7 +213,13 @@ class TestEditor(unittest.TestCase):
         # Anulado: ya no frena de antemano. Si Tango rechaza por pedidos, no se toca nada.
         self.tango.pedidos[24]["ESTADO"] = 5
         self.tango.rechazar_borrar_lista = "No es posible eliminar el registro porque existen datos relacionados en Pedidos."
-        with self.assertRaisesRegex(TangoError, "Aunque estén anulados.*No se tocó nada"):
+        with self.assertRaisesRegex(TangoError, "No se tocó nada.*Depuración de pedidos"):
+            editor.eliminar_lista(6, "SCIPIO", "Gustavo")
+        self.assertEqual(len(self.tango.renglones), antes)
+        # Cotizaciones (o cualquier otro comprobante): tambien frena sin tocar nada
+        self.tango.rechazar_borrar_lista = ("No es posible eliminar el registro porque existen datos relacionados "
+                                            "en Cotizaciones de Ventas.")
+        with self.assertRaisesRegex(TangoError, "Cotizaciones de Ventas. No se tocó nada"):
             editor.eliminar_lista(6, "SCIPIO", "Gustavo")
         self.assertEqual(len(self.tango.renglones), antes)
         # Si Tango la deja borrar, se borra con sus articulos
