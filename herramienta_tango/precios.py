@@ -414,8 +414,10 @@ class EditorPrecios:
                 if re.search(r"\bpedidos\b", str(e).lower()):     # "...datos relacionados en Pedidos"
                     self.registro.anotar(quien, "error al eliminar lista", lista=nombre, articulos_quitados=0, error=str(e))
                     self._invalidar()
-                    raise TangoError(f"Tango no dejó eliminar la lista {nombre}: {e}. Aunque estén anulados, los pedidos "
-                                     "siguen apuntando a la lista. No se tocó nada.") from None
+                    raise TangoError(f"Tango no dejó eliminar la lista {nombre}: {str(e).rstrip('.')}. Aunque estén "
+                                     "anulados, los pedidos siguen apuntando a la lista. No se tocó nada. "
+                                     "Los pedidos anulados se borran con Depuración de pedidos (Tango web, "
+                                     "proceso 12331); después volvé a eliminar la lista.") from None
                 borrada = False
             if borrada:
                 sueltos = 0
@@ -469,7 +471,7 @@ class EditorPrecios:
             nros = ", ".join(sorted({str(p.get("NRO_PEDIDO") or "").strip()[-8:].lstrip("0") or "?" for p in usan})[:5])
             mensaje = (f"No se puede eliminar: la usan {len(usan)} pedido{'s' if len(usan) > 1 else ''} en Tango "
                        f"(número {nros}) y Tango no deja borrar una lista con pedidos. No se tocó nada.")
-            mensaje += (" Anulá esos pedidos en Tango (Ventas > Pedidos > Anular) y volvé a intentar.")
+            mensaje += " Para borrarla: anulá esos pedidos en Tango (Ventas > Pedidos > Anular) y después corré Depuración de pedidos (Tango web, proceso 12331), que borra los anulados."
             raise PedidoInvalido(mensaje)
 
     def _detalles_proceso(self, proceso: int, ids: list[int]) -> dict[int, dict]:
