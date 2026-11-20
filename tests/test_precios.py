@@ -209,16 +209,23 @@ class TestEditor(unittest.TestCase):
         antes = len(self.tango.renglones)
         with self.assertRaisesRegex(PedidoInvalido, "1 pedido en Tango.*37.*No se tocó nada"):
             editor.eliminar_lista(6, "SCIPIO", "Gustavo")
-        self.tango.pedidos[24]["ESTADO"] = 5                                 # anulado: sigue frenando
-        with self.assertRaisesRegex(PedidoInvalido, "Anular no alcanza.*eliminarlo en Tango"):
+        self.assertEqual((len(self.tango.renglones), self.tango.escrituras), (antes, []))
+        # Anulado: ya no frena de antemano. Si Tango rechaza por pedidos, no se toca nada.
+        self.tango.pedidos[24]["ESTADO"] = 5
+        self.tango.rechazar_borrar_lista = "No es posible eliminar el registro porque existen datos relacionados en Pedidos."
+        with self.assertRaisesRegex(TangoError, "Aunque estén anulados.*No se tocó nada"):
             editor.eliminar_lista(6, "SCIPIO", "Gustavo")
         self.assertEqual(len(self.tango.renglones), antes)
-        self.assertEqual(self.tango.escrituras, [])
+        # Si Tango la deja borrar, se borra con sus articulos
+        self.tango.rechazar_borrar_lista = ""
+        editor.eliminar_lista(6, "SCIPIO", "Gustavo")
+        self.assertNotIn(6, self.tango.listas)
+        self.assertFalse(any(r["ID_GVA10"] == 6 for r in self.tango.renglones.values()))
 
     def test_restaurar_lista_eliminada(self):
         # el cliente SCIPIO ya usa otra lista, pero sus precios especiales siguen en la copia
         editor = EditorPrecios(self.tango, ServicioFalso([cliente("SCIPIO", "METCO")]), self.registro)
-        self.tango.rechazar_borrar_lista = "existen datos relacionados en Pedidos"
+        self.tango.rechazar_borrar_lista = "La lista tiene comprobantes asociados"
         originales = {r["COD_ARTICU"]: (r["PRECIO"], [c["PRECIO"] for c in r["GVA13"]])
                       for r in self.tango.renglones.values() if r["ID_GVA10"] == 6}
         with self.assertRaises(TangoError):

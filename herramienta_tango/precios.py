@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import threading
 import time
 from collections import Counter
@@ -402,7 +403,32 @@ class EditorPrecios:
             copia = [{"articulo": x.get("COD_ARTICU"), **_resumen(x)} for x in completos]
             self.registro.anotar(quien, "eliminar lista", lista=nombre, numero=lista.get("NRO_DE_LIS"),
                                  articulos=len(copia), contenido=copia)
-            # 2) Quitar los articulos y borrar la lista
+            # 2) Primero se intenta borrar la lista tal como esta. Si Tango la rechaza por
+            #    pedidos (aunque esten anulados) no se toco nada; si la borra, se limpian los
+            #    renglones que hayan quedado. Solo si la rechaza por otro motivo (por ejemplo,
+            #    porque todavia tiene articulos) se quitan los articulos y se reintenta.
+            try:
+                self._c.borrar(PROCESO_LISTAS, id_lista)
+                borrada = not self._c.obtener(PROCESO_LISTAS, id_lista)
+            except TangoError as e:
+                if re.search(r"\bpedidos\b", str(e).lower()):     # "...datos relacionados en Pedidos"
+                    self.registro.anotar(quien, "error al eliminar lista", lista=nombre, articulos_quitados=0, error=str(e))
+                    self._invalidar()
+                    raise TangoError(f"Tango no dejó eliminar la lista {nombre}: {e}. Aunque estén anulados, los pedidos "
+                                     "siguen apuntando a la lista. No se tocó nada.") from None
+                borrada = False
+            if borrada:
+                sueltos = 0
+                for actual in completos:
+                    try:
+                        if self._c.obtener(PROCESO_RENGLONES, actual["ID_GVA17"]):
+                            self._borrar_renglon(actual)
+                            sueltos += 1
+                    except TangoError:
+                        pass
+                self._invalidar()
+                return {"articulos_quitados": len(completos), "clientes_reasignados": reasignados}
+            # 3) Quitar los articulos y borrar la lista
             quitados = 0
             try:
                 for actual in completos:
@@ -436,13 +462,14 @@ class EditorPrecios:
         if pedidos and "ID_GVA10" not in pedidos[0]:
             completos = self._detalles_proceso(PROCESO_PEDIDOS, [p["ID_GVA21"] for p in pedidos if p.get("ID_GVA21")])
             usan = [p for p in completos.values() if p.get("ID_GVA10") == id_lista]
+        # Si todos los que la usan estan anulados, se deja que Tango decida (se intenta borrar
+        # la lista primero, sin tocar articulos)
+        usan = [p for p in usan if p.get("ESTADO") != 5]
         if usan:
             nros = ", ".join(sorted({str(p.get("NRO_PEDIDO") or "").strip()[-8:].lstrip("0") or "?" for p in usan})[:5])
             mensaje = (f"No se puede eliminar: la usan {len(usan)} pedido{'s' if len(usan) > 1 else ''} en Tango "
                        f"(número {nros}) y Tango no deja borrar una lista con pedidos. No se tocó nada.")
-            if all(p.get("ESTADO") == 5 for p in usan if "ESTADO" in p) and any("ESTADO" in p for p in usan):
-                mensaje += (" Anular no alcanza: el pedido anulado sigue existiendo. Hay que eliminarlo en Tango "
-                            "(Ventas > Pedidos > Eliminar) y después volver a eliminar la lista.")
+            mensaje += (" Anulá esos pedidos en Tango (Ventas > Pedidos > Anular) y volvé a intentar.")
             raise PedidoInvalido(mensaje)
 
     def _detalles_proceso(self, proceso: int, ids: list[int]) -> dict[int, dict]:
