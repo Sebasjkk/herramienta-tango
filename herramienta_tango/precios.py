@@ -39,6 +39,7 @@ log = logging.getLogger("herramienta_tango")
 PROCESO_LISTAS = procesos.LISTAS_PRECIOS     # 984
 PROCESO_RENGLONES = procesos.PRECIOS_ABM     # 20091
 PROCESO_CLIENTES = procesos.CLIENTES         # 2117 (ficha completa con GetById)
+PROCESO_PEDIDOS = procesos.PEDIDOS           # 19845 (cada pedido guarda su lista en ID_GVA10)
 LIMITE_DETALLE = 400        # listas con hasta tantos articulos se leen con los precios especiales
 VIGENCIA_RENGLONES = 60     # segundos
 MAX_NOMBRE_LISTA = 20
@@ -267,7 +268,7 @@ class EditorPrecios:
             return r
 
     def _crear_renglon(self, lista: dict, art, precio: float, quien: str,
-                       id_cliente: int | None = None, codigo_cliente: str = "") -> dict:
+                       id_cliente: int | None = None, codigo_cliente: str = "", anotar: bool = True) -> dict:
         """Crea el renglon en Tango (sin controles; los hace quien llama, con el lock tomado)."""
         id_lista = lista["ID_GVA10"]
         registro = {
@@ -288,8 +289,9 @@ class EditorPrecios:
             self._c.actualizar(PROCESO_RENGLONES, creado)
         despues_crudo = self._leer_renglon(nuevo_id)
         despues = _resumen(despues_crudo)
-        self.registro.anotar(quien, "agregar artículo", lista=lista.get("NOMBRE_LIS"), articulo=art.codigo,
-                             cliente=codigo_cliente or None, despues=despues)
+        if anotar:
+            self.registro.anotar(quien, "agregar artículo", lista=lista.get("NOMBRE_LIS"), articulo=art.codigo,
+                                 cliente=codigo_cliente or None, despues=despues)
         guardado = (despues_crudo.get("PRECIO") if id_cliente is None else
                     next((c.get("PRECIO") for c in despues_crudo.get("GVA13") or [] if c.get("ID_GVA14") == id_cliente), None))
         if guardado != precio:
@@ -361,6 +363,7 @@ class EditorPrecios:
                        reasignar_a: int | None = None) -> dict:
         """Borra la lista. Si hay clientes que la usan, con reasignar_a primero se les
         asigna esa otra lista (si no, se niega: quedarian apuntando a una lista inexistente)."""
+        self._sin_pedidos(id_lista)
         reasignados = []
         if reasignar_a:
             if reasignar_a == id_lista:
@@ -423,6 +426,88 @@ class EditorPrecios:
             finally:
                 self._invalidar()
             return {"articulos_quitados": quitados, "clientes_reasignados": reasignados}
+
+    def _sin_pedidos(self, id_lista: int) -> None:
+        """Tango no deja borrar una lista que usa algun pedido ("existen datos relacionados
+        en Pedidos"), y lo dice recien al final, con los articulos ya quitados
+        (REPOSICION, 19/11/2026). Se revisa antes de tocar nada."""
+        pedidos = self._c.listar(PROCESO_PEDIDOS)
+        usan = [p for p in pedidos if p.get("ID_GVA10") == id_lista]
+        if pedidos and "ID_GVA10" not in pedidos[0]:
+            completos = self._detalles_proceso(PROCESO_PEDIDOS, [p["ID_GVA21"] for p in pedidos if p.get("ID_GVA21")])
+            usan = [p for p in completos.values() if p.get("ID_GVA10") == id_lista]
+        if usan:
+            nros = ", ".join(sorted({str(p.get("NRO_PEDIDO") or "").strip().lstrip("0") or "?" for p in usan})[:5])
+            raise PedidoInvalido(f"No se puede eliminar: la usan {len(usan)} pedido{'s' if len(usan) > 1 else ''} en Tango "
+                                 f"(número {nros}) y Tango no deja borrar una lista con pedidos. No se tocó nada.")
+
+    def _detalles_proceso(self, proceso: int, ids: list[int]) -> dict[int, dict]:
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            return {i: d for i, d in zip(ids, ex.map(lambda i: self._c.obtener(proceso, i), ids)) if d}
+
+    # ---------------------------------------------------------------- restaurar
+    def copia_de(self, fecha: str, lista: str) -> dict:
+        for c in self.registro.ultimos(5000):
+            if c.get("accion") == "eliminar lista" and c.get("fecha") == fecha and c.get("lista") == lista:
+                return c
+        raise PedidoInvalido("No encontré esa copia en el registro de cambios.")
+
+    def estado_restauracion(self) -> dict:
+        return dict(getattr(self, "_restauracion", None) or {"corriendo": False})
+
+    def restaurar_lista(self, fecha: str, nombre_lista: str, quien: str) -> dict:
+        """Vuelve a cargar en la lista lo que tenia al eliminarla (copia del registro).
+        Corre en un hilo aparte; los articulos que ya estan en la lista se saltean."""
+        if getattr(self, "_restauracion", None) and self._restauracion.get("corriendo"):
+            raise PedidoInvalido("Ya hay una restauración en curso.")
+        copia = self.copia_de(fecha, nombre_lista)
+        lista = next((x for x in self._listas_crudas()
+                      if (x.get("NOMBRE_LIS") or "").strip().upper() == nombre_lista.strip().upper()), None)
+        if not lista:
+            raise PedidoInvalido(f"La lista {nombre_lista} ya no existe en Tango: creala de nuevo con el mismo nombre "
+                                 f"(número {copia.get('numero')}) y volvé a tocar Restaurar.")
+        ya = {(r.get("COD_STA11") or r.get("COD_ARTICU") or "").strip()
+              for r in self._todos_los_renglones(forzar=True) if r.get("ID_GVA10") == lista["ID_GVA10"]}
+        pendientes = [x for x in copia.get("contenido") or [] if x.get("articulo") not in ya]
+        self._restauracion = {"corriendo": True, "lista": nombre_lista, "total": len(pendientes), "hechos": 0,
+                              "ya_estaban": len(copia.get("contenido") or []) - len(pendientes), "errores": []}
+        threading.Thread(target=self._restaurar, args=(lista, pendientes, quien), daemon=True).start()
+        return self.estado_restauracion()
+
+    def _restaurar(self, lista: dict, pendientes: list[dict], quien: str) -> None:
+        estado = self._restauracion
+        try:
+            articulos = {a.codigo: a for a in self._servicio.articulos()[0]}
+            clientes = self._clientes_por_codigo()
+        except TangoError as e:
+            estado.update(corriendo=False, errores=[{"articulo": "", "error": str(e)}])
+            return
+        for x in pendientes:
+            try:
+                art = articulos.get(x.get("articulo"))
+                if not art:
+                    raise PedidoInvalido("ese artículo ya no existe en Tango")
+                with self._lock:
+                    r = self._crear_renglon(lista, art, x.get("precio") or 0, quien, anotar=False)
+                    especiales = []
+                    for e in x.get("especiales") or []:
+                        cli = clientes.get(e.get("cliente"))
+                        if not cli:
+                            raise PedidoInvalido(f"el cliente {e.get('cliente')} del precio especial ya no existe")
+                        especiales.append({
+                            "ACTUALIZAR_CONTROL_PRECIOS": False, "ID_GVA10": lista["ID_GVA10"], "ID_STA11": art.id,
+                            "ID_GVA14": cli.id, "FILLER": "", "COD_ARTICU": art.codigo, "COD_CLIENT": cli.codigo,
+                            "NRO_LISTA": lista.get("NRO_DE_LIS"), "PRECIO": e.get("precio"), "ID_GVA17": r["id"]})
+                    if especiales:
+                        actual = self._leer_renglon(r["id"])
+                        self._c.actualizar(PROCESO_RENGLONES, {**actual, "GVA13": especiales})
+            except (PedidoInvalido, TangoError) as e:
+                estado["errores"].append({"articulo": x.get("articulo"), "error": str(e)})
+            estado["hechos"] += 1
+        self._invalidar()
+        estado["corriendo"] = False
+        self.registro.anotar(quien, "restaurar lista", lista=lista.get("NOMBRE_LIS"), articulos=estado["hechos"] - len(estado["errores"]),
+                             errores=estado["errores"][:50])
 
     def asignar_lista(self, id_lista: int, id_cliente: int, quien: str) -> dict:
         """Cambia la lista de precios en la ficha del cliente (proceso 2117).

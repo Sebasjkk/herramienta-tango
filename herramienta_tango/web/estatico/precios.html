@@ -71,6 +71,7 @@
     .agregar-fila { grid-template-columns: 1fr 1fr; }
     .agregar-fila .campo-art { grid-column: 1 / -1; }
   }
+  .restaurar { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin: 6px 0; }
   .copia-lista { margin: 4px 0; padding-left: 18px; font-size: .85rem; font-variant-numeric: tabular-nums; }
   .reasignar { border-left: 3px solid var(--oxido); background: #FFF7F3; padding: 8px 12px; border-radius: 6px; margin: 4px 0 12px; }
   .reasignar p { margin: 0 0 8px; }
@@ -193,12 +194,40 @@
               t.append(el("li", "", `${x.articulo}: ${fp(x.precio)}${esp ? " · especial " + esp : ""}`));
             }
             det.append(t); li.append(det);
+            if (c.accion === "eliminar lista") li.append(botonRestaurar(c));
           }
           li.append(el("small", "", `${c.quien} · ${new Date(c.fecha).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}`));
           ul.append(li);
         }
       } catch (e) { ul.replaceChildren(el("li", "", textoError(e))); }
     });
+  }
+
+  // Volver a cargar una lista eliminada desde su copia (corre en el servidor)
+  function botonRestaurar(c) {
+    const caja = el("div", "restaurar");
+    const b = el("button", "boton chico", `Restaurar los ${c.contenido.length} artículos en ${c.lista}`); b.type = "button";
+    const txt = el("span", "nota");
+    caja.append(b, txt);
+    const seguir = async () => {
+      while (document.body.contains(caja)) {
+        let e;
+        try { e = (await pedir("/api/listas/restaurar/estado", true)).datos; } catch { await new Promise(r => setTimeout(r, 2000)); continue; }
+        if (e.lista !== c.lista) return;
+        txt.textContent = e.corriendo ? ` Restaurando: ${e.hechos} de ${e.total}…`
+          : ` Listo: ${e.hechos - e.errores.length} cargados${e.ya_estaban ? `, ${e.ya_estaban} ya estaban` : ""}` +
+            (e.errores.length ? `, ${e.errores.length} con error (${e.errores.slice(0, 3).map(x => `${x.articulo}: ${x.error}`).join("; ")})` : "") + ".";
+        if (!e.corriendo) { b.disabled = false; cargarListas(true); return; }
+        await new Promise(r => setTimeout(r, 1500));
+      }
+    };
+    b.addEventListener("click", async () => {
+      if (!confirm(`¿Volver a cargar en ${c.lista} los ${c.contenido.length} artículos que tenía? Los que ya estén en la lista se saltean.`)) return;
+      b.disabled = true; txt.textContent = " Empezando…";
+      try { await escribir("/api/listas/restaurar", { fecha: c.fecha, lista: c.lista }); seguir(); }
+      catch (e) { txt.textContent = " " + e.message; b.disabled = false; }
+    });
+    return caja;
   }
 
   const precioDe = r => r && (r.especiales && r.especiales.length ? r.especiales[0].precio : r.precio);

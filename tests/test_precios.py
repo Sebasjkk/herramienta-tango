@@ -7,6 +7,7 @@ los precios especiales por cliente (GVA13) viajan adentro del renglon (GVA17).
 import copy
 import json
 import tempfile
+import time
 import threading
 import unittest
 import urllib.error
@@ -48,17 +49,18 @@ class TangoFalso:
         # Fichas de clientes (2117): la lista va en ID_GVA10 y NRO_LISTA
         self.fichas = {309: {"ID_GVA14": 309, "COD_GVA14": "AERARG", "RAZON_SOCI": "AEROLINEAS ARG", "ID_GVA10": 1,
                              "NRO_LISTA": 1, "FECHA_MODI": "2019-08-07T15:33:34", "DIRECCION_ENTREGA": [{"ID": 1}]}}
+        self.pedidos = {24: {"ID_GVA21": 24, "NRO_PEDIDO": " 0000000000037", "ID_GVA10": 1}}   # usa METCO
         self.escrituras = []
         self._sig = 2000
 
-    _CLAVES = {984: "ID_GVA10", 20091: "ID_GVA17", 2117: "ID_GVA14"}
+    _CLAVES = {984: "ID_GVA10", 20091: "ID_GVA17", 2117: "ID_GVA14", 19845: "ID_GVA21"}
 
     def _tabla(self, proceso):
-        return {984: self.listas, 2117: self.fichas}.get(proceso, self.renglones)
+        return {984: self.listas, 2117: self.fichas, 19845: self.pedidos}.get(proceso, self.renglones)
 
     def listar(self, proceso, vista=""):
-        if proceso == 984:
-            return [copy.deepcopy(x) for x in self.listas.values()]
+        if proceso in (984, 19845):
+            return [copy.deepcopy(x) for x in self._tabla(proceso).values()]
         salida = []
         for r in self.renglones.values():
             x = {k: v for k, v in r.items() if k not in ("GVA13", "COD_ARTICU")}
@@ -200,6 +202,42 @@ class TestEditor(unittest.TestCase):
         self.assertNotIn(6, self.tango.listas)
         self.assertFalse(any(x["ID_GVA10"] == 6 for x in self.tango.renglones.values()))
         self.assertEqual(len(self.registro.ultimos()[0]["contenido"]), 2)   # queda copia de lo borrado
+
+    def test_no_elimina_una_lista_con_pedidos(self):
+        editor = EditorPrecios(self.tango, ServicioFalso(), self.registro)
+        self.tango.pedidos[24]["ID_GVA10"] = 6                                # el pedido 37 usa SCIPIO
+        antes = len(self.tango.renglones)
+        with self.assertRaisesRegex(PedidoInvalido, "1 pedido en Tango.*37.*No se tocó nada"):
+            editor.eliminar_lista(6, "SCIPIO", "Gustavo")
+        self.assertEqual(len(self.tango.renglones), antes)
+        self.assertEqual(self.tango.escrituras, [])
+
+    def test_restaurar_lista_eliminada(self):
+        # el cliente SCIPIO ya usa otra lista, pero sus precios especiales siguen en la copia
+        editor = EditorPrecios(self.tango, ServicioFalso([cliente("SCIPIO", "METCO")]), self.registro)
+        self.tango.rechazar_borrar_lista = "existen datos relacionados en Pedidos"
+        originales = {r["COD_ARTICU"]: (r["PRECIO"], [c["PRECIO"] for c in r["GVA13"]])
+                      for r in self.tango.renglones.values() if r["ID_GVA10"] == 6}
+        with self.assertRaises(TangoError):
+            editor.eliminar_lista(6, "SCIPIO", "Gustavo")
+        self.assertFalse(any(r["ID_GVA10"] == 6 for r in self.tango.renglones.values()))   # quedo vacia
+        copia = next(c for c in self.registro.ultimos() if c["accion"] == "eliminar lista")
+        editor.restaurar_lista(copia["fecha"], "SCIPIO", "Gustavo")
+        for _ in range(200):
+            if not editor.estado_restauracion()["corriendo"]:
+                break
+            time.sleep(0.02)
+        estado = editor.estado_restauracion()
+        self.assertEqual((estado["hechos"], estado["errores"]), (2, []))
+        ahora = {r["COD_ARTICU"]: (r["PRECIO"], [c["PRECIO"] for c in r["GVA13"]])
+                 for r in self.tango.renglones.values() if r["ID_GVA10"] == 6}
+        self.assertEqual(ahora, originales)
+        editor.restaurar_lista(copia["fecha"], "SCIPIO", "Gustavo")         # otra vez: no duplica
+        for _ in range(200):
+            if not editor.estado_restauracion()["corriendo"]:
+                break
+            time.sleep(0.02)
+        self.assertEqual(editor.estado_restauracion()["ya_estaban"], 2)
 
     def test_eliminar_lista_que_tango_rechaza(self):
         editor = EditorPrecios(self.tango, ServicioFalso(), self.registro)

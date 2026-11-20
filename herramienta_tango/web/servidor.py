@@ -109,7 +109,7 @@ class PedidoInvalido(Exception):
 RUTAS_APP = {"/api/precios/cambiar", "/api/precios/agregar", "/api/precios/quitar",
              "/api/listas/crear", "/api/listas/eliminar", "/api/listas/asignar",
              "/api/mezclas/crear", "/api/mezclas/subidas", "/api/mezclas/borrar",
-             "/api/listas/importar/analizar", "/api/listas/importar/aplicar"}
+             "/api/listas/importar/analizar", "/api/listas/importar/aplicar", "/api/listas/restaurar"}
 
 
 def _a_json(valor) -> object:
@@ -158,6 +158,7 @@ def crear_rutas(contexto) -> dict[str, Callable[[dict, bool], tuple]]:
         "/api/precios/cambios": lambda qs, f: (s().editor.registro.ultimos(300), time.time()),
         "/api/mezclas": lambda qs, f: (s().mezclas.registro.todas(), time.time()),
         "/api/listas/importar/estado": lambda qs, f: (s().importador.estado(), time.time()),
+        "/api/listas/restaurar/estado": lambda qs, f: (s().editor.estado_restauracion(), time.time()),
     }
 
 
@@ -400,6 +401,8 @@ def crear_manejador(contexto):
                     r = editor.crear_lista(texto("nombre"), texto("moneda"), quien, entero("numero"), entero("cliente"))
                 elif ruta == "/api/listas/asignar":
                     r = editor.asignar_lista(entero("lista"), entero("cliente"), quien)
+                elif ruta == "/api/listas/restaurar":
+                    r = editor.restaurar_lista(texto("fecha"), texto("lista"), quien)
                 elif ruta == "/api/listas/importar/analizar":
                     try:
                         contenido = base64.b64decode(texto("archivo"), validate=True)
