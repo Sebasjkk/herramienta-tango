@@ -209,6 +209,9 @@ class TestEditor(unittest.TestCase):
         antes = len(self.tango.renglones)
         with self.assertRaisesRegex(PedidoInvalido, "1 pedido en Tango.*37.*No se tocó nada"):
             editor.eliminar_lista(6, "SCIPIO", "Gustavo")
+        self.tango.pedidos[24]["ESTADO"] = 5                                 # anulado: sigue frenando
+        with self.assertRaisesRegex(PedidoInvalido, "Anular no alcanza.*eliminarlo en Tango"):
+            editor.eliminar_lista(6, "SCIPIO", "Gustavo")
         self.assertEqual(len(self.tango.renglones), antes)
         self.assertEqual(self.tango.escrituras, [])
 

@@ -437,9 +437,13 @@ class EditorPrecios:
             completos = self._detalles_proceso(PROCESO_PEDIDOS, [p["ID_GVA21"] for p in pedidos if p.get("ID_GVA21")])
             usan = [p for p in completos.values() if p.get("ID_GVA10") == id_lista]
         if usan:
-            nros = ", ".join(sorted({str(p.get("NRO_PEDIDO") or "").strip().lstrip("0") or "?" for p in usan})[:5])
-            raise PedidoInvalido(f"No se puede eliminar: la usan {len(usan)} pedido{'s' if len(usan) > 1 else ''} en Tango "
-                                 f"(número {nros}) y Tango no deja borrar una lista con pedidos. No se tocó nada.")
+            nros = ", ".join(sorted({str(p.get("NRO_PEDIDO") or "").strip()[-8:].lstrip("0") or "?" for p in usan})[:5])
+            mensaje = (f"No se puede eliminar: la usan {len(usan)} pedido{'s' if len(usan) > 1 else ''} en Tango "
+                       f"(número {nros}) y Tango no deja borrar una lista con pedidos. No se tocó nada.")
+            if all(p.get("ESTADO") == 5 for p in usan if "ESTADO" in p) and any("ESTADO" in p for p in usan):
+                mensaje += (" Anular no alcanza: el pedido anulado sigue existiendo. Hay que eliminarlo en Tango "
+                            "(Ventas > Pedidos > Eliminar) y después volver a eliminar la lista.")
+            raise PedidoInvalido(mensaje)
 
     def _detalles_proceso(self, proceso: int, ids: list[int]) -> dict[int, dict]:
         with ThreadPoolExecutor(max_workers=8) as ex:
