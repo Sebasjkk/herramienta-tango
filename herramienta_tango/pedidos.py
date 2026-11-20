@@ -1,9 +1,10 @@
 """
 Pedidos de venta (proceso 19845): detalle y baja.
 
-Crear pedidos por la API no se puede con la licencia de Sianco ("Su licencia no
-incluye el uso del API de Transacciones Tango Ventas", 19/11/2026). La baja se
-intenta y, si Tango la rechaza, se muestra su motivo.
+Crear y borrar pedidos por la API no se puede con la licencia de Sianco ("Su
+licencia no incluye el uso del API de Transacciones Tango Ventas", probado el
+19/11/2026 con el alta y con la baja del pedido 12). La pantalla ya no ofrece
+eliminar; eliminar() queda por si se compra el modulo.
 
 Antes de borrar, la copia completa del pedido (con renglones y notas) queda en
 cambios_pedidos.jsonl de la carpeta del programa.

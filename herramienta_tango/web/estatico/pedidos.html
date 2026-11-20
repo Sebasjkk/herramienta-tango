@@ -87,7 +87,7 @@
         <div class="col-lista" id="col-lista" aria-live="polite"></div>
         <section class="detalle" id="detalle" aria-live="polite"></section>
       </div>
-      <p class="pie">Los pedidos se cargan en Tango: la licencia no incluye crear pedidos por la API. Desde acá se consultan y se pueden eliminar; antes de eliminar, la copia completa queda guardada.</p>
+      <p class="pie">Los pedidos se cargan en Tango: la licencia no incluye crear ni borrar pedidos por la API. Desde acá se consultan; anular y eliminar se hace en la pantalla de Pedidos de Tango.</p>
     </div>
   </div>
 </div>
@@ -224,10 +224,12 @@
     }
     t.append(s);
 
+    // La licencia no incluye la API de Transacciones de Ventas: Tango rechaza crear y borrar
+    // pedidos por la API (probado el 19/11/2026). Se borran desde la pantalla de Tango.
     const z = el("section", "zona-peligro");
-    const b = el("button", "boton chico peligro", "Eliminar pedido"); b.type = "button";
-    b.addEventListener("click", () => eliminar(p));
-    z.append(b);
+    z.append(el("h3", "", "Anular o eliminar"),
+      el("p", "nota", `Se hace en Tango: Ventas > Pedidos (perfil FACTURA VENTA "A"), buscá el pedido ${corto(p.numero)} y usá Anular o Eliminar. ` +
+                      "La licencia de Tango no deja hacerlo desde la Herramienta."));
     t.append(z);
     cont.replaceChildren(t);
   }
