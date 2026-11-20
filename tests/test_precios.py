@@ -204,7 +204,7 @@ class TestEditor(unittest.TestCase):
     def test_eliminar_lista_que_tango_rechaza(self):
         editor = EditorPrecios(self.tango, ServicioFalso(), self.registro)
         self.tango.rechazar_borrar_lista = "La lista tiene comprobantes asociados"
-        with self.assertRaisesRegex(TangoError, "comprobantes asociados.*quitado 2 de sus 2"):
+        with self.assertRaisesRegex(TangoError, "comprobantes asociados.*quitado 2 de sus 2.*eliminala desde Tango"):
             editor.eliminar_lista(6, "SCIPIO", "Gustavo")
         self.assertIn(6, self.tango.listas)
         error, copia = self.registro.ultimos()[:2]

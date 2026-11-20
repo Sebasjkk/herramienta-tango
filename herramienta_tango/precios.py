@@ -412,8 +412,14 @@ class EditorPrecios:
                 self.registro.anotar(quien, "error al eliminar lista", lista=nombre, articulos_quitados=quitados,
                                      error=str(e))
                 quitado = (f" Ya se habían quitado {quitados} de sus {len(copia)} artículos; están copiados en "
-                           "«Ver cambios» para volver a cargarlos." if quitados else " No se tocó nada.")
-                raise TangoError(f"Tango no dejó eliminar la lista {nombre}: {e}.{quitado}") from None
+                           "«Ver cambios» para volver a cargarlos." if quitados else "")
+                if "renglón" in str(e) or (completos and quitados < len(completos)):
+                    raise TangoError(f"Tango no dejó quitar los artículos de la lista {nombre}: {e}.{quitado}") from None
+                # Paso con LABORATORIO (19/11/2026): la API respondio "Registro inexistente" y la
+                # pantalla de Listas de precios de Tango la borro sin problema.
+                raise TangoError(f"Tango no dejó eliminar la lista {nombre} desde la Herramienta ({e}).{quitado} "
+                                 "La lista quedó vacía: eliminala desde Tango, en Ventas > Listas de precios "
+                                 "(Tango web, proceso 984), con el botón Eliminar.") from None
             finally:
                 self._invalidar()
             return {"articulos_quitados": quitados, "clientes_reasignados": reasignados}
