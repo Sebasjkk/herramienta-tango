@@ -31,7 +31,7 @@ from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 
-from . import config
+from . import base_tango, config
 from .tango import TangoError, procesos
 from .tango.modelos import ListaPrecios, RenglonPrecio
 
@@ -482,8 +482,8 @@ class EditorPrecios:
             raise PedidoInvalido(mensaje)
 
     def usos(self, id_lista: int) -> dict:
-        """Donde se usa la lista: clientes que la tienen asignada y pedidos que la nombran.
-        Cotizaciones y facturas no: la API no informa su lista (probado el 20/11/2026)."""
+        """Donde se usa la lista: clientes que la tienen asignada y pedidos que la nombran (API),
+        mas cotizaciones y facturas, que la API no informa y se leen de la base (solo lectura)."""
         lista = self._lista(id_lista)
         nombre = (lista.get("NOMBRE_LIS") or "").strip().upper()
         clientes = [{"codigo": c.codigo, "razon_social": c.razon_social}
@@ -504,7 +504,14 @@ class EditorPrecios:
                             "fecha": (p.get("FECHA_PEDIDO") or "")[:10], "estado": estados.get(p.get("ESTADO"), p.get("ESTADO")),
                             "cliente": cli.razon_social if cli else ""})
         pedidos.sort(key=lambda x: x["fecha"], reverse=True)
-        return {"clientes": clientes, "pedidos": pedidos}
+        resultado = {"clientes": clientes, "pedidos": pedidos}
+        try:
+            base = base_tango.usos_lista(id_lista, lista.get("NRO_DE_LIS") or 0)
+            resultado.update(cotizaciones=base["cotizaciones"], cotizaciones_total=base.get("cotizaciones_total") or 0,
+                             facturas_por_anio=base["facturas_por_anio"])
+        except base_tango.BaseNoDisponible as e:
+            resultado["base_error"] = str(e)
+        return resultado
 
     def _detalles_proceso(self, proceso: int, ids: list[int]) -> dict[int, dict]:
         with ThreadPoolExecutor(max_workers=8) as ex:

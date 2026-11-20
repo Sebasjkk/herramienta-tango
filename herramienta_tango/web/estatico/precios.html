@@ -341,7 +341,7 @@
     return esp ? { precio: esp.precio, cliente: esp.id_cliente } : { precio: r.precio, cliente: null };
   }
 
-  // Donde se usa la lista (clientes y pedidos; cotizaciones y facturas la API no las informa)
+  // Donde se usa la lista: clientes y pedidos (API), cotizaciones y facturas (base de Tango, solo lectura)
   function seccionUsos(l) {
     const s = el("details", "tarjeta usos");
     const sum = el("summary", "", "Dónde se usa");
@@ -367,8 +367,32 @@
           }
           cuerpo.append(ul);
         }
-        cuerpo.append(el("p", "nota", "Cotizaciones y facturas: Tango no informa por la API con qué lista se hicieron, así que acá no aparecen. " +
-                                      "Si al eliminar la lista Tango dice que hay cotizaciones o facturas relacionadas, son esas."));
+        if (u.base_error) {
+          cuerpo.append(el("h4", "", "Cotizaciones y facturas"));
+          cuerpo.append(el("p", "mensaje-error", u.base_error));
+          if (/permiso/i.test(u.base_error))
+            cuerpo.append(el("p", "nota", "La Herramienta lee estos datos directo de la base de Tango (solo lectura). " +
+              "Hay que darle permiso de lectura una vez, en el servidor. Pedíselo a quien administra el servidor."));
+        } else {
+          const cot = u.cotizaciones || [], hoy = new Date().toISOString().slice(0, 10);
+          cuerpo.append(el("h4", "", `Cotizaciones: ${u.cotizaciones_total}`));
+          if (cot.length) {
+            const ul = el("ul");
+            for (const q of cot) {
+              const vig = q.vigencia && q.vigencia >= hoy ? `vigente hasta ${fecha(q.vigencia)}` : (q.vigencia ? `venció el ${fecha(q.vigencia)}` : "");
+              ul.append(el("li", "", [`Cotización ${q.numero}`, q.cliente || q.codigo_cliente, fecha(q.fecha), vig].filter(Boolean).join(" · ")));
+            }
+            cuerpo.append(ul);
+            if (u.cotizaciones_total > cot.length) cuerpo.append(el("p", "nota", `Se muestran las ${cot.length} más recientes.`));
+          }
+          const fac = u.facturas_por_anio || [], totalFac = fac.reduce((a, f) => a + f.n, 0);
+          cuerpo.append(el("h4", "", `Facturas y otros comprobantes: ${fmt.format(totalFac)}`));
+          if (fac.length) {
+            const ul = el("ul"); for (const f of fac) ul.append(el("li", "", `${f.anio}: ${fmt.format(f.n)}`)); cuerpo.append(ul);
+          }
+          if (u.cotizaciones_total || totalFac)
+            cuerpo.append(el("p", "nota", "Mientras haya cotizaciones o comprobantes con esta lista, Tango no deja eliminarla."));
+        }
       } catch (e) { cargado = false; cuerpo.replaceChildren(el("p", "mensaje-error", textoError(e))); }
     });
     return s;

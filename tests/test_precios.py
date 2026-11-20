@@ -211,6 +211,19 @@ class TestEditor(unittest.TestCase):
         self.assertEqual(u["pedidos"], [{"id": 24, "numero": "37", "fecha": "2007-02-19", "estado": "Anulado",
                                          "cliente": u["clientes"][0]["razon_social"]}])
         self.assertEqual(editor.usos(1)["pedidos"], [])
+        self.assertIn("base_error", u)          # fuera del servidor Windows no se lee la base
+
+    def test_donde_se_usa_con_la_base(self):
+        editor = EditorPrecios(self.tango, ServicioFalso([]), self.registro)
+        base = {"cotizaciones": [{"numero": "BA3213", "cliente": "METALIZA"}], "cotizaciones_total": 1,
+                "facturas_por_anio": [{"anio": 2007, "n": 184}]}
+        with mock.patch("herramienta_tango.base_tango.usos_lista", return_value=base) as q:
+            u = editor.usos(6)
+        q.assert_called_once()
+        self.assertEqual(q.call_args[0][0], 6)
+        self.assertEqual(u["cotizaciones"][0]["numero"], "BA3213")
+        self.assertEqual(u["facturas_por_anio"], [{"anio": 2007, "n": 184}])
+        self.assertNotIn("base_error", u)
 
     def test_no_elimina_una_lista_con_pedidos(self):
         editor = EditorPrecios(self.tango, ServicioFalso(), self.registro)
