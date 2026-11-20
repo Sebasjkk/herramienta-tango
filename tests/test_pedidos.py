@@ -71,3 +71,17 @@ class TestPedidos(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestOpciones(unittest.TestCase):
+    def test_activar_eliminar_pedidos(self):
+        from unittest import mock
+        from herramienta_tango import config, opciones
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(config, "CARPETA", Path(tmp)):
+            self.assertFalse(opciones.leer()["pedidos_eliminar"])            # por defecto, inactivo
+            self.assertTrue(opciones.cambiar("pedidos_eliminar", True)["pedidos_eliminar"])
+            self.assertTrue(opciones.leer()["pedidos_eliminar"])
+            with self.assertRaises(ValueError):
+                opciones.cambiar("otra_cosa", True)
+            with self.assertRaises(ValueError):
+                opciones.cambiar("pedidos_eliminar", "si")

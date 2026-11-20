@@ -32,6 +32,10 @@
   .e-cumplido { background: #E3ECF8; color: #24508F; }
   .e-cerrado { background: var(--zinc); color: var(--plomo); }
   .notas-ped { margin: 0; padding-left: 18px; font-size: .88rem; }
+  .como-tango { margin: 10px 0 6px; font-size: .9rem; }
+  .como-tango summary { cursor: pointer; font-weight: 600; }
+  .como-tango ol { margin: 6px 0 0; padding-left: 20px; color: var(--plomo); }
+  .zona-peligro .boton-texto { display: block; margin-top: 8px; }
   .zona-peligro { border-top: 1px solid var(--linea); margin: 16px -18px 0; padding: 14px 18px 4px; }
   .e-autorizada { background: var(--patina-suave); color: var(--patina); }
   .e-procesada { background: #E3ECF8; color: #24508F; }
@@ -87,7 +91,7 @@
         <div class="col-lista" id="col-lista" aria-live="polite"></div>
         <section class="detalle" id="detalle" aria-live="polite"></section>
       </div>
-      <p class="pie">Los pedidos se cargan en Tango: la licencia no incluye crear ni borrar pedidos por la API. Desde acá se consultan; anular y eliminar se hace en la pantalla de Pedidos de Tango.</p>
+      <p class="pie">Los pedidos se cargan en Tango: la licencia no incluye crear ni borrar pedidos por la API. Desde acá se consultan; anular y eliminar se hace en la pantalla de Pedidos de Tango, salvo que se active con la licencia nueva.</p>
     </div>
   </div>
 </div>
@@ -114,6 +118,7 @@
   const corto = n => (n || "").trim().slice(-8).replace(/^0+/, "") || "0";   // sin el prefijo de sucursal
 
   let peds = [];
+  let opc = { pedidos_eliminar: false };
   let grupo = "todos";
   let elegido = null;
   const detalles = new Map();   // id -> detalle | "cargando" | Error
@@ -224,12 +229,39 @@
     }
     t.append(s);
 
-    // La licencia no incluye la API de Transacciones de Ventas: Tango rechaza crear y borrar
-    // pedidos por la API (probado el 19/11/2026). Se borran desde la pantalla de Tango.
+    // Eliminar por la API necesita la "API de Transacciones Tango Ventas", que la licencia
+    // no incluye (probado el 19/11/2026). El boton queda inactivo hasta que se active.
     const z = el("section", "zona-peligro");
-    z.append(el("h3", "", "Anular o eliminar"),
-      el("p", "nota", `Se hace en Tango: Ventas > Pedidos (perfil FACTURA VENTA "A"), buscá el pedido ${corto(p.numero)} y usá Anular o Eliminar. ` +
-                      "La licencia de Tango no deja hacerlo desde la Herramienta."));
+    z.append(el("h3", "", "Anular o eliminar"));
+    const b = el("button", "boton chico peligro", "Eliminar pedido"); b.type = "button";
+    b.disabled = !opc.pedidos_eliminar;
+    b.addEventListener("click", () => eliminar(p));
+    z.append(b);
+    if (!opc.pedidos_eliminar) {
+      z.append(el("p", "nota", "Desactivado: la licencia de Tango no incluye la «API de Transacciones Tango Ventas», " +
+                               "que es lo que permite eliminar pedidos desde la Herramienta."));
+    }
+    const como = el("details", "como-tango");
+    como.append(el("summary", "", "Cómo hacerlo desde Tango"));
+    const ol = el("ol");
+    for (const x of ["Abrí Tango web y entrá a Ventas > Pedidos > Pedidos.",
+                     "Elegí el perfil 1 - FACTURA VENTA \"A\" (PED).",
+                     `Buscá el pedido ${corto(p.numero)} y seleccionalo.`,
+                     "Usá Anular para que quede como registro, o Eliminar para borrarlo. Tango solo deja anular pedidos que no tienen remitos ni facturas.",
+                     "Volvé acá y tocá Actualizar."]) ol.append(el("li", "", x));
+    como.append(ol);
+    z.append(como);
+    const act = el("button", "boton-texto", opc.pedidos_eliminar ? "Desactivar eliminar pedidos desde la Herramienta"
+                                                                : "Ya tenemos la licencia: activar eliminar pedidos");
+    act.type = "button";
+    act.addEventListener("click", async () => {
+      const activar = !opc.pedidos_eliminar;
+      if (activar && !confirm("¿La licencia de Tango ya incluye la «API de Transacciones Tango Ventas»? Se activa para todos los equipos. " +
+                              "Si Tango la sigue rechazando, al eliminar vas a ver su mensaje.")) return;
+      try { opc = (await HT.escribir("/api/opciones", { clave: "pedidos_eliminar", valor: activar })).datos; dibujarFicha(); }
+      catch (e) { alert(e.message); }
+    });
+    z.append(act);
     t.append(z);
     cont.replaceChildren(t);
   }
@@ -263,6 +295,7 @@
   $("actualizar").addEventListener("click", () => cargar(true));
   window.addEventListener("popstate", () => { if (!location.hash.startsWith("#ped=")) $("contenido").classList.remove("viendo"); });
   if (location.hash.startsWith("#ped=")) history.replaceState(null, "", location.pathname);
+  pedir("/api/opciones", true).then(d => { opc = d.datos; dibujarFicha(); }).catch(() => {});
   cargar(false);
 })();
 </script>

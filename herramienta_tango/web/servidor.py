@@ -12,6 +12,7 @@ de la empresa consulte Tango sin conocer su API:
     GET /api/clientes
     GET /api/pedidos
     GET /api/pedidos/<id>            detalle completo (renglones, notas, lista, cliente)
+    GET/POST /api/opciones           opciones para todos los equipos ({"clave", "valor"})
     POST /api/pedidos/eliminar       {"id": n, "confirmar": "31"}   copia en cambios_pedidos.jsonl
     GET /api/listas-precios
     GET /api/precios                 precios vigentes de todas las listas
@@ -86,7 +87,7 @@ from typing import Callable
 
 import time
 
-from .. import VERSION, sistema
+from .. import VERSION, opciones, sistema
 from ..precios import PedidoInvalido as DatoInvalido
 from ..config import ruta_recurso
 from ..tango import TangoError
@@ -112,7 +113,7 @@ RUTAS_APP = {"/api/precios/cambiar", "/api/precios/agregar", "/api/precios/quita
              "/api/listas/crear", "/api/listas/eliminar", "/api/listas/asignar",
              "/api/mezclas/crear", "/api/mezclas/subidas", "/api/mezclas/borrar",
              "/api/listas/importar/analizar", "/api/listas/importar/aplicar", "/api/listas/restaurar",
-             "/api/pedidos/eliminar"}
+             "/api/pedidos/eliminar", "/api/opciones"}
 
 
 def _a_json(valor) -> object:
@@ -162,6 +163,7 @@ def crear_rutas(contexto) -> dict[str, Callable[[dict, bool], tuple]]:
         "/api/mezclas": lambda qs, f: (s().mezclas.registro.todas(), time.time()),
         "/api/listas/importar/estado": lambda qs, f: (s().importador.estado(), time.time()),
         "/api/listas/restaurar/estado": lambda qs, f: (s().editor.estado_restauracion(), time.time()),
+        "/api/opciones": lambda qs, f: (opciones.leer(), time.time()),
     }
 
 
@@ -408,7 +410,16 @@ def crear_manejador(contexto):
                 elif ruta == "/api/listas/asignar":
                     r = editor.asignar_lista(entero("lista"), entero("cliente"), quien)
                 elif ruta == "/api/pedidos/eliminar":
+                    if not opciones.leer()["pedidos_eliminar"]:
+                        raise DatoInvalido("Eliminar pedidos desde la Herramienta está desactivado: la licencia de Tango "
+                                           "no lo permite. Hacelo desde la pantalla de Pedidos de Tango.")
                     r = contexto.servicio().gestion_pedidos.eliminar(entero("id"), texto("confirmar"), quien)
+                elif ruta == "/api/opciones":
+                    try:
+                        r = opciones.cambiar(texto("clave"), datos.get("valor"))
+                    except ValueError as e:
+                        raise DatoInvalido(str(e)) from None
+                    log.info(f"Opciones: {quien} cambió {texto('clave')} a {datos.get('valor')}")
                 elif ruta == "/api/listas/restaurar":
                     r = editor.restaurar_lista(texto("fecha"), texto("lista"), quien)
                 elif ruta == "/api/listas/importar/analizar":
