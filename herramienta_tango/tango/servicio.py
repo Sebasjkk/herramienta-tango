@@ -85,6 +85,14 @@ class ServicioTango:
         return self._editor
 
     @property
+    def gestion_pedidos(self):
+        """Detalle y baja de pedidos."""
+        if getattr(self, "_gestion_pedidos", None) is None:
+            from ..pedidos import EditorPedidos
+            self._gestion_pedidos = EditorPedidos(self._cliente, self)
+        return self._gestion_pedidos
+
+    @property
     def importador(self):
         """Importacion de listas de precios desde Excel."""
         if getattr(self, "_importador", None) is None:

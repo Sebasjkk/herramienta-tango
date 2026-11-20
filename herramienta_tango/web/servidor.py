@@ -11,6 +11,8 @@ de la empresa consulte Tango sin conocer su API:
     GET /api/depositos
     GET /api/clientes
     GET /api/pedidos
+    GET /api/pedidos/<id>            detalle completo (renglones, notas, lista, cliente)
+    POST /api/pedidos/eliminar       {"id": n, "confirmar": "31"}   copia en cambios_pedidos.jsonl
     GET /api/listas-precios
     GET /api/precios                 precios vigentes de todas las listas
     GET /api/ventas?desde=AAAA-MM-DD&hasta=AAAA-MM-DD
@@ -109,7 +111,8 @@ class PedidoInvalido(Exception):
 RUTAS_APP = {"/api/precios/cambiar", "/api/precios/agregar", "/api/precios/quitar",
              "/api/listas/crear", "/api/listas/eliminar", "/api/listas/asignar",
              "/api/mezclas/crear", "/api/mezclas/subidas", "/api/mezclas/borrar",
-             "/api/listas/importar/analizar", "/api/listas/importar/aplicar", "/api/listas/restaurar"}
+             "/api/listas/importar/analizar", "/api/listas/importar/aplicar", "/api/listas/restaurar",
+             "/api/pedidos/eliminar"}
 
 
 def _a_json(valor) -> object:
@@ -168,6 +171,9 @@ def ruta_variable(contexto, ruta: str):
     if len(partes) == 3 and partes[:2] == ["api", "listas"] and partes[2].isdigit():
         id_lista = int(partes[2])
         return lambda qs, f: (contexto.servicio().editor.lista(id_lista, f), time.time())
+    if len(partes) == 3 and partes[:2] == ["api", "pedidos"] and partes[2].isdigit():
+        id_pedido = int(partes[2])
+        return lambda qs, f: (contexto.servicio().gestion_pedidos.detalle(id_pedido), time.time())
     if len(partes) == 4 and partes[:2] == ["api", "cotizaciones"] and partes[3] == "renglones":
         numero = urllib.parse.unquote(partes[2]).strip()
         def renglones(qs, f):
@@ -401,6 +407,8 @@ def crear_manejador(contexto):
                     r = editor.crear_lista(texto("nombre"), texto("moneda"), quien, entero("numero"), entero("cliente"))
                 elif ruta == "/api/listas/asignar":
                     r = editor.asignar_lista(entero("lista"), entero("cliente"), quien)
+                elif ruta == "/api/pedidos/eliminar":
+                    r = contexto.servicio().gestion_pedidos.eliminar(entero("id"), texto("confirmar"), quien)
                 elif ruta == "/api/listas/restaurar":
                     r = editor.restaurar_lista(texto("fecha"), texto("lista"), quien)
                 elif ruta == "/api/listas/importar/analizar":

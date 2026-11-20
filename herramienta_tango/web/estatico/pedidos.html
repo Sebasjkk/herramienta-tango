@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0B6E69">
+<title>Pedidos | Herramienta Tango</title>
+<link rel="icon" href="/icono-192.png">
+<link rel="apple-touch-icon" href="/icono-192.png">
+<link rel="manifest" href="/manifest.json">
+<link rel="stylesheet" href="/comun.css">
+<style>
+  .explica { margin: 8px 0 0; font-size: .86rem; max-width: 70ch; }
+  .pestanas { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .pestana { font: inherit; font-size: .88rem; font-weight: 600; min-height: 36px; padding: 4px 14px; border-radius: 999px;
+    border: 1px solid var(--linea); background: var(--papel); color: var(--plomo); cursor: pointer; }
+  .pestana b { font-variant-numeric: tabular-nums; margin-left: 4px; color: var(--grafito); }
+  .pestana[aria-selected="true"] { background: var(--patina); border-color: var(--patina); color: #fff; }
+  .pestana[aria-selected="true"] b { color: #fff; }
+
+  .lista-cot { list-style: none; margin: 0; padding: 0; }
+  .cot { width: 100%; display: grid; grid-template-columns: 1fr auto; gap: 1px 14px; text-align: left; font: inherit; color: inherit;
+    background: var(--papel); border: 1px solid var(--linea); border-radius: var(--radio); padding: 11px 14px; margin-bottom: 8px; cursor: pointer; }
+  .cot:hover { border-color: var(--patina); }
+  .cot[aria-pressed="true"] { border-color: var(--patina); box-shadow: inset 3px 0 0 var(--patina); background: #F6FBFA; }
+  .cot .num { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .cot .cli { overflow-wrap: anywhere; }
+  .cot .der { grid-column: 2; grid-row: 1 / span 2; text-align: right; font-size: .82rem; color: var(--plomo); line-height: 1.3; }
+  .cot .meta { grid-column: 1 / -1; font-size: .8rem; color: var(--plomo); }
+  .etiqueta-estado { display: inline-block; font-size: .74rem; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--zinc); color: var(--plomo); }
+  .e-pendiente { background: var(--patina-suave); color: var(--patina); }
+  .e-cumplido { background: #E3ECF8; color: #24508F; }
+  .e-cerrado { background: var(--zinc); color: var(--plomo); }
+  .notas-ped { margin: 0; padding-left: 18px; font-size: .88rem; }
+  .zona-peligro { border-top: 1px solid var(--linea); margin: 16px -18px 0; padding: 14px 18px 4px; }
+  .e-autorizada { background: var(--patina-suave); color: var(--patina); }
+  .e-procesada { background: #E3ECF8; color: #24508F; }
+  .e-vencida { background: #FBF0D9; color: #8A5A00; }
+  .e-anulada { background: var(--oxido-suave); color: var(--oxido); }
+
+  .ficha { padding: 18px; }
+  .ficha h2 { font-size: 1.35rem; margin: 2px 0 2px; letter-spacing: -0.01em; }
+  .ficha .cli { font-weight: 600; }
+  .datos-cot { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px 16px; margin: 14px 0 4px; font-size: .88rem; }
+  .datos-cot span { display: block; color: var(--plomo); font-size: .78rem; }
+  .acciones-cot { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+  .seccion { border-top: 1px solid var(--linea); margin: 16px -18px 0; padding: 14px 18px 4px; }
+  .seccion h3 { font-size: .95rem; margin: 0 0 8px; }
+  .tabla-envoltura { overflow-x: auto; margin: 0 -18px; padding: 0 6px; }
+  .total-cot { text-align: right; font-weight: 700; padding: 8px 12px 0; font-variant-numeric: tabular-nums; }
+  .nota { font-size: .88rem; color: var(--plomo); }
+  .volver { display: none; }
+
+  @media (min-width: 960px) {
+    .contenido-cot { display: grid; grid-template-columns: minmax(300px, 400px) 1fr; gap: 20px; align-items: start; }
+    .detalle { position: sticky; top: 130px; max-height: calc(100vh - 146px); overflow-y: auto; }
+  }
+  @media (max-width: 959px) {
+    .contenido-cot.viendo .col-lista { display: none; }
+    .contenido-cot:not(.viendo) .detalle { display: none; }
+    .volver { display: inline-flex; margin-bottom: 10px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="app-nav" id="app-nav"></nav>
+  <div class="app-principal">
+    <div class="pagina">
+      <header class="cabecera">
+        <div class="cabecera-sup">
+          <h1>Pedidos</h1>
+          <div class="datos"><span id="estado">Consultando Tango…</span><button type="button" class="boton-texto" id="actualizar">Actualizar</button></div>
+        </div>
+      </header>
+      <div class="barra">
+        <div class="buscador">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>
+          <label for="q" style="position:absolute;left:-9999px">Buscar pedido</label>
+          <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="Número, cliente u orden de compra" enterkeyhint="search">
+          <button type="button" class="limpiar" id="limpiar" aria-label="Borrar búsqueda" hidden>×</button>
+        </div>
+        <div class="pestanas" id="pestanas" role="tablist"></div>
+        <p class="nota explica" id="explica"></p>
+      </div>
+      <div class="contenido-cot" id="contenido">
+        <div class="col-lista" id="col-lista" aria-live="polite"></div>
+        <section class="detalle" id="detalle" aria-live="polite"></section>
+      </div>
+      <p class="pie">Los pedidos se cargan en Tango: la licencia no incluye crear pedidos por la API. Desde acá se consultan y se pueden eliminar; antes de eliminar, la copia completa queda guardada.</p>
+    </div>
+  </div>
+</div>
+
+<script src="/comun.js"></script>
+<script>
+(() => {
+  "use strict";
+  HT.iniciar("pedidos");
+  const { $, el, norm, tokens, fmt, fmtPrecio, fecha, pedir, textoError, cajaError } = HT;
+  const ESTADOS = { 1: "Ingresado", 2: "Aprobado", 3: "Cumplido", 4: "Cerrado", 5: "Anulado", 6: "Desaprobado" };
+  const GRUPOS = [
+    { id: "pendientes", titulo: "Pendientes", f: p => p.estado === 1 || p.estado === 2,
+      ayuda: "Pendientes: pedidos ingresados o aprobados que todavía no se terminaron de entregar o facturar." },
+    { id: "cumplidos", titulo: "Cumplidos", f: p => p.estado === 3,
+      ayuda: "Cumplidos: se entregó y facturó todo lo pedido." },
+    { id: "cerrados", titulo: "Cerrados", f: p => p.estado === 4,
+      ayuda: "Cerrados: se dieron por terminados aunque quedara algo pendiente." },
+    { id: "anulados", titulo: "Anulados", f: p => p.estado === 5 || p.estado === 6,
+      ayuda: "Anulados o desaprobados: quedan solo como registro." },
+    { id: "todos", titulo: "Todos", f: () => true, ayuda: "Todos los pedidos de Tango, de cualquier estado." },
+  ];
+  const clase = p => p.estado <= 2 ? "pendiente" : p.estado === 3 ? "cumplido" : p.estado === 4 ? "cerrado" : "anulada";
+  const corto = n => (n || "").trim().slice(-8).replace(/^0+/, "") || "0";   // sin el prefijo de sucursal
+
+  let peds = [];
+  let grupo = "todos";
+  let elegido = null;
+  const detalles = new Map();   // id -> detalle | "cargando" | Error
+
+  async function cargar(forzar) {
+    $("estado").textContent = "Consultando Tango…";
+    try {
+      const d = await pedir("/api/pedidos", forzar);
+      peds = d.datos.sort((a, b) => (b.fecha || "").localeCompare(a.fecha || "") || b.numero.localeCompare(a.numero));
+      $("estado").textContent = "Datos de Tango de las " + HT.hora(new Date(d.actualizado)) + " h";
+      if (forzar) detalles.clear();
+      render();
+    } catch (e) {
+      $("estado").textContent = "Sin datos";
+      $("col-lista").replaceChildren(cajaError(textoError(e), () => cargar(true)));
+    }
+  }
+
+  const coincide = (p, ts) => ts.every(t => norm([corto(p.numero), p.numero, p.cliente, p.codigo_cliente, p.orden_compra_cliente, p.numero_remito].join(" ")).includes(t));
+
+  function render() {
+    const ts = tokens($("q").value);
+    const pe = $("pestanas"); pe.replaceChildren();
+    for (const g of GRUPOS) {
+      const n = peds.filter(p => g.f(p) && coincide(p, ts)).length;
+      const b = el("button", "pestana", g.titulo); b.type = "button"; b.setAttribute("role", "tab");
+      b.setAttribute("aria-selected", String(g.id === grupo)); b.append(el("b", "", n));
+      b.addEventListener("click", () => { grupo = g.id; elegido = null; render(); });
+      pe.append(b);
+    }
+    $("explica").textContent = GRUPOS.find(g => g.id === grupo).ayuda;
+    const lista = peds.filter(p => GRUPOS.find(g => g.id === grupo).f(p) && coincide(p, ts));
+    const col = $("col-lista");
+    if (!lista.length) { col.replaceChildren(el("p", "aviso", peds.length ? "No hay pedidos en este grupo." : "Cargando…")); $("detalle").replaceChildren(); return; }
+    if (!elegido || !lista.some(p => p.id === elegido)) elegido = window.matchMedia("(min-width: 960px)").matches ? lista[0].id : null;
+    const ul = el("ul", "lista-cot");
+    for (const p of lista) {
+      const li = el("li");
+      const b = el("button", "cot"); b.type = "button"; b.setAttribute("aria-pressed", String(p.id === elegido));
+      const der = el("span", "der");
+      der.append(el("span", "etiqueta-estado e-" + clase(p), ESTADOS[p.estado] || p.estado), el("br"), fecha(p.fecha));
+      b.append(el("span", "num", "Pedido " + corto(p.numero)), el("span", "cli", p.cliente || p.codigo_cliente), der,
+               el("span", "meta", [p.orden_compra_cliente && "OC " + p.orden_compra_cliente, p.lista_precios, p.numero_remito && "remito " + p.numero_remito]
+                 .filter(Boolean).join(" · ") || " "));
+      b.addEventListener("click", () => {
+        elegido = p.id;
+        if (!window.matchMedia("(min-width: 960px)").matches) { history.pushState({}, "", "#ped=" + p.id); $("contenido").classList.add("viendo"); window.scrollTo(0, 0); }
+        render();
+      });
+      li.append(b); ul.append(li);
+    }
+    col.replaceChildren(ul);
+    dibujarFicha();
+  }
+
+  function cargarDetalle(id) {
+    if (detalles.has(id)) return;
+    detalles.set(id, "cargando");
+    pedir("/api/pedidos/" + id).then(d => detalles.set(id, d.datos), e => detalles.set(id, new Error(textoError(e))))
+      .then(() => { if (elegido === id) dibujarFicha(); });
+  }
+
+  function dibujarFicha() {
+    const p = peds.find(x => x.id === elegido);
+    const cont = $("detalle");
+    if (!p) { cont.replaceChildren(); return; }
+    const t = el("article", "tarjeta ficha");
+    const volver = el("button", "boton volver", "‹ Pedidos"); volver.type = "button"; volver.addEventListener("click", () => history.back());
+    t.append(volver, el("span", "etiqueta-estado e-" + clase(p), ESTADOS[p.estado] || p.estado),
+             el("h2", "", "Pedido " + corto(p.numero)), el("div", "cli", p.cliente || p.codigo_cliente));
+    cargarDetalle(p.id);
+    const d = detalles.get(p.id);
+    const datos = el("div", "datos-cot");
+    const dato = (et, v) => { const x = el("div"); x.append(el("span", "", et), v || "—"); datos.append(x); };
+    dato("Fecha", fecha(p.fecha)); dato("Entrega", fecha(p.fecha_entrega)); dato("OC del cliente", p.orden_compra_cliente);
+    dato("Lista de precios", (d && d.lista_precios) || p.lista_precios); dato("Remito", p.numero_remito); dato("Número en Tango", p.numero);
+    t.append(datos);
+
+    const s = el("section", "seccion"); s.append(el("h3", "", "Artículos"));
+    if (d === "cargando" || !d) s.append(el("p", "nota", "Cargando…"));
+    else if (d instanceof Error) s.append(el("p", "nota", d.message));
+    else {
+      if (!d.renglones.length) s.append(el("p", "nota", "Sin renglones."));
+      else {
+        const tabla = el("table", "tabla"); const th = el("tr");
+        for (const [x, cl] of [["Artículo", ""], ["Cant.", "der"], ["Precio", "der"], ["Pend. facturar", "der"]]) th.append(el("th", cl, x));
+        const thead = el("thead"); thead.append(th); const tb = el("tbody");
+        let total = 0;
+        for (const r of d.renglones) {
+          const tr = el("tr"); const art = el("td"); art.append(el("div", "", r.descripcion)); art.lastChild.style.fontWeight = "600";
+          if (r.adicional) art.append(el("div", "nota", r.adicional));
+          total += (r.cantidad || 0) * (r.precio || 0) * (1 - (r.bonificacion || 0) / 100);
+          tr.append(art, el("td", "der", fmt.format(r.cantidad || 0)), el("td", "der", fmtPrecio.format(r.precio || 0)),
+                    el("td", "der", r.pendiente_facturar ? fmt.format(r.pendiente_facturar) : ""));
+          tb.append(tr);
+        }
+        tabla.append(thead, tb);
+        const env = el("div", "tabla-envoltura"); env.append(tabla);
+        s.append(env, el("div", "total-cot", `Total sin impuestos: ${d.moneda_extranjera ? "US$" : "$"} ${fmtPrecio.format(total)}`));
+      }
+      if (d.leyendas.length || d.observaciones) {
+        s.append(el("h3", "", "Leyendas")); s.append(el("p", "nota", [...d.leyendas, d.observaciones].filter(Boolean).join(" · ")));
+      }
+      if (d.notas.length) {
+        s.append(el("h3", "", "Historial en Tango"));
+        const ul = el("ul", "notas-ped"); for (const n of d.notas) ul.append(el("li", "", n)); s.append(ul);
+      }
+    }
+    t.append(s);
+
+    const z = el("section", "zona-peligro");
+    const b = el("button", "boton chico peligro", "Eliminar pedido"); b.type = "button";
+    b.addEventListener("click", () => eliminar(p));
+    z.append(b);
+    t.append(z);
+    cont.replaceChildren(t);
+  }
+
+  function eliminar(p) {
+    HT.ventana("Eliminar el pedido " + corto(p.numero), (dlg, cerrar) => {
+      dlg.append(el("p", "", `Se borra el pedido ${corto(p.numero)} de ${p.cliente || p.codigo_cliente} en Tango. La copia completa queda guardada en la carpeta del programa.`));
+      if (p.estado <= 2) dlg.append(el("p", "mensaje-error", "Ojo: este pedido figura como pendiente."));
+      const f = el("form");
+      const l = el("label", "etiqueta", `Para confirmar, escribí el número ${corto(p.numero)}`); l.htmlFor = "ep-num";
+      const n = el("input", "campo"); n.id = "ep-num"; n.inputMode = "numeric"; n.autocomplete = "off";
+      const err = el("p", "mensaje-error"); err.hidden = true;
+      const acc = el("div", "acciones");
+      const c = el("button", "boton", "Cancelar"); c.type = "button"; c.addEventListener("click", cerrar);
+      const ok = el("button", "boton peligro", "Eliminar pedido"); ok.type = "submit"; ok.disabled = true;
+      n.addEventListener("input", () => { ok.disabled = (n.value.trim().replace(/^0+/, "") || "") !== corto(p.numero); });
+      acc.append(c, ok); f.append(l, n, err, acc);
+      f.addEventListener("submit", async e => {
+        e.preventDefault(); ok.disabled = true; ok.textContent = "Eliminando…"; err.hidden = true;
+        try {
+          await HT.escribir("/api/pedidos/eliminar", { id: p.id, confirmar: n.value });
+          cerrar(); elegido = null; detalles.delete(p.id); await cargar(true);
+        } catch (ex) { err.textContent = ex.message; err.hidden = false; ok.disabled = false; ok.textContent = "Eliminar pedido"; }
+      });
+      dlg.append(f);
+      setTimeout(() => n.focus(), 50);
+    });
+  }
+
+  HT.conectarBuscador($("q"), $("limpiar"), () => { elegido = null; render(); });
+  $("actualizar").addEventListener("click", () => cargar(true));
+  window.addEventListener("popstate", () => { if (!location.hash.startsWith("#ped=")) $("contenido").classList.remove("viendo"); });
+  if (location.hash.startsWith("#ped=")) history.replaceState(null, "", location.pathname);
+  cargar(false);
+})();
+</script>
+</body>
+</html>
