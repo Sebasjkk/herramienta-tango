@@ -121,8 +121,18 @@ class ClienteTango:
         return list(self._paginas("api/Get", {"process": proceso, "view": vista}))
 
     def obtener(self, proceso: int, id_registro: int) -> dict | None:
-        """Un registro por su ID interno (api/GetById). None si no existe."""
-        datos = self._get("api/GetById", {"process": proceso, "id": id_registro})
+        """Un registro por su ID interno (api/GetById). None si no existe.
+
+        Tango contesta un registro que no existe de dos formas: "value": null, o
+        succeeded=false con "Registro inexistente" (visto el 19/11/2026 al
+        verificar un borrado). Las dos son None.
+        """
+        try:
+            datos = self._get("api/GetById", {"process": proceso, "id": id_registro})
+        except TangoError as e:
+            if "registro inexistente" in str(e).lower():
+                return None
+            raise
         if "value" in datos:
             return datos["value"]
         return datos.get("resultData") or datos

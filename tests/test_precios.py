@@ -212,6 +212,21 @@ class TestEditor(unittest.TestCase):
         self.assertEqual(copia["accion"], "eliminar lista")
         self.assertEqual(len(copia["contenido"]), 2)                         # la copia quedo guardada antes
 
+    def test_obtener_registro_inexistente_es_none(self):
+        from herramienta_tango.tango.cliente import ClienteTango
+        c = ClienteTango.__new__(ClienteTango)
+        respuestas = [{"succeeded": False, "message": "Se detectó una situación inesperada",
+                       "exceptionInfo": {"messages": ["Registro inexistente."]}},
+                      {"succeeded": False, "exceptionInfo": {"messages": ["Otro error"]}}]
+
+        def falso(metodo, ruta, parametros, cuerpo=None):
+            d = respuestas.pop(0)
+            raise TangoError(f"Tango no pudo resolver el pedido: {d['exceptionInfo']['messages'][0]}")
+        c._pedir = falso
+        self.assertIsNone(c.obtener(20091, 5))
+        with self.assertRaisesRegex(TangoError, "Otro error"):
+            c.obtener(20091, 5)
+
     def test_motivo_del_error_de_tango(self):
         from herramienta_tango.tango.cliente import _motivo
         datos = {"message": "Se detectó una situación inesperada", "succeeded": False,
