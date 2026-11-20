@@ -393,22 +393,30 @@ class EditorPrecios:
                     (asignados[0] if len(asignados) == 1 else f"{len(asignados)} clientes") +
                     ". Primero hay que cambiarles la lista en la ficha del cliente.")
             filas = [r for r in self._todos_los_renglones(forzar=True) if r.get("ID_GVA10") == id_lista]
-            copia = []
-            for r in filas:
-                actual = self._c.obtener(PROCESO_RENGLONES, r["ID_GVA17"])
-                if not actual:
-                    continue
-                copia.append({"articulo": actual.get("COD_ARTICU"), **_resumen(actual)})
-                self._borrar_renglon(actual)
-            self._c.borrar(PROCESO_LISTAS, id_lista)
-            self._invalidar()
-            sigue = self._c.obtener(PROCESO_LISTAS, id_lista)
-            # El contenido completo queda en el registro, por si hay que volver a cargarla
+            # 1) Copia de todo lo que tiene, al registro, ANTES de tocar nada: si algo
+            #    falla a mitad de camino, lo que se quito se puede volver a cargar.
+            completos = [x for x in (self._c.obtener(PROCESO_RENGLONES, r["ID_GVA17"]) for r in filas) if x]
+            copia = [{"articulo": x.get("COD_ARTICU"), **_resumen(x)} for x in completos]
             self.registro.anotar(quien, "eliminar lista", lista=nombre, numero=lista.get("NRO_DE_LIS"),
                                  articulos=len(copia), contenido=copia)
-            if sigue:
-                raise TangoError("Se quitaron los artículos, pero Tango no borró la lista.")
-            return {"articulos_quitados": len(copia), "clientes_reasignados": reasignados}
+            # 2) Quitar los articulos y borrar la lista
+            quitados = 0
+            try:
+                for actual in completos:
+                    self._borrar_renglon(actual)
+                    quitados += 1
+                self._c.borrar(PROCESO_LISTAS, id_lista)
+                if self._c.obtener(PROCESO_LISTAS, id_lista):
+                    raise TangoError("Tango respondió bien pero la lista sigue existiendo.")
+            except TangoError as e:
+                self.registro.anotar(quien, "error al eliminar lista", lista=nombre, articulos_quitados=quitados,
+                                     error=str(e))
+                quitado = (f" Ya se habían quitado {quitados} de sus {len(copia)} artículos; están copiados en "
+                           "«Ver cambios» para volver a cargarlos." if quitados else " No se tocó nada.")
+                raise TangoError(f"Tango no dejó eliminar la lista {nombre}: {e}.{quitado}") from None
+            finally:
+                self._invalidar()
+            return {"articulos_quitados": quitados, "clientes_reasignados": reasignados}
 
     def asignar_lista(self, id_lista: int, id_cliente: int, quien: str) -> dict:
         """Cambia la lista de precios en la ficha del cliente (proceso 2117).

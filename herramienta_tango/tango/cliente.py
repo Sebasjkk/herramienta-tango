@@ -24,6 +24,27 @@ from datetime import date
 from typing import Iterator
 
 
+
+def _motivo(datos: dict) -> str:
+    """El motivo real de un error de Tango.
+
+    Tango pone un texto generico en "message" ("Se detectó una situación
+    inesperada") y la explicacion en exceptionInfo.messages / detailMessages.
+    """
+    if not isinstance(datos, dict):
+        return ""
+    info = datos.get("exceptionInfo") if isinstance(datos.get("exceptionInfo"), dict) else {}
+    partes = []
+    for clave in ("messages", "detailMessages"):
+        for m in info.get(clave) or []:
+            texto = (m.get("message") or m.get("text") or "") if isinstance(m, dict) else str(m)
+            texto = " ".join(texto.split())
+            if texto and texto not in partes:
+                partes.append(texto)
+    if partes:
+        return " ".join(partes)
+    return datos.get("message") or info.get("message") or ""
+
 class TangoError(Exception):
     """Error al consultar Tango, con un mensaje pensado para mostrar al usuario."""
 
@@ -67,7 +88,7 @@ class ClienteTango:
             detalle = ""
             try:
                 cuerpo_error = json.loads(e.read().decode("utf-8-sig") or "{}")
-                detalle = cuerpo_error.get("message") or cuerpo_error.get("title") or ""
+                detalle = _motivo(cuerpo_error) or cuerpo_error.get("title") or ""
             except Exception:
                 pass
             raise TangoError(f"Tango respondió con error HTTP {e.code}" + (f": {detalle}" if detalle else ".")) from None
@@ -79,9 +100,7 @@ class ClienteTango:
             raise TangoError("Tango respondió algo que no es JSON.") from None
 
         if isinstance(datos, dict) and datos.get("succeeded") is False:
-            info = datos.get("exceptionInfo") or {}
-            detalle = datos.get("message") or (info.get("message") if isinstance(info, dict) else "") or "sin detalle"
-            raise TangoError(f"Tango no pudo resolver el pedido: {detalle}")
+            raise TangoError(f"Tango no pudo resolver el pedido: {_motivo(datos) or 'sin detalle'}")
         return datos
 
     def _get(self, ruta: str, parametros: dict) -> dict:

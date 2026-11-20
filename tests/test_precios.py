@@ -15,6 +15,7 @@ from pathlib import Path
 from unittest import mock
 
 from herramienta_tango import config
+from herramienta_tango.tango import TangoError
 from herramienta_tango.precios import EditorPrecios, PedidoInvalido, RegistroCambios
 from herramienta_tango.tango.modelos import Articulo, Cliente
 
@@ -85,7 +86,11 @@ class TangoFalso:
         self._tabla(proceso)[registro[clave]] = copy.deepcopy(registro)
         self.escrituras.append(("actualizar", proceso, registro[clave], len(registro.get("GVA13") or [])))
 
+    rechazar_borrar_lista = ""
+
     def borrar(self, proceso, id_registro):
+        if proceso == 984 and self.rechazar_borrar_lista:
+            raise TangoError(f"Tango no pudo resolver el pedido: {self.rechazar_borrar_lista}")
         self._tabla(proceso).pop(id_registro, None)
         self.escrituras.append(("borrar", proceso, id_registro))
 
@@ -195,6 +200,25 @@ class TestEditor(unittest.TestCase):
         self.assertNotIn(6, self.tango.listas)
         self.assertFalse(any(x["ID_GVA10"] == 6 for x in self.tango.renglones.values()))
         self.assertEqual(len(self.registro.ultimos()[0]["contenido"]), 2)   # queda copia de lo borrado
+
+    def test_eliminar_lista_que_tango_rechaza(self):
+        editor = EditorPrecios(self.tango, ServicioFalso(), self.registro)
+        self.tango.rechazar_borrar_lista = "La lista tiene comprobantes asociados"
+        with self.assertRaisesRegex(TangoError, "comprobantes asociados.*quitado 2 de sus 2"):
+            editor.eliminar_lista(6, "SCIPIO", "Gustavo")
+        self.assertIn(6, self.tango.listas)
+        error, copia = self.registro.ultimos()[:2]
+        self.assertEqual(error["accion"], "error al eliminar lista")
+        self.assertEqual(copia["accion"], "eliminar lista")
+        self.assertEqual(len(copia["contenido"]), 2)                         # la copia quedo guardada antes
+
+    def test_motivo_del_error_de_tango(self):
+        from herramienta_tango.tango.cliente import _motivo
+        datos = {"message": "Se detectó una situación inesperada", "succeeded": False,
+                 "exceptionInfo": {"title": "Atención", "messages": ["Su licencia no incluye el uso del API"],
+                                   "detailMessages": [{"message": "Detalle  extra"}]}}
+        self.assertEqual(_motivo(datos), "Su licencia no incluye el uso del API Detalle extra")
+        self.assertEqual(_motivo({"message": "Algo"}), "Algo")
 
     def test_eliminar_lista_cambiando_la_del_cliente(self):
         tango = self.tango

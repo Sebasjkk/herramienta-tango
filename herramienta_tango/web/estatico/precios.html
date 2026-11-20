@@ -71,6 +71,7 @@
     .agregar-fila { grid-template-columns: 1fr 1fr; }
     .agregar-fila .campo-art { grid-column: 1 / -1; }
   }
+  .copia-lista { margin: 4px 0; padding-left: 18px; font-size: .85rem; font-variant-numeric: tabular-nums; }
   .reasignar { border-left: 3px solid var(--oxido); background: #FFF7F3; padding: 8px 12px; border-radius: 6px; margin: 4px 0 12px; }
   .reasignar p { margin: 0 0 8px; }
   .reasignar .nota { margin: 8px 0 0; }
@@ -182,6 +183,17 @@
         for (const c of datos.slice(0, 100)) {
           const li = el("li");
           li.append(describirCambio(c));
+          if (c.contenido && c.contenido.length) {
+            // Lo que tenia la lista al eliminarla, para poder volver a cargarlo
+            const det = el("details"); det.append(el("summary", "", `Ver los ${c.contenido.length} artículos que tenía`));
+            const t = el("ul", "copia-lista");
+            const fp = v => v == null ? "—" : fmtPrecio.format(v);
+            for (const x of c.contenido) {
+              const esp = (x.especiales || []).map(e => `${e.cliente || "cliente"} ${fp(e.precio)}`).join(", ");
+              t.append(el("li", "", `${x.articulo}: ${fp(x.precio)}${esp ? " · especial " + esp : ""}`));
+            }
+            det.append(t); li.append(det);
+          }
           li.append(el("small", "", `${c.quien} · ${new Date(c.fecha).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}`));
           ul.append(li);
         }
@@ -197,7 +209,8 @@
     if (c.accion === "agregar artículo") return `${c.lista}: se agregó${art} a ${p(precioDe(c.despues))}`;
     if (c.accion === "quitar artículo") return `${c.lista}: se quitó${art} (estaba a ${p(precioDe(c.antes))})`;
     if (c.accion === "crear lista") return `Se creó la lista ${c.lista} (número ${c.numero}, ${c.moneda})`;
-    if (c.accion === "eliminar lista") return `Se eliminó la lista ${c.lista} con ${c.articulos} artículos`;
+    if (c.accion === "eliminar lista") return `Lista ${c.lista} eliminada (copia de sus ${c.articulos} artículos guardada)`;
+    if (c.accion === "error al eliminar lista") return `No se pudo eliminar la lista ${c.lista}: ${c.error}`;
     if (c.accion === "asignar lista") return `${c.razon_social || c.cliente}: pasó de la lista ${c.lista_anterior} a ${c.lista}`;
     return `${c.accion} ${c.lista || ""}`;
   }
