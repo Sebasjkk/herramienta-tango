@@ -19,7 +19,8 @@ import subprocess
 import sys
 import time
 
-SERVIDOR_SQL = os.environ.get("HERRAMIENTA_TANGO_SQL", r"localhost\AXSQLEXPRESS")
+SERVIDOR_SQL = os.environ.get("HERRAMIENTA_TANGO_SQL", "")       # vacio: se prueba solo (ver _FUNCION)
+INSTANCIA = os.environ.get("HERRAMIENTA_TANGO_INSTANCIA", "AXSQLEXPRESS")
 BASE = os.environ.get("HERRAMIENTA_TANGO_BASE", "SIANCO_SA")
 VIGENCIA = 300
 _cache: dict[tuple, tuple[float, dict]] = {}
@@ -31,7 +32,29 @@ class BaseNoDisponible(Exception):
 
 _FUNCION = r"""
 $ErrorActionPreference = 'Stop'
-$cs = 'Server=__SERVIDOR__;Database=__BASE__;Integrated Security=True;Connect Timeout=8;ApplicationIntent=ReadOnly'
+[Console]::OutputEncoding = [Text.Encoding]::UTF8
+$inst = '__INSTANCIA__'
+$cands = New-Object System.Collections.Generic.List[string]
+if ('__SERVIDOR__') { $cands.Add('__SERVIDOR__') }
+$cands.Add("lpc:$env:COMPUTERNAME\$inst")
+$cands.Add("$env:COMPUTERNAME\$inst")
+$cands.Add("localhost\$inst")
+try {
+  $k = Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server' -ErrorAction Stop |
+       Where-Object { $_.PSChildName -like "MSSQL*.$inst" } | Select-Object -First 1
+  if ($k) { $t = Get-ItemProperty (Join-Path $k.PSPath 'MSSQLServer\SuperSocketNetLib\Tcp\IPAll')
+    $port = if ($t.TcpPort) { $t.TcpPort } else { $t.TcpDynamicPorts }
+    if ($port) { $cands.Add("tcp:127.0.0.1,$port") } }
+} catch {}
+$cs = $null; $errores = @()
+foreach ($srv in $cands) {
+  $prueba = "Server=$srv;Database=__BASE__;Integrated Security=True;Connect Timeout=5;ApplicationIntent=ReadOnly"
+  try { $cn = New-Object System.Data.SqlClient.SqlConnection($prueba); $cn.Open(); $cn.Close(); $cs = $prueba; break }
+  catch { $m = if ($_.Exception.InnerException) { $_.Exception.InnerException.Message } else { $_.Exception.Message }
+          $m = ($m -replace '\s+', ' '); if ($m.Length -gt 160) { $m = $m.Substring(0, 160) + '...' }
+          $errores += "$srv -> $m" }
+}
+if (-not $cs) { [Console]::Error.WriteLine(($errores -join ' | ')); exit 3 }
 function Q($sql) {
   $t = New-Object System.Data.DataTable
   $a = New-Object System.Data.SqlClient.SqlDataAdapter($sql, $cs)
@@ -56,16 +79,17 @@ $out | ConvertTo-Json -Depth 4 -Compress
 def _correr(script: str) -> dict:
     if sys.platform != "win32":
         raise BaseNoDisponible("La base de Tango solo se lee desde el servidor (Windows).")
-    completo = (_FUNCION.replace("__SERVIDOR__", SERVIDOR_SQL).replace("__BASE__", BASE) + script)
+    completo = (_FUNCION.replace("__SERVIDOR__", SERVIDOR_SQL).replace("__INSTANCIA__", INSTANCIA)
+                .replace("__BASE__", BASE) + script)
     try:
         r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", completo],
-                           capture_output=True, text=True, timeout=40,
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,
                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except (OSError, subprocess.TimeoutExpired) as e:
         raise BaseNoDisponible(f"No se pudo consultar la base de Tango: {e}") from None
     if r.returncode != 0 or not r.stdout.strip():
-        detalle = " ".join((r.stderr or r.stdout or "").split())[:400]
-        if "Login failed" in detalle or "Error de inicio de sesi" in detalle:
+        detalle = " ".join((r.stderr or r.stdout or "").split())[:900]
+        if any(t in detalle for t in ("Login failed", "Error de inicio de sesi", "Cannot open database", "No se puede abrir la base")):
             raise BaseNoDisponible("La Herramienta no tiene permiso para leer la base de Tango. " + detalle)
         raise BaseNoDisponible(f"No se pudo consultar la base de Tango: {detalle or 'sin respuesta'}")
     try:
