@@ -513,6 +513,22 @@ class EditorPrecios:
             resultado["base_error"] = str(e)
         return resultado
 
+    def comprobantes(self, id_lista: int, anio: int) -> list[dict]:
+        """Comprobantes de venta de un año hechos con la lista (base de Tango, solo lectura)."""
+        lista = self._lista(id_lista)
+        try:
+            return base_tango.comprobantes_lista(lista.get("NRO_DE_LIS") or 0, anio)
+        except base_tango.BaseNoDisponible as e:
+            raise PedidoInvalido(str(e)) from None
+
+    def renglones_comprobante(self, t_comp: str, n_comp: str) -> list[dict]:
+        try:
+            return base_tango.renglones_comprobante(t_comp, n_comp)
+        except ValueError as e:
+            raise PedidoInvalido(str(e)) from None
+        except base_tango.BaseNoDisponible as e:
+            raise PedidoInvalido(str(e)) from None
+
     def _detalles_proceso(self, proceso: int, ids: list[int]) -> dict[int, dict]:
         with ThreadPoolExecutor(max_workers=8) as ex:
             return {i: d for i, d in zip(ids, ex.map(lambda i: self._c.obtener(proceso, i), ids)) if d}

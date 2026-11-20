@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -61,7 +62,7 @@ function Q($sql) {
   [void]$a.Fill($t)
   ,@($t.Rows | ForEach-Object { $r = $_; $o = [ordered]@{}
       foreach ($c in $t.Columns) { $v = $r[$c.ColumnName]
-        if ($v -is [DBNull]) { $v = $null } elseif ($v -is [datetime]) { $v = $v.ToString('yyyy-MM-dd') } elseif ($v -is [string]) { $v = $v.Trim() }
+        if ($v -is [DBNull] -or $v -is [byte[]]) { $v = $null } elseif ($v -is [datetime]) { $v = $v.ToString('yyyy-MM-dd') } elseif ($v -is [string]) { $v = $v.Trim() }
         $o[$c.ColumnName] = $v }
       [pscustomobject]$o })
 }
@@ -69,7 +70,7 @@ function Q($sql) {
 
 _USOS_LISTA = r"""
 $out = [ordered]@{}
-$out.cotizaciones = Q "SELECT TOP 50 q.N_COTIZ AS numero, q.FECHA_EMIS AS fecha, q.FECHA_VIG AS vigencia, q.ESTADO AS estado, q.COD_CLIENT AS codigo_cliente, c.RAZON_SOCI AS cliente FROM GVA08 q LEFT JOIN GVA14 c ON c.ID_GVA14 = q.ID_GVA14 WHERE q.ID_GVA10 = __ID__ ORDER BY q.FECHA_EMIS DESC"
+$out.cotizaciones = Q "SELECT TOP 50 q.ID_GVA08 AS id, q.N_COTIZ AS numero, q.FECHA_EMIS AS fecha, q.FECHA_VIG AS vigencia, q.ESTADO AS estado, q.COD_CLIENT AS codigo_cliente, c.RAZON_SOCI AS cliente FROM GVA08 q LEFT JOIN GVA14 c ON c.ID_GVA14 = q.ID_GVA14 WHERE q.ID_GVA10 = __ID__ ORDER BY q.FECHA_EMIS DESC"
 $out.cotizaciones_total = (Q "SELECT COUNT(*) AS n FROM GVA08 WHERE ID_GVA10 = __ID__")[0].n
 $out.facturas_por_anio = Q "SELECT YEAR(FECHA_EMIS) AS anio, COUNT(*) AS n FROM GVA12 WHERE NRO_DE_LIS = __NRO__ GROUP BY YEAR(FECHA_EMIS) ORDER BY 1"
 $out | ConvertTo-Json -Depth 4 -Compress
@@ -110,3 +111,77 @@ def usos_lista(id_lista: int, numero_lista: int) -> dict:
         datos[campo] = [] if v is None else (v if isinstance(v, list) else [v])
     _cache[clave] = (time.time(), datos)
     return datos
+
+
+_COMPROBANTES = r"""
+$out = [ordered]@{}
+$out.filas = Q "SELECT TOP 500 f.*, c.RAZON_SOCI AS RAZON_CLIENTE FROM GVA12 f LEFT JOIN GVA14 c ON c.COD_CLIENT = f.COD_CLIENT WHERE f.NRO_DE_LIS = __NRO__ AND YEAR(f.FECHA_EMIS) = __ANIO__ ORDER BY f.FECHA_EMIS, f.N_COMP"
+$out | ConvertTo-Json -Depth 4 -Compress
+"""
+
+_RENGLONES = r"""
+$out = [ordered]@{}
+$out.filas = Q "SELECT r.*, a.DESCRIPCIO AS DESC_ARTICULO FROM GVA53 r LEFT JOIN STA11 a ON a.COD_ARTICU = r.COD_ARTICU WHERE r.T_COMP = '__TCOMP__' AND r.N_COMP = '__NCOMP__'"
+$out | ConvertTo-Json -Depth 4 -Compress
+"""
+
+_TIPOS = {"FAC": "Factura", "N/C": "Nota de crédito", "N/D": "Nota de débito", "REM": "Remito", "REC": "Recibo",
+          "AJU": "Ajuste", "PED": "Pedido"}
+
+
+def _filas(datos: dict) -> list[dict]:
+    v = datos.get("filas")
+    return [] if v is None else (v if isinstance(v, list) else [v])
+
+
+def _campo(fila: dict, *nombres, defecto=None):
+    for n in nombres:
+        if fila.get(n) not in (None, ""):
+            return fila[n]
+    return defecto
+
+
+def _numero_comprobante(n: str) -> str:
+    """'A000100001234' -> 'A 0001-00001234' (como lo muestra Tango)."""
+    n = (n or "").strip()
+    m = re.fullmatch(r"([A-Z]?)\s*(\d{4,5})(\d{8})", n)
+    return f"{m.group(1)} {m.group(2)[-4:]}-{m.group(3)}".strip() if m else n
+
+
+def comprobantes_lista(numero_lista: int, anio: int) -> list[dict]:
+    """Comprobantes de venta (GVA12) de un año hechos con la lista."""
+    numero_lista, anio = int(numero_lista), int(anio)
+    clave = ("comprobantes", numero_lista, anio)
+    if clave in _cache and time.time() - _cache[clave][0] < VIGENCIA:
+        return _cache[clave][1]
+    filas = _filas(_correr(_COMPROBANTES.replace("__NRO__", str(numero_lista)).replace("__ANIO__", str(anio))))
+    res = []
+    for f in filas:
+        t = str(f.get("T_COMP") or "").strip()
+        res.append({"t_comp": t, "tipo": _TIPOS.get(t, t), "n_comp": str(f.get("N_COMP") or "").rstrip(),   # tal cual (puede empezar con espacio)
+                    "numero": _numero_comprobante(str(f.get("N_COMP") or "")), "fecha": f.get("FECHA_EMIS"),
+                    "codigo_cliente": str(f.get("COD_CLIENT") or "").strip(), "cliente": f.get("RAZON_CLIENTE") or "",
+                    "importe": _campo(f, "IMPORTE", "IMPORTE_TOTAL"), "moneda": "U$S" if f.get("MON_CTE") is False else "$"})
+    _cache[clave] = (time.time(), res)
+    return res
+
+
+_T_COMP = re.compile(r"[A-Z/]{1,3}")
+_N_COMP = re.compile(r"[A-Z0-9 ]{1,14}")
+
+
+def renglones_comprobante(t_comp: str, n_comp: str) -> list[dict]:
+    """Renglones (GVA53) de un comprobante. Los textos se validan antes de ir al SQL."""
+    t_comp, n_comp = (t_comp or "").strip().upper(), (n_comp or "").rstrip().upper()
+    if not _T_COMP.fullmatch(t_comp) or not _N_COMP.fullmatch(n_comp):
+        raise ValueError("Comprobante inválido.")
+    clave = ("renglones", t_comp, n_comp)
+    if clave in _cache and time.time() - _cache[clave][0] < VIGENCIA:
+        return _cache[clave][1]
+    filas = _filas(_correr(_RENGLONES.replace("__TCOMP__", t_comp).replace("__NCOMP__", n_comp)))
+    filas.sort(key=lambda f: _campo(f, "N_RENGL_V", "RENGLON", defecto=0) or 0)
+    res = [{"codigo": str(f.get("COD_ARTICU") or "").strip(), "descripcion": f.get("DESC_ARTICULO") or "",
+            "cantidad": _campo(f, "CANTIDAD", "CANT_FACT", defecto=0),
+            "precio": _campo(f, "PRECIO_NET", "PRECIO", "PRECIO_PAN")} for f in filas]
+    _cache[clave] = (time.time(), res)
+    return res

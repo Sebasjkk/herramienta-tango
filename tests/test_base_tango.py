@@ -49,6 +49,27 @@ class TestBaseTango(unittest.TestCase):
             with self.assertRaises(base_tango.BaseNoDisponible):
                 base_tango.usos_lista(2, 6)
 
+    def test_comprobantes(self):
+        js = ('{"filas":[{"T_COMP":"FAC","N_COMP":"A000100001234","FECHA_EMIS":"2007-03-01","COD_CLIENT":"METALI",'
+              '"RAZON_CLIENTE":"METALIZA S.A.","IMPORTE":1500.5,"MON_CTE":true,"OTRA":1}]}')
+        with mock.patch.object(base_tango.subprocess, "run", return_value=salida(js)) as run:
+            cs = base_tango.comprobantes_lista(6, 2007)
+        self.assertEqual(cs[0]["tipo"], "Factura")
+        self.assertEqual(cs[0]["numero"], "A 0001-00001234")
+        self.assertEqual(cs[0]["importe"], 1500.5)
+        self.assertIn("NRO_DE_LIS = 6 AND YEAR(f.FECHA_EMIS) = 2007", run.call_args[0][0][-1])
+
+    def test_renglones_validan_el_comprobante(self):
+        for t, n in (("FAC", "A0001' OR 1=1"), ("FACTURA", "A000100001234"), ("", "")):
+            with self.assertRaises(ValueError):
+                base_tango.renglones_comprobante(t, n)
+        js = '{"filas":[{"N_RENGL_V":2,"COD_ARTICU":"B","CANTIDAD":1},{"N_RENGL_V":1,"COD_ARTICU":"A","CANTIDAD":3,"PRECIO_NET":10,"DESC_ARTICULO":"Zinc"}]}'
+        with mock.patch.object(base_tango.subprocess, "run", return_value=salida(js)) as run:
+            rs = base_tango.renglones_comprobante("fac", "A000100001234")
+        self.assertEqual([r["codigo"] for r in rs], ["A", "B"])
+        self.assertEqual(rs[0]["descripcion"], "Zinc")
+        self.assertIn("T_COMP = 'FAC' AND r.N_COMP = 'A000100001234'", run.call_args[0][0][-1])
+
 
 if __name__ == "__main__":
     unittest.main()

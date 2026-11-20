@@ -77,6 +77,14 @@
   .usos summary { cursor: pointer; font-weight: 600; }
   .usos h4 { font-size: .9rem; margin: 10px 0 4px; }
   .usos ul { margin: 0 0 4px; padding-left: 20px; font-size: .9rem; }
+  .usos .anio { margin: 2px 0 2px 4px; font-size: .9rem; }
+  .usos .anio > summary { font-weight: 400; }
+  .usos ul.comprobantes { list-style: none; padding-left: 12px; }
+  .usos ul.comprobantes summary { font-weight: 400; overflow-wrap: anywhere; }
+  .renglones-comp { width: 100%; border-collapse: collapse; margin: 4px 0 8px; font-size: .85rem; }
+  .renglones-comp td { padding: 3px 6px; border-bottom: 1px solid var(--borde, #ddd); vertical-align: top; }
+  .renglones-comp td.der { text-align: right; white-space: nowrap; }
+  .renglones-comp .nota { display: block; }
   .reasignar { border-left: 3px solid var(--oxido); background: #FFF7F3; padding: 8px 12px; border-radius: 6px; margin: 4px 0 12px; }
   .reasignar p { margin: 0 0 8px; }
   .reasignar .nota { margin: 8px 0 0; }
@@ -380,7 +388,13 @@
             const ul = el("ul");
             for (const q of cot) {
               const vig = q.vigencia && q.vigencia >= hoy ? `vigente hasta ${fecha(q.vigencia)}` : (q.vigencia ? `venció el ${fecha(q.vigencia)}` : "");
-              ul.append(el("li", "", [`Cotización ${q.numero}`, q.cliente || q.codigo_cliente, fecha(q.fecha), vig].filter(Boolean).join(" · ")));
+              const li = el("li", "", [`Cotización ${String(q.numero).replace(/^0+/, "")}`, q.cliente || q.codigo_cliente, fecha(q.fecha), vig].filter(Boolean).join(" · ") + " ");
+              if (q.id) {
+                const ver = el("a", "", "ver"); ver.href = "/cotizaciones?ver=" + q.id;
+                const pdf = el("a", "", "PDF"); pdf.href = "/cotizacion/" + q.id + ".pdf"; pdf.target = "_blank"; pdf.rel = "noopener";
+                li.append("(", ver, " · ", pdf, ")");
+              }
+              ul.append(li);
             }
             cuerpo.append(ul);
             if (u.cotizaciones_total > cot.length) cuerpo.append(el("p", "nota", `Se muestran las ${cot.length} más recientes.`));
@@ -388,7 +402,9 @@
           const fac = u.facturas_por_anio || [], totalFac = fac.reduce((a, f) => a + f.n, 0);
           cuerpo.append(el("h4", "", `Facturas y otros comprobantes: ${fmt.format(totalFac)}`));
           if (fac.length) {
-            const ul = el("ul"); for (const f of fac) ul.append(el("li", "", `${f.anio}: ${fmt.format(f.n)}`)); cuerpo.append(ul);
+            const caja = el("div", "anios");
+            for (const f of fac) caja.append(anioComprobantes(l, f));
+            cuerpo.append(caja);
           }
           if (u.cotizaciones_total || totalFac)
             cuerpo.append(el("p", "nota", "Mientras haya cotizaciones o comprobantes con esta lista, Tango no deja eliminarla."));
@@ -396,6 +412,48 @@
       } catch (e) { cargado = false; cuerpo.replaceChildren(el("p", "mensaje-error", textoError(e))); }
     });
     return s;
+  }
+
+  // Comprobantes de un año (se piden al desplegar) y, al tocar uno, sus renglones
+  function anioComprobantes(l, f) {
+    const d = el("details", "anio"); d.append(el("summary", "", `${f.anio}: ${fmt.format(f.n)}`));
+    const cuerpo = el("div"); d.append(cuerpo);
+    let cargado = false;
+    d.addEventListener("toggle", async () => {
+      if (!d.open || cargado) return;
+      cargado = true; cuerpo.replaceChildren(el("p", "nota", "Consultando…"));
+      try {
+        const cs = (await pedir(`/api/listas/${l.id}/comprobantes?anio=${f.anio}`, true)).datos;
+        const ul = el("ul", "comprobantes");
+        for (const c of cs) {
+          const li = el("li");
+          const b = el("details"); 
+          const importe = c.importe == null ? "" : `${c.moneda} ${fmtPrecio.format(c.importe)}`;
+          b.append(el("summary", "", [`${c.tipo} ${c.numero}`, fecha(c.fecha), c.cliente || c.codigo_cliente, importe].filter(Boolean).join(" · ")));
+          const det = el("div"); b.append(det);
+          let ok = false;
+          b.addEventListener("toggle", async () => {
+            if (!b.open || ok) return;
+            ok = true; det.replaceChildren(el("p", "nota", "Consultando…"));
+            try {
+              const rs = (await pedir(`/api/comprobantes/renglones?t=${encodeURIComponent(c.t_comp)}&n=${encodeURIComponent(c.n_comp)}`, true)).datos;
+              if (!rs.length) { det.replaceChildren(el("p", "nota", "Sin renglones de artículos.")); return; }
+              const t = el("table", "renglones-comp"); const tb = el("tbody");
+              for (const r of rs) {
+                const tr = el("tr");
+                tr.append(el("td", "", `${r.descripcion || r.codigo} `), el("td", "der", fmt.format(r.cantidad || 0)),
+                          el("td", "der", r.precio == null ? "" : fmtPrecio.format(r.precio)));
+                tr.firstChild.append(el("span", "nota", r.codigo)); tb.append(tr);
+              }
+              t.append(tb); det.replaceChildren(t);
+            } catch (e) { ok = false; det.replaceChildren(el("p", "mensaje-error", textoError(e))); }
+          });
+          li.append(b); ul.append(li);
+        }
+        cuerpo.replaceChildren(ul);
+      } catch (e) { cargado = false; cuerpo.replaceChildren(el("p", "mensaje-error", textoError(e))); }
+    });
+    return d;
   }
 
   function dibujarLista() {

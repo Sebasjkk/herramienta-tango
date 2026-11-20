@@ -25,6 +25,8 @@ Listas de precios (leidas de las tablas de Tango, no de la consulta 12742):
     GET /api/articulos/<codigo>/precios   en que listas esta un articulo
     GET /api/cotizaciones            todas las cotizaciones (consulta 17948)
     GET /api/cotizaciones/<numero>/renglones
+    GET /api/listas/<id>/comprobantes?anio=  comprobantes de venta de un año con esa lista (base, solo lectura)
+    GET /api/comprobantes/renglones?t=&n=   renglones de un comprobante (base, solo lectura)
     GET /cotizacion/<id>.pdf         el PDF del formulario 128, como lo imprime Tango
     GET /api/remitos                 remitos del ultimo año (consulta 17965), con la OC del pedido
     GET /api/clientes/<id>/envio     direcciones de entrega y contacto, para las etiquetas
@@ -176,6 +178,16 @@ def ruta_variable(contexto, ruta: str):
     if len(partes) == 4 and partes[:2] == ["api", "listas"] and partes[2].isdigit() and partes[3] == "usos":
         id_lista = int(partes[2])
         return lambda qs, f: (contexto.servicio().editor.usos(id_lista), time.time())
+    if len(partes) == 4 and partes[:2] == ["api", "listas"] and partes[2].isdigit() and partes[3] == "comprobantes":
+        id_lista = int(partes[2])
+        def comprobantes(qs, f):
+            anio = (qs.get("anio") or [""])[0]
+            if not anio.isdigit():
+                raise PedidoInvalido("Falta el año.")
+            return contexto.servicio().editor.comprobantes(id_lista, int(anio)), time.time()
+        return comprobantes
+    if partes == ["api", "comprobantes", "renglones"]:
+        return lambda qs, f: (contexto.servicio().editor.renglones_comprobante((qs.get("t") or [""])[0], (qs.get("n") or [""])[0]), time.time())
     if len(partes) == 3 and partes[:2] == ["api", "pedidos"] and partes[2].isdigit():
         id_pedido = int(partes[2])
         return lambda qs, f: (contexto.servicio().gestion_pedidos.detalle(id_pedido), time.time())

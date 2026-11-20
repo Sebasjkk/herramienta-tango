@@ -137,7 +137,14 @@
     return cots.filter(c => g.f(c) && ts.every(t => norm([c.numero_corto, c.numero, c.cliente, c.codigo_cliente, c.vendedor].join(" ")).includes(t)));
   }
 
+  let verPendiente = null;
   function render() {
+    if (verPendiente && cots.length) {          // abrir la cotizacion pedida en la pestana que la contenga
+      const c = cots.find(x => x.id === verPendiente);
+      if (c && !GRUPOS.find(g => g.id === grupo).f(c)) { const g = GRUPOS.find(g => g.f(c)); if (g) grupo = g.id; }
+      if (c) elegida = c.id;
+      verPendiente = null;
+    }
     // Pestanas con cantidades
     const ts = tokens($("q").value);
     const p = $("pestanas"); p.replaceChildren();
@@ -248,6 +255,9 @@
   HT.conectarBuscador($("q"), $("limpiar"), () => { elegida = null; render(); });
   $("actualizar").addEventListener("click", () => cargar(true));
   window.addEventListener("popstate", () => { if (!location.hash.startsWith("#cot=")) $("contenido").classList.remove("viendo"); });
+  // /cotizaciones?ver=<id>: abrir esa cotizacion (enlace desde Precios > Donde se usa)
+  const verId = Number(new URLSearchParams(location.search).get("ver")) || null;
+  if (verId) { verPendiente = verId; if (!window.matchMedia("(min-width: 960px)").matches) $("contenido").classList.add("viendo"); }
   if (location.hash.startsWith("#cot=")) history.replaceState(null, "", location.pathname);
   cargar(false);
 })();
