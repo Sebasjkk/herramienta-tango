@@ -481,6 +481,31 @@ class EditorPrecios:
             mensaje += " Para borrarla: anulá esos pedidos en Tango (Ventas > Pedidos > Anular) y después corré Depuración de pedidos (Tango web, proceso 12331), que borra los anulados."
             raise PedidoInvalido(mensaje)
 
+    def usos(self, id_lista: int) -> dict:
+        """Donde se usa la lista: clientes que la tienen asignada y pedidos que la nombran.
+        Cotizaciones y facturas no: la API no informa su lista (probado el 20/11/2026)."""
+        lista = self._lista(id_lista)
+        nombre = (lista.get("NOMBRE_LIS") or "").strip().upper()
+        clientes = [{"codigo": c.codigo, "razon_social": c.razon_social}
+                    for c in self._servicio.clientes()[0] if (c.lista_precios or "").strip().upper() == nombre]
+        cache = getattr(self, "_cache_pedidos", None)
+        if not cache or time.time() - cache[0] > 300:
+            pedidos = self._c.listar(PROCESO_PEDIDOS)
+            completos = self._detalles_proceso(PROCESO_PEDIDOS, [p["ID_GVA21"] for p in pedidos if p.get("ID_GVA21")])
+            cache = self._cache_pedidos = (time.time(), completos)
+        estados = {1: "Ingresado", 2: "Aprobado", 3: "Cumplido", 4: "Cerrado", 5: "Anulado", 6: "Desaprobado"}
+        por_id = {c.id: c for c in self._servicio.clientes()[0]}
+        pedidos = []
+        for p in cache[1].values():
+            if p.get("ID_GVA10") != id_lista:
+                continue
+            cli = por_id.get(p.get("ID_GVA14"))
+            pedidos.append({"id": p.get("ID_GVA21"), "numero": str(p.get("NRO_PEDIDO") or "").strip()[-8:].lstrip("0"),
+                            "fecha": (p.get("FECHA_PEDIDO") or "")[:10], "estado": estados.get(p.get("ESTADO"), p.get("ESTADO")),
+                            "cliente": cli.razon_social if cli else ""})
+        pedidos.sort(key=lambda x: x["fecha"], reverse=True)
+        return {"clientes": clientes, "pedidos": pedidos}
+
     def _detalles_proceso(self, proceso: int, ids: list[int]) -> dict[int, dict]:
         with ThreadPoolExecutor(max_workers=8) as ex:
             return {i: d for i, d in zip(ids, ex.map(lambda i: self._c.obtener(proceso, i), ids)) if d}

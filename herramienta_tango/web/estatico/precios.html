@@ -73,6 +73,10 @@
   }
   .restaurar { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin: 6px 0; }
   .copia-lista { margin: 4px 0; padding-left: 18px; font-size: .85rem; font-variant-numeric: tabular-nums; }
+  .usos { padding: 10px 18px; margin-top: 10px; }
+  .usos summary { cursor: pointer; font-weight: 600; }
+  .usos h4 { font-size: .9rem; margin: 10px 0 4px; }
+  .usos ul { margin: 0 0 4px; padding-left: 20px; font-size: .9rem; }
   .reasignar { border-left: 3px solid var(--oxido); background: #FFF7F3; padding: 8px 12px; border-radius: 6px; margin: 4px 0 12px; }
   .reasignar p { margin: 0 0 8px; }
   .reasignar .nota { margin: 8px 0 0; }
@@ -337,6 +341,39 @@
     return esp ? { precio: esp.precio, cliente: esp.id_cliente } : { precio: r.precio, cliente: null };
   }
 
+  // Donde se usa la lista (clientes y pedidos; cotizaciones y facturas la API no las informa)
+  function seccionUsos(l) {
+    const s = el("details", "tarjeta usos");
+    const sum = el("summary", "", "Dónde se usa");
+    const cuerpo = el("div"); cuerpo.append(el("p", "nota", "Consultando Tango…"));
+    s.append(sum, cuerpo);
+    let cargado = false;
+    s.addEventListener("toggle", async () => {
+      if (!s.open || cargado) return;
+      cargado = true;
+      try {
+        const u = (await pedir(`/api/listas/${l.id}/usos`, true)).datos;
+        cuerpo.replaceChildren();
+        cuerpo.append(el("h4", "", `Clientes que la tienen asignada: ${u.clientes.length}`));
+        if (u.clientes.length) {
+          const ul = el("ul"); for (const c of u.clientes) ul.append(el("li", "", `${c.razon_social} (${c.codigo})`)); cuerpo.append(ul);
+        }
+        cuerpo.append(el("h4", "", `Pedidos: ${u.pedidos.length}`));
+        if (u.pedidos.length) {
+          const ul = el("ul");
+          for (const p of u.pedidos) {
+            const li = el("li"); const a = el("a", "", `Pedido ${p.numero}`); a.href = "/pedidos";
+            li.append(a, ` · ${p.cliente} · ${fecha(p.fecha)} · ${p.estado}`); ul.append(li);
+          }
+          cuerpo.append(ul);
+        }
+        cuerpo.append(el("p", "nota", "Cotizaciones y facturas: Tango no informa por la API con qué lista se hicieron, así que acá no aparecen. " +
+                                      "Si al eliminar la lista Tango dice que hay cotizaciones o facturas relacionadas, son esas."));
+      } catch (e) { cargado = false; cuerpo.replaceChildren(el("p", "mensaje-error", textoError(e))); }
+    });
+    return s;
+  }
+
   function dibujarLista() {
     const l = actual.lista;
     const frag = document.createDocumentFragment();
@@ -358,6 +395,7 @@
       acc.append(asig, b); cab.append(acc);
     }
     d.append(cab);
+    d.append(seccionUsos(l));
     if (puedeEditar()) d.append(formAgregar());
 
     const ts = tokens(ui.q.value);

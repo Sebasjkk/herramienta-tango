@@ -173,6 +173,9 @@ def ruta_variable(contexto, ruta: str):
     if len(partes) == 3 and partes[:2] == ["api", "listas"] and partes[2].isdigit():
         id_lista = int(partes[2])
         return lambda qs, f: (contexto.servicio().editor.lista(id_lista, f), time.time())
+    if len(partes) == 4 and partes[:2] == ["api", "listas"] and partes[2].isdigit() and partes[3] == "usos":
+        id_lista = int(partes[2])
+        return lambda qs, f: (contexto.servicio().editor.usos(id_lista), time.time())
     if len(partes) == 3 and partes[:2] == ["api", "pedidos"] and partes[2].isdigit():
         id_pedido = int(partes[2])
         return lambda qs, f: (contexto.servicio().gestion_pedidos.detalle(id_pedido), time.time())

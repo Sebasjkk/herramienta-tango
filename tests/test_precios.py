@@ -203,6 +203,15 @@ class TestEditor(unittest.TestCase):
         self.assertFalse(any(x["ID_GVA10"] == 6 for x in self.tango.renglones.values()))
         self.assertEqual(len(self.registro.ultimos()[0]["contenido"]), 2)   # queda copia de lo borrado
 
+    def test_donde_se_usa(self):
+        editor = EditorPrecios(self.tango, ServicioFalso([cliente("SCIPIO", "SCIPIO")]), self.registro)
+        self.tango.pedidos[24].update(ID_GVA10=6, ID_GVA14=660, ESTADO=5, FECHA_PEDIDO="2007-02-19T00:00:00")
+        u = editor.usos(6)
+        self.assertEqual([c["codigo"] for c in u["clientes"]], ["SCIPIO"])
+        self.assertEqual(u["pedidos"], [{"id": 24, "numero": "37", "fecha": "2007-02-19", "estado": "Anulado",
+                                         "cliente": u["clientes"][0]["razon_social"]}])
+        self.assertEqual(editor.usos(1)["pedidos"], [])
+
     def test_no_elimina_una_lista_con_pedidos(self):
         editor = EditorPrecios(self.tango, ServicioFalso(), self.registro)
         self.tango.pedidos[24]["ID_GVA10"] = 6                                # el pedido 37 usa SCIPIO
