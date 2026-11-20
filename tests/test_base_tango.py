@@ -71,5 +71,45 @@ class TestBaseTango(unittest.TestCase):
         self.assertIn("T_COMP = 'FAC' AND r.N_COMP = 'A000100001234'", run.call_args[0][0][-1])
 
 
+class TestDesdeOtraPC(unittest.TestCase):
+    def setUp(self):
+        base_tango._cache.clear()
+
+    def test_reconoce_el_servidor(self):
+        with mock.patch.object(base_tango, "_servidor_tango", return_value=("desktop-b11ba4h", 8085)):
+            with mock.patch.object(base_tango.socket, "gethostname", return_value="DESKTOP-B11BA4H"):
+                self.assertTrue(base_tango.es_servidor())
+            with mock.patch.object(base_tango.socket, "gethostname", return_value="SC"):
+                self.assertFalse(base_tango.es_servidor())
+
+    def test_otra_pc_le_pide_al_servidor(self):
+        import io, json
+        resp = io.BytesIO(json.dumps({"ok": True, "datos": {"cotizaciones": [], "facturas_por_anio": []}}).encode())
+        with mock.patch.object(base_tango, "es_servidor", return_value=False), \
+             mock.patch.object(base_tango, "_servidor_tango", return_value=("desktop-b11ba4h", 8085)), \
+             mock.patch.object(base_tango.urllib.request, "urlopen", return_value=resp) as u, \
+             mock.patch.object(base_tango, "_correr") as local:
+            d = base_tango.usos_lista(2, 6)
+        local.assert_not_called()
+        self.assertEqual(u.call_args[0][0], "http://desktop-b11ba4h:8085/api/base/usos?id=2&nro=6")
+        self.assertEqual(d["cotizaciones"], [])
+
+    def test_error_del_servidor_se_muestra(self):
+        import io, json
+        resp = io.BytesIO(json.dumps({"ok": False, "error": "sin permiso"}).encode())
+        with mock.patch.object(base_tango, "es_servidor", return_value=False), \
+             mock.patch.object(base_tango, "_servidor_tango", return_value=("srv", 8085)), \
+             mock.patch.object(base_tango.urllib.request, "urlopen", return_value=resp):
+            with self.assertRaisesRegex(base_tango.BaseNoDisponible, "sin permiso"):
+                base_tango.comprobantes_lista(6, 2007)
+
+    def test_servidor_responde_siempre_local(self):
+        with mock.patch.object(base_tango, "_usos_local", return_value={"x": 1}) as loc:
+            self.assertEqual(base_tango.responder_remoto("usos", {"id": ["2"], "nro": ["6"]}), {"x": 1})
+        loc.assert_called_once_with(2, 6)
+        with self.assertRaises(ValueError):
+            base_tango.responder_remoto("borrar", {})
+
+
 if __name__ == "__main__":
     unittest.main()

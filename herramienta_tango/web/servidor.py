@@ -26,6 +26,7 @@ Listas de precios (leidas de las tablas de Tango, no de la consulta 12742):
     GET /api/cotizaciones            todas las cotizaciones (consulta 17948)
     GET /api/cotizaciones/<numero>/renglones
     GET /api/listas/<id>/comprobantes?anio=  comprobantes de venta de un año con esa lista (base, solo lectura)
+    GET /api/base/{usos,comprobantes,renglones}  lo mismo, para la Herramienta de otra PC
     GET /api/comprobantes/renglones?t=&n=   renglones de un comprobante (base, solo lectura)
     GET /cotizacion/<id>.pdf         el PDF del formulario 128, como lo imprime Tango
     GET /api/remitos                 remitos del ultimo año (consulta 17965), con la OC del pedido
@@ -186,6 +187,18 @@ def ruta_variable(contexto, ruta: str):
                 raise PedidoInvalido("Falta el año.")
             return contexto.servicio().editor.comprobantes(id_lista, int(anio)), time.time()
         return comprobantes
+    if len(partes) == 3 and partes[:2] == ["api", "base"]:
+        # Para las Herramientas de otras PCs: la base de Tango solo se lee aca (solo lectura)
+        from .. import base_tango
+        ruta = partes[2]
+        def base(qs, f):
+            try:
+                return base_tango.responder_remoto(ruta, qs), time.time()
+            except ValueError as e:
+                raise PedidoInvalido(str(e)) from None
+            except base_tango.BaseNoDisponible as e:
+                raise PedidoInvalido(str(e)) from None
+        return base
     if partes == ["api", "comprobantes", "renglones"]:
         return lambda qs, f: (contexto.servicio().editor.renglones_comprobante((qs.get("t") or [""])[0], (qs.get("n") or [""])[0]), time.time())
     if len(partes) == 3 and partes[:2] == ["api", "pedidos"] and partes[2].isdigit():

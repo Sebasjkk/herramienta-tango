@@ -14,6 +14,10 @@ permiso de lectura en la base; si no lo tiene, se devuelve el motivo.
 from __future__ import annotations
 
 import json
+import socket
+import urllib.error
+import urllib.parse
+import urllib.request
 import os
 import re
 import subprocess
@@ -99,7 +103,7 @@ def _correr(script: str) -> dict:
         raise BaseNoDisponible("La base de Tango devolvió algo que no se pudo leer.") from None
 
 
-def usos_lista(id_lista: int, numero_lista: int) -> dict:
+def _usos_local(id_lista: int, numero_lista: int) -> dict:
     """Cotizaciones (GVA08) y facturas (GVA12, por año) que usan la lista."""
     id_lista, numero_lista = int(id_lista), int(numero_lista)     # enteros: nada de texto libre en el SQL
     clave = ("usos", id_lista, numero_lista)
@@ -148,7 +152,7 @@ def _numero_comprobante(n: str) -> str:
     return f"{m.group(1)} {m.group(2)[-4:]}-{m.group(3)}".strip() if m else n
 
 
-def comprobantes_lista(numero_lista: int, anio: int) -> list[dict]:
+def _comprobantes_local(numero_lista: int, anio: int) -> list[dict]:
     """Comprobantes de venta (GVA12) de un año hechos con la lista."""
     numero_lista, anio = int(numero_lista), int(anio)
     clave = ("comprobantes", numero_lista, anio)
@@ -170,11 +174,16 @@ _T_COMP = re.compile(r"[A-Z/]{1,3}")
 _N_COMP = re.compile(r"[A-Z0-9 ]{1,14}")
 
 
-def renglones_comprobante(t_comp: str, n_comp: str) -> list[dict]:
-    """Renglones (GVA53) de un comprobante. Los textos se validan antes de ir al SQL."""
+def _renglones_validar(t_comp: str, n_comp: str) -> tuple[str, str]:
     t_comp, n_comp = (t_comp or "").strip().upper(), (n_comp or "").rstrip().upper()
     if not _T_COMP.fullmatch(t_comp) or not _N_COMP.fullmatch(n_comp):
         raise ValueError("Comprobante inválido.")
+    return t_comp, n_comp
+
+
+def _renglones_local(t_comp: str, n_comp: str) -> list[dict]:
+    """Renglones (GVA53) de un comprobante. Los textos se validan antes de ir al SQL."""
+    t_comp, n_comp = _renglones_validar(t_comp, n_comp)
     clave = ("renglones", t_comp, n_comp)
     if clave in _cache and time.time() - _cache[clave][0] < VIGENCIA:
         return _cache[clave][1]
@@ -185,3 +194,89 @@ def renglones_comprobante(t_comp: str, n_comp: str) -> list[dict]:
             "precio": _campo(f, "PRECIO_NET", "PRECIO", "PRECIO_PAN")} for f in filas]
     _cache[clave] = (time.time(), res)
     return res
+
+
+
+# ------------------------------------------------------------------ desde otras PCs
+# La base esta solo en el servidor de Tango. Una Herramienta que corre en otra PC
+# no la puede leer: le pide el dato a la Herramienta del servidor (/api/base/...),
+# que hace la consulta local y devuelve el resultado.
+
+def _servidor_tango() -> tuple[str, int] | None:
+    from . import config
+    try:
+        cfg = config.cargar()
+    except Exception:
+        return None
+    host = urllib.parse.urlparse(cfg.servidor).hostname if cfg.servidor else None
+    return (host, cfg.puerto) if host else None
+
+
+def es_servidor() -> bool:
+    """True si esta PC es la del servidor de Tango (donde esta la base)."""
+    if os.environ.get("HERRAMIENTA_TANGO_BASE_LOCAL") == "1":
+        return True
+    destino = _servidor_tango()
+    if not destino:
+        return True                     # sin configurar: se intenta local
+    host = destino[0].lower()
+    if host in ("localhost", "127.0.0.1", "::1"):
+        return True
+    nombre = socket.gethostname().lower()
+    return host == nombre or host.split(".")[0] == nombre.split(".")[0]
+
+
+def _remoto(ruta: str, parametros: dict):
+    destino = _servidor_tango()
+    if not destino:
+        raise BaseNoDisponible("No sé cuál es el servidor de Tango para pedirle estos datos.")
+    url = f"http://{destino[0]}:{destino[1]}/api/base/{ruta}?{urllib.parse.urlencode(parametros)}"
+    try:
+        with urllib.request.urlopen(url, timeout=70) as r:
+            datos = json.loads(r.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        try:
+            datos = json.loads(e.read().decode("utf-8"))
+        except Exception:
+            raise BaseNoDisponible(f"La Herramienta del servidor ({destino[0]}) respondió con error {e.code}. "
+                                   "Puede que tenga una versión vieja: actualizala.") from None
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        raise BaseNoDisponible(f"No se pudo pedir el dato a la Herramienta del servidor ({destino[0]}:{destino[1]}). "
+                               f"¿Está prendida? {e}") from None
+    if not datos.get("ok"):
+        raise BaseNoDisponible(datos.get("error") or "La Herramienta del servidor no pudo leer la base.")
+    return datos.get("datos")
+
+
+def usos_lista(id_lista: int, numero_lista: int) -> dict:
+    """Cotizaciones (GVA08) y facturas (GVA12, por año) que usan la lista."""
+    if es_servidor():
+        return _usos_local(id_lista, numero_lista)
+    return _remoto("usos", {"id": int(id_lista), "nro": int(numero_lista)})
+
+
+def comprobantes_lista(numero_lista: int, anio: int) -> list[dict]:
+    """Comprobantes de venta (GVA12) de un año hechos con la lista."""
+    if es_servidor():
+        return _comprobantes_local(numero_lista, anio)
+    return _remoto("comprobantes", {"nro": int(numero_lista), "anio": int(anio)})
+
+
+def renglones_comprobante(t_comp: str, n_comp: str) -> list[dict]:
+    """Renglones (GVA53) de un comprobante."""
+    if es_servidor():
+        return _renglones_local(t_comp, n_comp)
+    _renglones_validar(t_comp, n_comp)
+    return _remoto("renglones", {"t": t_comp, "n": n_comp})
+
+
+def responder_remoto(ruta: str, qs: dict):
+    """Lo que atiende el servidor para las otras PCs: siempre consulta local."""
+    p = lambda k: (qs.get(k) or [""])[0]
+    if ruta == "usos":
+        return _usos_local(int(p("id")), int(p("nro")))
+    if ruta == "comprobantes":
+        return _comprobantes_local(int(p("nro")), int(p("anio")))
+    if ruta == "renglones":
+        return _renglones_local(p("t"), p("n"))
+    raise ValueError("Consulta desconocida.")
