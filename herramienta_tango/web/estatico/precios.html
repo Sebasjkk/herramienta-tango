@@ -71,6 +71,9 @@
     .agregar-fila { grid-template-columns: 1fr 1fr; }
     .agregar-fila .campo-art { grid-column: 1 / -1; }
   }
+  .reasignar { border-left: 3px solid var(--oxido); background: #FFF7F3; padding: 8px 12px; border-radius: 6px; margin: 4px 0 12px; }
+  .reasignar p { margin: 0 0 8px; }
+  .reasignar .nota { margin: 8px 0 0; }
   /* Importar desde Excel */
   dialog.ayuda.ancha { max-width: 860px; }
   .imp-resumen { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin: 12px 0; }
@@ -700,15 +703,40 @@
       const acc = el("div", "acciones");
       const c = el("button", "boton", "Cancelar"); c.type = "button"; c.addEventListener("click", cerrar);
       const ok = el("button", "boton peligro confirmar", "Eliminar lista"); ok.type = "submit"; ok.disabled = true;
-      n.addEventListener("input", () => { ok.disabled = norm(n.value) !== norm(l.nombre); });
+
+      // Si hay clientes que la usan, se elige aca mismo la lista que pasan a usar
+      const resumen = listas.find(x => x.id === l.id);
+      const usan = resumen ? resumen.clientes_asignados : [];
+      let otra = null;
+      if (usan.length) {
+        const caja = el("div", "reasignar");
+        caja.append(el("p", "", (usan.length === 1 ? `La usa ${usan[0]}` : `La usan ${usan.length} clientes: ${usan.slice(0, 4).join(", ")}${usan.length > 4 ? "…" : ""}`).replace(/\.?$/, ". ") +
+          "Para que no queden sin lista, elegí cuál pasan a usar. Se cambia en su ficha de Tango antes de eliminar."));
+        const lo = el("label", "etiqueta", usan.length === 1 ? "Lista nueva del cliente" : "Lista nueva de esos clientes"); lo.htmlFor = "el-otra";
+        otra = el("select", "campo"); otra.id = "el-otra";
+        otra.append(new Option("Elegí una lista", ""));
+        const general = listas.filter(x => x.id !== l.id).sort((x, y) => x.numero - y.numero);
+        for (const x of general) otra.append(new Option(`${x.numero} · ${x.nombre} (${x.moneda === "US$" ? "dólares" : "pesos"})`, x.id));
+        const metco = general.find(x => norm(x.nombre) === "metco");
+        if (metco) otra.value = metco.id;
+        const aviso = el("p", "nota", "Ojo: los precios especiales que tenían en esta lista no pasan a la otra. Si eran precios propios del cliente, conviene editarlos en vez de borrar la lista.");
+        caja.append(lo, otra, aviso);
+        d.append(caja);
+      }
+      const habilitar = () => { ok.disabled = norm(n.value) !== norm(l.nombre) || (otra && !otra.value); };
+      n.addEventListener("input", habilitar);
+      if (otra) otra.addEventListener("change", habilitar);
+      ok.textContent = usan.length ? "Cambiar y eliminar" : "Eliminar lista";
+      const textoOk = ok.textContent;
       acc.append(c, ok);
       f.append(ln, n, err, acc);
       f.addEventListener("submit", async e => {
-        e.preventDefault(); ok.disabled = true; ok.textContent = "Eliminando…"; err.hidden = true;
+        e.preventDefault(); ok.disabled = true; ok.textContent = usan.length ? "Cambiando y eliminando…" : "Eliminando…"; err.hidden = true;
         try {
-          await escribir("/api/listas/eliminar", { lista: l.id, confirmar: n.value });
+          await escribir("/api/listas/eliminar", { lista: l.id, confirmar: n.value, reasignar_a: otra ? Number(otra.value) : null });
           cerrar(); actual = null; location.hash = ""; await cargarListas(true);
-        } catch (ex) { err.textContent = ex.message; err.hidden = false; ok.disabled = false; ok.textContent = "Eliminar lista"; }
+        } catch (ex) { err.textContent = ex.message; err.hidden = false; ok.disabled = false; ok.textContent = textoOk;
+                       cargarListas(true); }
       });
       d.append(f);
       setTimeout(() => n.focus(), 50);

@@ -196,6 +196,28 @@ class TestEditor(unittest.TestCase):
         self.assertFalse(any(x["ID_GVA10"] == 6 for x in self.tango.renglones.values()))
         self.assertEqual(len(self.registro.ultimos()[0]["contenido"]), 2)   # queda copia de lo borrado
 
+    def test_eliminar_lista_cambiando_la_del_cliente(self):
+        tango = self.tango
+
+        class ServicioConFichas(ServicioFalso):
+            """Los clientes salen de las fichas: cuando cambia la ficha, cambia su lista."""
+            def clientes(self, forzar=False):
+                return [Cliente(id=i, codigo=f["COD_GVA14"], razon_social=f["RAZON_SOCI"], cuit="", habilitado=True,
+                                lista_precios=tango.listas[f["ID_GVA10"]]["NOMBRE_LIS"]) for i, f in tango.fichas.items()], 0
+
+        tango.fichas[309].update(ID_GVA10=6, NRO_LISTA=10)                 # AERARG usa SCIPIO
+        editor = EditorPrecios(tango, ServicioConFichas(), self.registro)
+        with self.assertRaisesRegex(PedidoInvalido, "AEROLINEAS ARG"):
+            editor.eliminar_lista(6, "SCIPIO", "Gustavo")                  # sin lista nueva: se niega
+        with self.assertRaises(PedidoInvalido):
+            editor.eliminar_lista(6, "SCIPIO", "Gustavo", reasignar_a=6)   # la misma no vale
+        r = editor.eliminar_lista(6, "SCIPIO", "Gustavo", reasignar_a=1)
+        self.assertEqual(r["clientes_reasignados"], ["AEROLINEAS ARG"])
+        self.assertEqual((tango.fichas[309]["ID_GVA10"], tango.fichas[309]["NRO_LISTA"]), (1, 1))
+        self.assertNotIn(6, tango.listas)
+        acciones = [c["accion"] for c in self.registro.ultimos()]
+        self.assertEqual(acciones[:2], ["eliminar lista", "asignar lista"])
+
     def test_asignar_lista_a_cliente(self):
         r = self.editor.asignar_lista(6, 309, "Estela")
         ficha = self.tango.fichas[309]

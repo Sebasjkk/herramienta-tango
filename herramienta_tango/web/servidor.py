@@ -416,7 +416,7 @@ def crear_manejador(contexto):
                 elif ruta == "/api/mezclas/borrar":
                     contexto.servicio().mezclas.borrar(entero("id"), quien); r = None
                 else:
-                    r = editor.eliminar_lista(entero("lista"), texto("confirmar"), quien)
+                    r = editor.eliminar_lista(entero("lista"), texto("confirmar"), quien, entero("reasignar_a"))
                 self._json(200, {"ok": True, "datos": r})
             except DatoInvalido as e:
                 self._json(400, {"ok": False, "error": str(e)})

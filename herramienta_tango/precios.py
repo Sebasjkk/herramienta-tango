@@ -357,7 +357,29 @@ class EditorPrecios:
                 salida["error_asignacion"] = str(e)
         return salida
 
-    def eliminar_lista(self, id_lista: int, confirmar_nombre: str, quien: str) -> dict:
+    def eliminar_lista(self, id_lista: int, confirmar_nombre: str, quien: str,
+                       reasignar_a: int | None = None) -> dict:
+        """Borra la lista. Si hay clientes que la usan, con reasignar_a primero se les
+        asigna esa otra lista (si no, se niega: quedarian apuntando a una lista inexistente)."""
+        reasignados = []
+        if reasignar_a:
+            if reasignar_a == id_lista:
+                raise PedidoInvalido("Elegí otra lista para los clientes.")
+            with self._lock:
+                lista = self._lista(id_lista)
+                self._lista(reasignar_a)                     # que exista
+                nombre = (lista.get("NOMBRE_LIS") or "").strip()
+                if " ".join((confirmar_nombre or "").split()).upper() != nombre.upper():
+                    raise PedidoInvalido("Para eliminar la lista escribí su nombre exacto.")
+                clientes, _ = self._servicio.clientes(forzar=True)
+                usan = [c for c in clientes if c.lista_precios.strip().upper() == nombre.upper()]
+            for c in usan:
+                try:
+                    self.asignar_lista(reasignar_a, c.id, quien)
+                except (PedidoInvalido, TangoError) as e:
+                    hechos = f" Ya se cambió en: {', '.join(reasignados)}." if reasignados else ""
+                    raise TangoError(f"No se pudo cambiar la lista de {c.razon_social}: {e}.{hechos} La lista no se eliminó.") from None
+                reasignados.append(c.razon_social)
         with self._lock:
             lista = self._lista(id_lista)
             nombre = (lista.get("NOMBRE_LIS") or "").strip()
@@ -386,7 +408,7 @@ class EditorPrecios:
                                  articulos=len(copia), contenido=copia)
             if sigue:
                 raise TangoError("Se quitaron los artículos, pero Tango no borró la lista.")
-            return {"articulos_quitados": len(copia)}
+            return {"articulos_quitados": len(copia), "clientes_reasignados": reasignados}
 
     def asignar_lista(self, id_lista: int, id_cliente: int, quien: str) -> dict:
         """Cambia la lista de precios en la ficha del cliente (proceso 2117).
