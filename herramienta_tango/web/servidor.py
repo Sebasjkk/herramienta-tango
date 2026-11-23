@@ -26,6 +26,7 @@ Listas de precios (leidas de las tablas de Tango, no de la consulta 12742):
     GET /api/listas/<id>             articulos de una lista, con precios especiales por cliente
     GET /api/articulos/<codigo>/precios   en que listas esta un articulo
     GET /api/articulos/<codigo>/cotizaciones   cotizaciones donde aparece (con cantidad y precio)
+    GET /api/importaciones           carpetas de importacion y, por articulo, en camino y precio de compra (base, solo lectura)
     GET /api/articulos/<codigo>/movimientos    ultimos movimientos de stock (base, solo lectura)
     POST /api/inventario/comparar    {"nombre", "archivo": base64 del .xls/.xlsx de inventario} -> diferencias con Tango + Excel
     POST /api/exportar               {"nombre", "columnas": [{"titulo", "tipo"}], "filas": [[...]]} -> .xlsx
@@ -158,6 +159,13 @@ def crear_rutas(contexto) -> dict[str, Callable[[dict, bool], tuple]]:
             raise PedidoInvalido(f"El rango de fechas no puede superar {MAX_DIAS_VENTAS} días.")
         return s().ventas(desde, hasta, forzar)
 
+    def importaciones(qs: dict, forzar: bool):
+        from .. import base_tango
+        try:
+            return base_tango.importaciones_datos(forzar), time.time()
+        except base_tango.BaseNoDisponible as e:
+            raise PedidoInvalido(str(e)) from None
+
     return {
         "/api/stock/partidas": lambda qs, f: s().saldos_por_partida(f),
         "/api/stock/articulos": lambda qs, f: s().saldos_por_articulo(f),
@@ -177,6 +185,7 @@ def crear_rutas(contexto) -> dict[str, Callable[[dict, bool], tuple]]:
         "/api/listas/importar/estado": lambda qs, f: (s().importador.estado(), time.time()),
         "/api/listas/restaurar/estado": lambda qs, f: (s().editor.estado_restauracion(), time.time()),
         "/api/opciones": lambda qs, f: (opciones.leer(), time.time()),
+        "/api/importaciones": importaciones,
     }
 
 

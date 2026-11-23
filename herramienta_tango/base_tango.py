@@ -325,6 +325,41 @@ def remitos_pedido(id_pedido: int) -> dict:
     return _remoto("remitos_pedido", {"id": id_pedido})
 
 
+# ------------------------------------------------------------------ importaciones
+# Carpetas (CPA65) con su proveedor, renglones (CPA66: pedido, nacionalizado, precio) y
+# las partidas que creo cada despacho (STA08). Si la union con proveedores falla por
+# nombres de columna, se lee la cabecera sola.
+_IMPORTACIONES = r"""
+$out = [ordered]@{}
+$out.columnas = @((Q "SELECT COLUMN_NAME AS c FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'CPA65'") | ForEach-Object { $_.c })
+try { $out.carpetas = Q "SELECT c.*, p.NOM_PROVEE AS NOMBRE_PROVEEDOR FROM CPA65 c LEFT JOIN CPA01 p ON p.COD_PROVEE = c.COD_PROVEE" }
+catch { $out.carpetas = Q "SELECT * FROM CPA65" }
+$out.renglones = Q "SELECT ID_CARPETA, COD_ARTICU, CANT_PEDID, CANT_NACIO, CANT_FACTU, PREC_ORIG, CAN_EQUIVA FROM CPA66"
+$out.despachos = Q "SELECT DISTINCT ID_CARPETA, N_DESPACHO, N_PARTIDA, FECHA FROM STA08 WHERE ISNULL(ID_CARPETA, '') <> ''"
+$out | ConvertTo-Json -Depth 4 -Compress
+"""
+VIGENCIA_IMPORTACIONES = 600
+
+
+def _importaciones_local() -> dict:
+    from . import importaciones
+    clave = ("importaciones",)
+    if clave in _cache and time.time() - _cache[clave][0] < VIGENCIA_IMPORTACIONES:
+        return _cache[clave][1]
+    res = importaciones.armar(_correr(_IMPORTACIONES))
+    _cache[clave] = (time.time(), res)
+    return res
+
+
+def importaciones_datos(forzar: bool = False) -> dict:
+    """Carpetas de importacion y, por articulo, lo que esta en camino y el precio de compra."""
+    if forzar:
+        _cache.pop(("importaciones",), None)
+    if es_servidor():
+        return _importaciones_local()
+    return _remoto("importaciones", {"refrescar": "1"} if forzar else {})
+
+
 # ------------------------------------------------------------------ desde otras PCs
 # La base esta solo en el servidor de Tango. Una Herramienta que corre en otra PC
 # no la puede leer: le pide el dato a la Herramienta del servidor (/api/base/...),
@@ -417,6 +452,10 @@ def responder_remoto(ruta: str, qs: dict):
         return _renglones_local(p("t"), p("n"))
     if ruta == "movimientos":
         return _movimientos_local(p("art"))
+    if ruta == "importaciones":
+        if p("refrescar") == "1":
+            _cache.pop(("importaciones",), None)
+        return _importaciones_local()
     if ruta == "remitos_pedido":
         return _remitos_pedido_local(int(p("id")))
     raise ValueError("Consulta desconocida.")

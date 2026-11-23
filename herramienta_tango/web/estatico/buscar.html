@@ -78,6 +78,12 @@
   .reciente b { display: block; font-size: .8rem; margin-top: 3px; font-variant-numeric: tabular-nums; }
   .reciente b.neg { color: var(--oxido); }
   .ver-mas { display: block; width: 100%; margin: 4px 0 12px; }
+  .camino { border-left: 3px solid var(--patina); background: var(--seleccion); padding: 8px 12px; border-radius: 6px; margin: 2px 0 10px; }
+  .camino .lista-mini li { grid-template-columns: 1fr auto; }
+  .camino .der { font-weight: 700; color: var(--patina); }
+  .precio-compra { margin: 4px 0 8px; }
+  .res-stock small { display: block; }
+  .res-stock small.en-camino { color: var(--patina); font-weight: 600; }
   .mov-entra { color: var(--verde); }
   .mov-sale { color: var(--oxido); }
   .ficha-acciones { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 2px; }
@@ -161,6 +167,7 @@
     { id: "neg", titulo: "Negativos", f: (a, st) => st.total < -EPS || st.conSaldo.some(l => l.saldo < -EPS), alerta: true },
     { id: "partidas", titulo: "Con partidas", f: a => a.usaPart === true },
     { id: "precio", titulo: "Con precio", f: a => (preciosPor.get(a.cod) || []).some(p => p.precio > 0) },
+    { id: "camino", titulo: "En camino", f: a => (importDe(a.cod) || {}).en_camino > EPS },
   ];
   const params = new URLSearchParams(location.search);
   let filtro = FILTROS.some(f => f.id === params.get("f")) ? params.get("f") : "todos";
@@ -197,6 +204,7 @@
       consulta("/api/stock/partidas", indexarStock, "stock"),
       consulta("/api/stock/articulos", indexarStockArt, "stockArt"),
       consulta("/api/precios", indexarPrecios, "precios"),
+      cargarImportaciones(forzar),
     ])).filter(Boolean);
     $("busqueda").classList.remove("cargando");
     if (listos.length) {
@@ -460,6 +468,8 @@
     }
     const np = (preciosPor.get(a.cod) || []).filter(p => p.precio > 0).length;
     if (np) caja.append(el("small", "", np === 1 ? "1 precio" : `${np} precios`));
+    const im = importDe(a.cod);
+    if (im && im.en_camino > EPS) caja.append(el("small", "en-camino", `vienen ${num(im.en_camino)} ${unidad(a.um)}`));
     b.append(caja);
     b.addEventListener("click", () => {
       abrir(a.cod);
@@ -640,7 +650,7 @@
     acc.append(link);
     t.append(acc, codigoDeBarras(a));
 
-    t.append(seccionStock(a), seccionMovimientos(a), seccionPrecios(a), seccionCotizaciones(a));
+    t.append(seccionStock(a), seccionImportaciones(a), seccionMovimientos(a), seccionPrecios(a), seccionCotizaciones(a));
     cont.replaceChildren(t);
   }
 
@@ -764,6 +774,77 @@
     tabla.append(thead, tbody);
     const env = el("div", "tabla-envoltura"); env.append(tabla);
     s.append(env);
+    return s;
+  }
+
+  // ---------------------------------------------------------------- importaciones
+  // De las carpetas de importacion (base de Tango, solo lectura): lo que esta en camino
+  // (pedido y todavia no nacionalizado) y el precio que se le pago al proveedor.
+  let importaciones = null;       // { articulos: {codigo: {...}}, carpetas: [...] } | Error
+  const importPorNorm = new Map();
+  function cargarImportaciones(forzar) {
+    const usar = d => {
+      importaciones = d.datos;
+      importPorNorm.clear();
+      for (const [cod, v] of Object.entries(importaciones.articulos || {})) importPorNorm.set(sinCeros(norm(cod)), v);
+      render();
+    };
+    // No cuenta como error de la pantalla: si falla, la ficha lo dice en su seccion
+    return pedir("/api/importaciones", forzar, { previo: usar }).then(d => { usar(d); return null; }, e => { importaciones = e; render(); return null; });
+  }
+  const importDe = cod => importaciones && !(importaciones instanceof Error)
+    ? (importaciones.articulos[cod] || importPorNorm.get(sinCeros(norm(cod)))) : null;
+
+  function seccionImportaciones(a) {
+    const s = el("section", "seccion");
+    const cab = el("div", "seccion-cab");
+    cab.append(el("h3", "", "Importaciones"));
+    s.append(cab);
+    if (importaciones === null) { s.append(HT.esqueleto(2, "plano")); return s; }
+    if (importaciones instanceof Error) { s.append(el("p", "nota", "No se pudieron leer las carpetas de importación: " + textoError(importaciones))); return s; }
+    const im = importDe(a.cod);
+    if (!im || (!im.en_camino && !im.compras.length)) { s.append(el("p", "nota", "No figura en ninguna carpeta de importación.")); return s; }
+    const u = unidad(a.um);
+    if (im.en_camino > EPS) {
+      const caja = el("div", "camino");
+      caja.append(el("b", "", `En camino: ${num(im.en_camino)} ${u}`));
+      const ul = el("ul", "lista-mini");
+      for (const c of im.carpetas_en_camino) {
+        const li = el("li");
+        li.append(el("span", "", `Carpeta ${c.corto}${c.proveedor ? " · " + c.proveedor : ""}`),
+                  el("span", "der", `faltan ${num(c.falta)} ${u}`),
+                  el("small", "", [c.fecha && "abierta el " + fecha(c.fecha), `pedido ${num(c.pedido)}, llegó ${num(c.llego)}`, c.estado && "estado " + c.estado].filter(Boolean).join(" · ")));
+        ul.append(li);
+      }
+      caja.append(ul);
+      s.append(caja);
+    }
+    if (im.ultima_compra) {
+      const c = im.ultima_compra;
+      const p = el("p", "precio-compra");
+      p.append("Último precio de compra: ", el("b", "", `${c.moneda || ""} ${fmtPrecio.format(c.precio)}`.trim() + (u ? " por " + u : "")),
+               ` · carpeta ${c.corto}${c.fecha ? " del " + fecha(c.fecha) : ""}${c.proveedor ? " · " + c.proveedor : ""}`);
+      s.append(p);
+      if (c.equivalencia && Math.abs(c.equivalencia - 1) > 0.0001) {
+        s.append(el("p", "nota", `En la carpeta figura ${c.moneda || ""} ${fmtPrecio.format(c.precio_compra)} por unidad de compra; se pasó a la unidad de stock con la equivalencia ${num(c.equivalencia)}.`));
+      }
+      if (im.compras.length > 1) {
+        const tabla = el("table", "tabla");
+        const th = el("tr");
+        for (const [x, cl] of [["Carpeta", ""], ["Fecha", ""], ["Proveedor", ""], ["Cantidad", "der"], ["Precio", "der"]]) th.append(el("th", cl, x));
+        const thead = el("thead"); thead.append(th); const tb = el("tbody");
+        for (const x of im.compras) {
+          const tr = el("tr");
+          const pr = el("td", "der"); pr.append(el("span", "moneda", x.moneda || ""), fmtPrecio.format(x.precio));
+          tr.append(el("td", "", x.corto), el("td", "", fecha(x.fecha)), el("td", "", x.proveedor), el("td", "der", num(x.cantidad) + " " + u), pr);
+          tb.append(tr);
+        }
+        tabla.append(thead, tb);
+        const env = el("div", "tabla-envoltura"); env.append(tabla);
+        s.append(env);
+      }
+    }
+    s.append(el("p", "nota", "Precio del proveedor, sin gastos de importación (esos todavía no están completos en Tango)."));
     return s;
   }
 
