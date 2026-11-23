@@ -247,6 +247,25 @@ window.HT = (() => {
     pie.lastChild.id = "version";
     abajo.append(selectorTema(), con, pie);
     nav.replaceChildren(marca, ul, abajo);
+    // Si la lista no entra en la pantalla, el degradé de abajo avisa que se puede bajar
+    const marcarMas = () => ul.classList.toggle("hay-mas", ul.scrollHeight - ul.scrollTop - ul.clientHeight > 4);
+    // El modulo abierto siempre a la vista (por ejemplo, En camino en una notebook), por encima del degradé.
+    // Se repite si cambia el tamaño (el pie del menu crece cuando llega la version), salvo que la persona ya haya scrolleado.
+    let movidoAMano = false;
+    const asegurarActivo = () => {
+      const act = ul.querySelector('[aria-current="page"]');
+      if (!movidoAMano && act && ul.scrollHeight > ul.clientHeight) {
+        const abajo = act.getBoundingClientRect().bottom - ul.getBoundingClientRect().top + ul.scrollTop;
+        const margen = 44;
+        if (abajo + margen > ul.scrollTop + ul.clientHeight) { ajustando = true; ul.scrollTop = abajo + margen - ul.clientHeight; }
+      }
+      marcarMas();
+    };
+    let ajustando = false;
+    ul.addEventListener("scroll", () => { if (!ajustando) movidoAMano = true; ajustando = false; marcarMas(); }, { passive: true });
+    if ("ResizeObserver" in window) new ResizeObserver(asegurarActivo).observe(ul);
+    window.addEventListener("resize", asegurarActivo);
+    requestAnimationFrame(asegurarActivo);
 
     // Celular: marca y conexion arriba, en una barra que se va con el scroll
     const barra = el("div", "barra-movil");

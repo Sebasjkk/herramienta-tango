@@ -111,13 +111,18 @@ body { margin: 0; background: var(--zinc); color: var(--grafito); font: 16px/1.4
   .app-nav { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; gap: 22px;
     padding: 22px 14px 18px; border-right: 1px solid var(--linea); }
   .app-nav .marca { padding: 0 10px; font-size: 1.05rem; }
-  .nav-lista { display: grid; gap: 2px; }
+  /* La lista de modulos scrollea si no entra; marca y pie quedan fijos */
+  .nav-lista { display: grid; gap: 2px; align-content: start; flex: 1 1 auto; min-height: 0; overflow-y: auto;
+    margin: 0 -6px; padding: 0 6px; scrollbar-width: thin; scrollbar-color: var(--linea) transparent; }
+  .nav-lista::-webkit-scrollbar { width: 6px; }
+  .nav-lista::-webkit-scrollbar-thumb { background: var(--linea); border-radius: 3px; }
   .nav-item a { padding: 10px 12px; border-radius: 8px; }
   .nav-item a:hover { background: var(--zinc); color: var(--grafito); }
   .nav-item a[aria-current="page"] { background: var(--patina-suave); color: var(--patina); }
   .nav-item .corto { display: none; }
   .nav-item.solo-movil { display: none; }
-  .nav-abajo { margin-top: auto; display: grid; gap: 10px; padding: 0 10px; }
+  .nav-abajo { margin-top: auto; flex: none; display: grid; gap: 10px; padding: 0 10px; }
+  .app-nav .marca { flex: none; }
   .barra-movil { display: none; }
   .pagina { padding: 0 36px 48px; }
 }
@@ -310,3 +315,16 @@ dialog { background: var(--papel); color: var(--grafito); }
 .e-parcial { background: var(--ambar-suave); color: var(--ambar); }
 .e-sin-entregar { background: var(--zinc); color: var(--plomo); }
 .e-entregado { background: var(--patina-suave); color: var(--patina); }
+
+/* PC con pantalla baja (notebooks): renglones del menu mas compactos */
+@media (min-width: 960px) and (max-height: 820px) {
+  .app-nav { gap: 14px; padding-top: 16px; padding-bottom: 12px; }
+  .nav-item a { padding: 7px 12px; }
+  .nav-grupo { padding-top: 10px; }
+}
+
+/* Menu lateral con mas modulos de los que entran: degradé abajo para que se note que sigue */
+@media (min-width: 960px) {
+  .nav-lista.hay-mas { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 36px), transparent);
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 36px), transparent); }
+}
