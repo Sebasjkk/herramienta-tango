@@ -9,6 +9,7 @@
 <link rel="apple-touch-icon" href="/icono-192.png">
 <link rel="manifest" href="/manifest.json">
 <link rel="stylesheet" href="/comun.css">
+<script>try{var t=localStorage.getItem("ht_tema");if(t==="claro"||t==="oscuro")document.documentElement.dataset.tema=t}catch(e){}</script>
 <style>
   .fecha-hoy { font-size: .9rem; color: var(--plomo); margin: 4px 0 0; }
   .buscador-rapido { margin: 14px 0 18px; }
@@ -22,9 +23,9 @@
   .cifra .valor { display: block; font-size: 2rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; margin: 4px 0 2px;
     font-variant-numeric: tabular-nums; }
   .cifra .detalle { display: block; font-size: .8rem; color: var(--plomo); }
-  .cifra.atencion { border-color: #E9C98A; box-shadow: inset 3px 0 0 #D9A441; }
-  .cifra.atencion .valor { color: #8A5A00; }
-  .cifra.mal { border-color: #F1C4BF; box-shadow: inset 3px 0 0 var(--oxido); }
+  .cifra.atencion { border-color: var(--ambar-borde); box-shadow: inset 3px 0 0 var(--ambar-fuerte); }
+  .cifra.atencion .valor { color: var(--ambar); }
+  .cifra.mal { border-color: var(--oxido-borde); box-shadow: inset 3px 0 0 var(--oxido); }
   .cifra.mal .valor { color: var(--oxido); }
   .cifra.ok .valor { color: var(--verde); }
   .cifra .esq { margin-top: 12px; }

@@ -9,28 +9,29 @@
 <link rel="apple-touch-icon" href="/icono-192.png">
 <link rel="manifest" href="/manifest.json">
 <link rel="stylesheet" href="/comun.css">
+<script>try{var t=localStorage.getItem("ht_tema");if(t==="claro"||t==="oscuro")document.documentElement.dataset.tema=t}catch(e){}</script>
 <style>
   .explica { margin: 8px 0 0; font-size: .86rem; max-width: 70ch; }
   .pestanas { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
   .pestana { font: inherit; font-size: .88rem; font-weight: 600; min-height: 36px; padding: 4px 14px; border-radius: 999px;
     border: 1px solid var(--linea); background: var(--papel); color: var(--plomo); cursor: pointer; }
   .pestana b { font-variant-numeric: tabular-nums; margin-left: 4px; color: var(--grafito); }
-  .pestana[aria-selected="true"] { background: var(--patina); border-color: var(--patina); color: #fff; }
-  .pestana[aria-selected="true"] b { color: #fff; }
+  .pestana[aria-selected="true"] { background: var(--patina); border-color: var(--patina); color: var(--sobre-color); }
+  .pestana[aria-selected="true"] b { color: var(--sobre-color); }
 
   .lista-cot { list-style: none; margin: 0; padding: 0; }
   .cot { width: 100%; display: grid; grid-template-columns: 1fr auto; gap: 1px 14px; text-align: left; font: inherit; color: inherit;
     background: var(--papel); border: 1px solid var(--linea); border-radius: var(--radio); padding: 11px 14px; margin-bottom: 8px; cursor: pointer; }
   .cot:hover { border-color: var(--patina); }
-  .cot[aria-pressed="true"] { border-color: var(--patina); box-shadow: inset 3px 0 0 var(--patina); background: #F6FBFA; }
+  .cot[aria-pressed="true"] { border-color: var(--patina); box-shadow: inset 3px 0 0 var(--patina); background: var(--seleccion); }
   .cot .num { font-weight: 700; font-variant-numeric: tabular-nums; }
   .cot .cli { overflow-wrap: anywhere; }
   .cot .der { grid-column: 2; grid-row: 1 / span 2; text-align: right; font-size: .82rem; color: var(--plomo); line-height: 1.3; }
   .cot .meta { grid-column: 1 / -1; font-size: .8rem; color: var(--plomo); }
   .etiqueta-estado { display: inline-block; font-size: .74rem; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--zinc); color: var(--plomo); }
   .e-autorizada { background: var(--patina-suave); color: var(--patina); }
-  .e-procesada { background: #E3ECF8; color: #24508F; }
-  .e-vencida { background: #FBF0D9; color: #8A5A00; }
+  .e-procesada { background: var(--azul-suave); color: var(--azul); }
+  .e-vencida { background: var(--ambar-suave); color: var(--ambar); }
   .e-anulada { background: var(--oxido-suave); color: var(--oxido); }
 
   .ficha { padding: 18px; }

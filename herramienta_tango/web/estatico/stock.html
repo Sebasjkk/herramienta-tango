@@ -9,9 +9,10 @@
 <link rel="apple-touch-icon" href="/icono-192.png">
 <link rel="manifest" href="/manifest.json">
 <link rel="stylesheet" href="/comun.css">
+<script>try{var t=localStorage.getItem("ht_tema");if(t==="claro"||t==="oscuro")document.documentElement.dataset.tema=t}catch(e){}</script>
 <style>
   .filtros { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }
-  .chip-neg[aria-pressed="true"] { background: var(--oxido); border-color: var(--oxido); color: #fff; }
+  .chip-neg[aria-pressed="true"] { background: var(--oxido); border-color: var(--oxido); color: var(--sobre-color); }
   .chip-neg .cant { font-weight: 650; }
 
   /* Articulo */
@@ -32,12 +33,12 @@
   /* Lotes: la barra muestra cuanto del stock del articulo esta en cada lote */
   .lotes { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--linea); }
   .lote { position: relative; padding: 10px 14px 12px; display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; }
-  .lote + .lote { border-top: 1px solid #E3E8EB; }
+  .lote + .lote { border-top: 1px solid var(--linea-suave); }
   .lote-num { font-weight: 600; overflow-wrap: anywhere; }
   .lote-saldo { text-align: right; font-weight: 600; white-space: nowrap; }
   .lote-meta { grid-column: 1 / -1; font-size: .8rem; color: var(--plomo); display: flex; flex-wrap: wrap; gap: 2px 14px; }
   .lote-meta .vencida { color: var(--oxido); }
-  .nivel { grid-column: 1 / -1; height: 6px; border-radius: 3px; background: #EDF1F3; margin-top: 6px; overflow: hidden; }
+  .nivel { grid-column: 1 / -1; height: 6px; border-radius: 3px; background: var(--linea-suave); margin-top: 6px; overflow: hidden; }
   .nivel span { display: block; height: 100%; background: var(--patina); border-radius: 3px; }
   .lote.vacio { color: var(--plomo); }
   .lote.vacio .nivel { display: none; }

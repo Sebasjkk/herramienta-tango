@@ -9,6 +9,7 @@
 <link rel="apple-touch-icon" href="/icono-192.png">
 <link rel="manifest" href="/manifest.json">
 <link rel="stylesheet" href="/comun.css">
+<script>try{var t=localStorage.getItem("ht_tema");if(t==="claro"||t==="oscuro")document.documentElement.dataset.tema=t}catch(e){}</script>
 <style>
   .contenido-et { display: grid; gap: 16px; }
   @media (min-width: 1100px) { .contenido-et { grid-template-columns: minmax(280px, 360px) 1fr; align-items: start; } }
@@ -16,7 +17,7 @@
   .rem { width: 100%; display: grid; grid-template-columns: 1fr auto; gap: 1px 12px; text-align: left; font: inherit; color: inherit;
     background: var(--papel); border: 1px solid var(--linea); border-radius: var(--radio); padding: 10px 13px; margin-bottom: 7px; cursor: pointer; }
   .rem:hover { border-color: var(--patina); }
-  .rem[aria-pressed="true"] { border-color: var(--patina); box-shadow: inset 3px 0 0 var(--patina); background: #F6FBFA; }
+  .rem[aria-pressed="true"] { border-color: var(--patina); box-shadow: inset 3px 0 0 var(--patina); background: var(--seleccion); }
   .rem .num { font-weight: 700; font-variant-numeric: tabular-nums; }
   .rem .cli { font-size: .92rem; overflow-wrap: anywhere; }
   .rem .der { grid-column: 2; grid-row: 1 / span 2; text-align: right; font-size: .8rem; color: var(--plomo); }

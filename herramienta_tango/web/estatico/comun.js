@@ -22,17 +22,50 @@ window.HT = (() => {
     usuarios: '<circle cx="9" cy="8" r="3.2"/><path d="M3 19c.6-3.3 3-5 6-5s5.4 1.7 6 5"/><path d="M16 5.2a3 3 0 0 1 0 5.6M18 14.4c1.6.7 2.6 2.2 3 4.6"/>',
     persona: '<circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c.8-3.9 3.7-6 7.5-6s6.7 2.1 7.5 6"/>',
   };
+  // grupo: titulo de la seccion del menu (los modulos de un grupo van seguidos)
   // movil: va en la barra de abajo del celular; el resto queda en "Más"
   const MODULOS = [
     { id: "inicio", titulo: "Inicio", corto: "Inicio", href: "/", icono: "inicio", movil: true },
     { id: "buscar", titulo: "Buscar artículo", corto: "Buscar", href: "/buscar", icono: "buscar", movil: true },
-    { id: "stock", titulo: "Stock por partida", corto: "Stock", href: "/stock", icono: "stock", movil: true },
-    { id: "precios", titulo: "Listas de precios", corto: "Precios", href: "/precios", icono: "precios" },
-    { id: "cotizaciones", titulo: "Cotizaciones", corto: "Cotiz.", href: "/cotizaciones", icono: "cotizaciones" },
-    { id: "pedidos", titulo: "Pedidos", corto: "Pedidos", href: "/pedidos", icono: "pedidos" },
-    { id: "mezclas", titulo: "Mezclas", corto: "Mezclas", href: "/mezclas", icono: "mezclas", movil: true },
-    { id: "etiquetas", titulo: "Etiquetas de envío", corto: "Etiquetas", href: "/etiquetas", icono: "etiquetas" },
+    { id: "pedidos", grupo: "Ventas", titulo: "Pedidos", corto: "Pedidos", href: "/pedidos", icono: "pedidos" },
+    { id: "cotizaciones", grupo: "Ventas", titulo: "Cotizaciones", corto: "Cotiz.", href: "/cotizaciones", icono: "cotizaciones" },
+    { id: "precios", grupo: "Ventas", titulo: "Listas de precios", corto: "Precios", href: "/precios", icono: "precios" },
+    { id: "stock", grupo: "Stock", titulo: "Stock por partida", corto: "Stock", href: "/stock", icono: "stock", movil: true },
+    { id: "mezclas", grupo: "Stock", titulo: "Mezclas", corto: "Mezclas", href: "/mezclas", icono: "mezclas", movil: true },
+    { id: "etiquetas", grupo: "Stock", titulo: "Etiquetas de envío", corto: "Etiquetas", href: "/etiquetas", icono: "etiquetas" },
   ];
+
+  // ---------------------------------------------------------------- tema (claro / oscuro)
+  // "auto" sigue lo que tenga elegido el equipo (Windows o el celular). Cada equipo lo recuerda.
+  const TEMAS = [["auto", "Automático"], ["claro", "Claro"], ["oscuro", "Oscuro"]];
+  const leerTema = () => { try { return localStorage.getItem("ht_tema") || "auto"; } catch { return "auto"; } };
+  const oscuroDelEquipo = window.matchMedia("(prefers-color-scheme: dark)");
+  function aplicarTema(tema) {
+    const raiz = document.documentElement;
+    if (tema === "auto") delete raiz.dataset.tema; else raiz.dataset.tema = tema;
+    const oscuro = tema === "oscuro" || (tema === "auto" && oscuroDelEquipo.matches);
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.content = oscuro ? "#12181D" : "#0B6E69";
+    for (const b of document.querySelectorAll(".tema-op")) b.setAttribute("aria-pressed", String(b.dataset.tema === tema));
+  }
+  function elegirTema(tema) {
+    try { localStorage.setItem("ht_tema", tema); } catch {}
+    aplicarTema(tema);
+  }
+  aplicarTema(leerTema());
+  oscuroDelEquipo.addEventListener?.("change", () => aplicarTema(leerTema()));
+  // Botonera Automatico / Claro / Oscuro
+  function selectorTema() {
+    const g = el("div", "tema");
+    g.setAttribute("role", "group"); g.setAttribute("aria-label", "Tema");
+    for (const [id, texto] of TEMAS) {
+      const b = el("button", "tema-op", texto); b.type = "button"; b.dataset.tema = id;
+      b.setAttribute("aria-pressed", String(leerTema() === id));
+      b.addEventListener("click", () => elegirTema(id));
+      g.append(b);
+    }
+    return g;
+  }
 
   // ---------------------------------------------------------------- utilidades
   const $ = id => document.getElementById(id);
@@ -116,7 +149,10 @@ window.HT = (() => {
     marca.href = "/";
     marca.innerHTML = '<img src="/icono-192.png" alt=""> <div>Herramienta <span>Tango</span></div>';
     const ul = el("ul", "nav-lista");
+    let grupo = null;
     for (const m of MODULOS) {
+      if (m.grupo && m.grupo !== grupo) ul.append(el("li", "nav-grupo", m.grupo));
+      grupo = m.grupo;
       const li = el("li", "nav-item" + (m.movil ? "" : " solo-pc"));
       const a = el("a");
       a.href = m.href;
@@ -146,7 +182,7 @@ window.HT = (() => {
     }
     pie.append(el("span", "", ""));
     pie.lastChild.id = "version";
-    abajo.append(con, pie);
+    abajo.append(selectorTema(), con, pie);
     nav.replaceChildren(marca, ul, abajo);
 
     // Celular: marca y conexion arriba, en una barra que se va con el scroll
@@ -168,14 +204,18 @@ window.HT = (() => {
     d.addEventListener("cancel", () => setTimeout(() => d.remove(), 0));
     d.addEventListener("click", e => { if (e.target === d) cerrar(); });   // tocar afuera cierra
     const ul = el("ul", "hoja-lista");
+    let grupo = null;
     for (const m of MODULOS.filter(m => !m.movil)) {
+      if (m.grupo && m.grupo !== grupo) ul.append(el("li", "hoja-grupo", m.grupo));
+      grupo = m.grupo;
       const a = el("a"); a.href = m.href;
       if (m.id === activo) a.setAttribute("aria-current", "page");
       a.innerHTML = svg(m.icono); a.append(el("span", "", m.titulo));
       const li = el("li"); li.append(a); ul.append(li);
     }
     const c = el("button", "boton", "Cerrar"); c.type = "button"; c.addEventListener("click", cerrar);
-    d.append(ul, c);
+    const t = el("div", "hoja-tema"); t.append(el("span", "hoja-grupo", "Tema"), selectorTema());
+    d.append(ul, t, c);
     document.body.append(d);
     d.showModal();
   }

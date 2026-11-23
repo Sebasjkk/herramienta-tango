@@ -9,6 +9,7 @@
 <link rel="apple-touch-icon" href="/icono-192.png">
 <link rel="manifest" href="/manifest.json">
 <link rel="stylesheet" href="/comun.css">
+<script>try{var t=localStorage.getItem("ht_tema");if(t==="claro"||t==="oscuro")document.documentElement.dataset.tema=t}catch(e){}</script>
 <style>
   .contenido-mz { display: grid; gap: 16px; }
   .contenido-mz > * { min-width: 0; }
@@ -24,7 +25,7 @@
   .sugerencias small { color: var(--plomo); margin-right: 8px; }
   .sugerencias .vacio { padding: 8px 12px; color: var(--plomo); font-size: .9rem; }
 
-  .producto { border: 1px solid var(--linea); border-radius: var(--radio); padding: 10px 12px 12px; margin-bottom: 10px; background: #FBFCFC; }
+  .producto { border: 1px solid var(--linea); border-radius: var(--radio); padding: 10px 12px 12px; margin-bottom: 10px; background: var(--papel-2); }
   .producto-cab { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
   .producto-cab b { font-size: .85rem; color: var(--plomo); }
   .producto .elegido { font-weight: 600; overflow-wrap: anywhere; margin: 2px 0 8px; }
@@ -46,11 +47,11 @@
   .mz ul { list-style: none; margin: 6px 0; padding: 0; font-size: .88rem; }
   .mz ul li { padding: 2px 0; overflow-wrap: anywhere; }
   .estado { font-size: .75rem; font-weight: 700; padding: 2px 8px; border-radius: 99px; white-space: nowrap; }
-  .estado.pendiente { background: #FFF2D6; color: #7A4A00; }
+  .estado.pendiente { background: var(--ambar-suave); color: var(--ambar); }
   .estado.subida { background: var(--patina-suave); color: var(--patina-oscura); }
   .mz .acciones { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
   .pasos { margin: 8px 0 0; padding-left: 20px; font-size: .88rem; color: var(--plomo); }
-  .listo { border-left: 3px solid var(--patina); background: #F6FBFA; padding: 10px 12px; border-radius: 6px; margin-top: 12px; font-size: .92rem; }
+  .listo { border-left: 3px solid var(--patina); background: var(--seleccion); padding: 10px 12px; border-radius: 6px; margin-top: 12px; font-size: .92rem; }
 </style>
 </head>
 <body>

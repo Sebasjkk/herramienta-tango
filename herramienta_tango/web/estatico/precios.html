@@ -9,6 +9,7 @@
 <link rel="apple-touch-icon" href="/icono-192.png">
 <link rel="manifest" href="/manifest.json">
 <link rel="stylesheet" href="/comun.css">
+<script>try{var t=localStorage.getItem("ht_tema");if(t==="claro"||t==="oscuro")document.documentElement.dataset.tema=t}catch(e){}</script>
 <style>
   /* Barra de edicion */
   .edicion { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
@@ -53,7 +54,7 @@
   .renglon .valor.cero { color: var(--plomo); font-weight: 500; font-size: .9rem; }
   .renglon .meta { grid-column: 1 / -1; font-size: .78rem; color: var(--plomo); }
   .renglon .botones { grid-column: 1 / -1; display: flex; gap: 8px; margin-top: 6px; }
-  .renglon.editando { background: #F6FBFA; }
+  .renglon.editando { background: var(--seleccion); }
   .editor-precio { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
   .editor-precio .campo { width: 150px; }
   .editor-precio .cambio { font-size: .9rem; }
@@ -82,10 +83,10 @@
   .usos ul.comprobantes { list-style: none; padding-left: 12px; }
   .usos ul.comprobantes summary { font-weight: 400; overflow-wrap: anywhere; }
   .renglones-comp { width: 100%; border-collapse: collapse; margin: 4px 0 8px; font-size: .85rem; }
-  .renglones-comp td { padding: 3px 6px; border-bottom: 1px solid var(--borde, #ddd); vertical-align: top; }
+  .renglones-comp td { padding: 3px 6px; border-bottom: 1px solid var(--borde, var(--linea)); vertical-align: top; }
   .renglones-comp td.der { text-align: right; white-space: nowrap; }
   .renglones-comp .nota { display: block; }
-  .reasignar { border-left: 3px solid var(--oxido); background: #FFF7F3; padding: 8px 12px; border-radius: 6px; margin: 4px 0 12px; }
+  .reasignar { border-left: 3px solid var(--oxido); background: var(--oxido-suave); padding: 8px 12px; border-radius: 6px; margin: 4px 0 12px; }
   .reasignar p { margin: 0 0 8px; }
   .reasignar .nota { margin: 8px 0 0; }
   /* Importar desde Excel */
@@ -105,7 +106,7 @@
   .imp-renglones li { display: grid; grid-template-columns: 6.5em 1fr auto; gap: 8px; padding: 3px 0; border-top: 1px dotted var(--linea-suave); }
   .imp-renglones .est { font-weight: 600; }
   .imp-renglones .agregar .est { color: var(--patina-oscura); }
-  .imp-renglones .distinto .est { color: #7A4A00; }
+  .imp-renglones .distinto .est { color: var(--ambar); }
   .imp-renglones .error .est, .imp-renglones .no_cargar .est { color: var(--oxido); }
   .imp-renglones .igual { color: var(--plomo); }
   .imp-renglones small { display: block; color: var(--plomo); }
