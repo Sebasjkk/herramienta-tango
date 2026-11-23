@@ -27,6 +27,7 @@ Listas de precios (leidas de las tablas de Tango, no de la consulta 12742):
     GET /api/articulos/<codigo>/precios   en que listas esta un articulo
     GET /api/articulos/<codigo>/cotizaciones   cotizaciones donde aparece (con cantidad y precio)
     GET /api/articulos/<codigo>/movimientos    ultimos movimientos de stock (base, solo lectura)
+    POST /api/inventario/comparar    {"nombre", "archivo": base64 del .xls/.xlsx de inventario} -> diferencias con Tango + Excel
     POST /api/exportar               {"nombre", "columnas": [{"titulo", "tipo"}], "filas": [[...]]} -> .xlsx
     GET /api/cotizaciones            todas las cotizaciones (consulta 17948)
     GET /api/cotizaciones/<numero>/renglones
@@ -109,6 +110,8 @@ MAX_DIAS_VENTAS = 366
 MAX_CUERPO = 10_000
 MAX_CUERPO_ARCHIVO = 8_000_000      # Excel en base64 para importar listas, y datos para exportar
 MAX_COLUMNAS_EXPORTAR = 30
+MAX_CUERPO_INVENTARIO = 60_000_000   # el Excel de inventario pesa ~10 MB (tiene Ingresos y Egresos), en base64 ~14 MB
+MAX_FILAS_RESPUESTA = 600            # renglones con diferencias que se mandan a la pantalla (el Excel lleva todos)
 ENCABEZADO_PANEL = "X-Herramienta-Tango"
 ENCABEZADO_NOMBRE = "X-Nombre"
 DIRECCIONES_LOCALES = {"127.0.0.1", "::1", "::ffff:127.0.0.1"}
@@ -555,8 +558,44 @@ def crear_manejador(contexto):
             self._responder(200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", contenido,
                             {"Content-Disposition": f'attachment; filename="{ascii_}.xlsx"; filename*=UTF-8\'\'{urllib.parse.quote(nombre)}.xlsx'})
 
+        def _comparar_inventario(self) -> None:
+            """Compara el Excel de inventario con el stock de Tango. Solo lee."""
+            from .. import inventario
+            datos = self._leer_cuerpo(MAX_CUERPO_INVENTARIO)
+            if datos is None:
+                return
+            try:
+                contenido = base64.b64decode(str(datos.get("archivo") or ""), validate=True)
+                if not contenido:
+                    raise ValueError
+            except (binascii.Error, ValueError):
+                self._json(400, {"ok": False, "error": "No se pudo leer el archivo."})
+                return
+            try:
+                r = inventario.comparar(contenido, contexto.servicio(), str(datos.get("nombre") or "")[:120])
+            except inventario.InventarioInvalido as e:
+                self._json(400, {"ok": False, "error": str(e)})
+                return
+            except NoConfigurado as e:
+                self._json(503, {"ok": False, "error": str(e)})
+                return
+            except TangoError as e:
+                self._json(502, {"ok": False, "error": str(e)})
+                return
+            except Exception as e:
+                log.exception("Error al comparar el inventario")
+                self._json(500, {"ok": False, "error": f"Error inesperado: {e.__class__.__name__}"})
+                return
+            distintas = [f for f in r["filas"] if f["estado"] != "Coincide"]
+            self._json(200, {"ok": True, "datos": {
+                "resumen": r["resumen"], "filas": distintas[:MAX_FILAS_RESPUESTA], "total_distintas": len(distintas),
+                "archivo": base64.b64encode(r["archivo"]).decode("ascii")}})
+
         def do_POST(self):
             url = urllib.parse.urlparse(self.path)
+            if url.path == "/api/inventario/comparar":
+                self._comparar_inventario()
+                return
             if url.path == "/api/exportar":
                 self._exportar()
                 return

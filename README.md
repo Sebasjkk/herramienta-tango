@@ -18,7 +18,7 @@ Hoy es **solo lectura**: no carga ni modifica nada en Tango.
 
 Las páginas para los usuarios comparten `comun.css` y `comun.js` (navegación: barra lateral en la PC, pestañas abajo en el celular con "Más" para los módulos que no entran; esqueletos de carga, errores que dicen si falló la red, Tango o la Herramienta, colores de estado comunes).
 
-Las pantallas muestran al instante lo último que se vio en ese equipo (guardado en el navegador, con su hora) mientras piden lo nuevo a Tango. Lo que se ve se puede exportar a Excel (`POST /api/exportar`, el .xlsx lo arma `xlsx.py` sin librerías). Precios: después de cambiar o quitar un precio queda unos segundos un botón Deshacer. Mezclas: Repetir copia una mezcla anterior y se sugiere la última partida usada de cada polvo. Pedidos: entregas parciales (etiqueta, barra de avance y filtro), y en la ficha pedido / entregado / falta por artículo con los remitos del pedido.
+Las pantallas muestran al instante lo último que se vio en ese equipo (guardado en el navegador, con su hora) mientras piden lo nuevo a Tango. Lo que se ve se puede exportar a Excel (`POST /api/exportar`, el .xlsx lo arma `xlsx.py` sin librerías). Precios: después de cambiar o quitar un precio queda unos segundos un botón Deshacer. Mezclas: Repetir copia una mezcla anterior y se sugiere la última partida usada de cada polvo. Stock: «Comparar con inventario Excel» sube el Inventario_Metco y muestra las diferencias con Tango (`inventario.py`; los .xls viejos los lee `xls.py`, sin librerías). Pedidos: entregas parciales (etiqueta, barra de avance y filtro), y en la ficha pedido / entregado / falta por artículo con los remitos del pedido.
 
 Cada pantalla se puede abrir directo con un link: `/clientes?ver=<código>`, `/buscar?art=<código>`, `/buscar?q=zinc&f=neg`, `/pedidos?ver=<id>`, `/cotizaciones?ver=<id>`. Los links viejos `/?q=` redirigen a `/buscar`. Un módulo nuevo se agrega en `MODULOS` de `comun.js`. El panel del servidor (`panel.html`) es aparte.
 
@@ -70,6 +70,7 @@ Todas responden `{"ok": true, "actualizado": "...", "datos": [...]}`. Con `?refr
 | `/api/estado` | Versión del programa |
 | `/api/stock/partidas` | Saldo por partida (artículo, depósito, lote, despacho, vencimiento, saldo) |
 | `/api/articulos` | Artículos (código, descripción, código de barras, NCM, usa partidas, punto de pedido...) |
+| `POST /api/inventario/comparar` | Compara el Excel de inventario (Inventario_Metco, .xls o .xlsx) con el stock de Tango: diferencias contra Central, lo que no está en Tango, lo que solo está en Tango, y un Excel con todo. No modifica Tango |
 | `/api/pedidos/avance` | Cuánto se entregó de cada pedido pendiente: sin entregar, parcial o entregado, con porcentaje y lo que falta |
 | `/api/pedidos/<id>/remitos` | Remitos y devoluciones hechos contra el pedido (base, solo lectura; busca la columna que une remito y pedido en esa versión de Tango) |
 | `/api/articulos/<código>/movimientos` | Últimos 60 movimientos de stock del artículo (base SQL, solo lectura; desde otras PCs se le pide al servidor) |

@@ -114,8 +114,7 @@ def _esc(texto: str) -> str:
     return texto.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
 
 
-def escribir(columnas: list[tuple[str, str]], filas: list[list], hoja: str = "Datos") -> bytes:
-    """columnas: [(titulo, "texto" | "numero")]. Devuelve el .xlsx."""
+def _hoja_xml(columnas: list[tuple[str, str]], filas: list[list]) -> str:
     if len(filas) > MAX_FILAS_EXPORTAR:
         raise ValueError(f"Son demasiadas filas para exportar (máximo {MAX_FILAS_EXPORTAR}).")
     anchos = [min(60, max(10, len(t) + 2)) for t, _ in columnas]
@@ -139,52 +138,74 @@ def escribir(columnas: list[tuple[str, str]], filas: list[list], hoja: str = "Da
         xml_filas.append(f'<row r="{n}">{"".join(celdas)}</row>')
     ultima = f"{_letra(len(columnas) - 1)}{max(1, len(filas) + 1)}"
     cols = "".join(f'<col min="{i + 1}" max="{i + 1}" width="{a}" customWidth="1"/>' for i, a in enumerate(anchos))
-    hoja_xml = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-                '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-                '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>'
-                '</sheetView></sheetViews>'
-                f'<cols>{cols}</cols><sheetData>{"".join(xml_filas)}</sheetData>'
-                f'<autoFilter ref="A1:{ultima}"/></worksheet>')
-    nombre_hoja = _esc(re.sub(r"[\[\]:*?/\\]", " ", hoja)[:31] or "Datos")
-    archivos = {
-        "[Content_Types].xml": '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
-            '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
-            '<Default Extension="xml" ContentType="application/xml"/>'
-            '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
-            '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
-            '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
-            '</Types>',
-        "_rels/.rels": '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
-            '</Relationships>',
-        "xl/workbook.xml": '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
-            'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
-            f'<sheets><sheet name="{nombre_hoja}" sheetId="1" r:id="rId1"/></sheets>'
-            f'<definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">\'{nombre_hoja}\'!$A$1:${_letra(len(columnas) - 1)}${max(1, len(filas) + 1)}</definedName></definedNames>'
-            '</workbook>',
-        "xl/_rels/workbook.xml.rels": '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
-            '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
-            '</Relationships>',
-        "xl/styles.xml": '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-            '<numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0.00"/></numFmts>'
-            '<fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>'
-            '<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>'
-            '<fill><patternFill patternType="solid"><fgColor rgb="FFDCEFED"/></patternFill></fill></fills>'
-            '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
-            '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
-            '<cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
-            '<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/>'
-            '<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs>'
-            '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
-            '</styleSheet>',
-        "xl/worksheets/sheet1.xml": hoja_xml,
-    }
+    return ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+            '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>'
+            '</sheetView></sheetViews>'
+            f'<cols>{cols}</cols><sheetData>{"".join(xml_filas)}</sheetData>'
+            f'<autoFilter ref="A1:{ultima}"/></worksheet>')
+
+
+def escribir(columnas: list[tuple[str, str]], filas: list[list], hoja: str = "Datos") -> bytes:
+    """columnas: [(titulo, "texto" | "numero")]. Devuelve el .xlsx de una hoja."""
+    return escribir_libro([(hoja, columnas, filas)])
+
+
+def escribir_libro(hojas: list[tuple[str, list[tuple[str, str]], list[list]]]) -> bytes:
+    """Varias hojas: [(nombre, columnas, filas)]. Cada hoja con encabezado, filtro y primera fila fija."""
+    if not hojas:
+        raise ValueError("No hay hojas para escribir.")
+    nombres, usados = [], set()
+    for nombre, _, _ in hojas:
+        n = re.sub(r"[\[\]:*?/\\]", " ", nombre)[:31].strip() or "Datos"
+        base, k = n, 2
+        while n.lower() in usados:
+            n = f"{base[:28]} {k}"; k += 1
+        usados.add(n.lower()); nombres.append(n)
+    archivos = {}
+    tipos = "".join(f'<Override PartName="/xl/worksheets/sheet{i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+                    for i in range(len(hojas)))
+    archivos["[Content_Types].xml"] = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+        '<Default Extension="xml" ContentType="application/xml"/>'
+        '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+        f'{tipos}'
+        '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
+        '</Types>')
+    archivos["_rels/.rels"] = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+        '</Relationships>')
+    hojas_xml = "".join(f'<sheet name="{_esc(n)}" sheetId="{i + 1}" r:id="rId{i + 1}"/>' for i, n in enumerate(nombres))
+    filtros = "".join(
+        f'<definedName name="_xlnm._FilterDatabase" localSheetId="{i}" hidden="1">\'{_esc(n)}\'!$A$1:${_letra(len(c) - 1)}${max(1, len(f) + 1)}</definedName>'
+        for i, (n, (_, c, f)) in enumerate(zip(nombres, hojas)))
+    archivos["xl/workbook.xml"] = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        f'<sheets>{hojas_xml}</sheets><definedNames>{filtros}</definedNames></workbook>')
+    rels = "".join(f'<Relationship Id="rId{i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet{i + 1}.xml"/>'
+                   for i in range(len(hojas)))
+    archivos["xl/_rels/workbook.xml.rels"] = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        f'{rels}<Relationship Id="rId{len(hojas) + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
+        '</Relationships>')
+    archivos["xl/styles.xml"] = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        '<numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0.00"/></numFmts>'
+        '<fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>'
+        '<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>'
+        '<fill><patternFill patternType="solid"><fgColor rgb="FFDCEFED"/></patternFill></fill></fills>'
+        '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
+        '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+        '<cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
+        '<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/>'
+        '<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs>'
+        '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
+        '</styleSheet>')
+    for i, (_, columnas, filas) in enumerate(hojas):
+        archivos[f"xl/worksheets/sheet{i + 1}.xml"] = _hoja_xml(columnas, filas)
     salida = io.BytesIO()
     with zipfile.ZipFile(salida, "w", zipfile.ZIP_DEFLATED) as z:
         for nombre, contenido in archivos.items():

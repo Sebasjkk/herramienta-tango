@@ -33,6 +33,23 @@
   /* Lotes: la barra muestra cuanto del stock del articulo esta en cada lote */
   .lotes { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--linea); }
   .lote { position: relative; padding: 10px 14px 12px; display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; }
+  .comp-cab { padding: 16px 18px; margin-bottom: 12px; }
+  .comp-cab h2 { font-size: 1.15rem; margin: 0 0 4px; overflow-wrap: anywhere; }
+  .comp-cab .nota { font-size: .85rem; color: var(--plomo); margin: 6px 0; }
+  .comp-cifras { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+  .comp-cifra { border: 1px solid var(--linea); border-radius: var(--radio); padding: 8px 14px; min-width: 120px; }
+  .comp-cifra b { display: block; font-size: 1.5rem; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .comp-cifra span { font-size: .8rem; color: var(--plomo); }
+  .comp-cifra.c-ok b { color: var(--verde); }
+  .comp-cifra.c-mal b { color: var(--oxido); }
+  .comp-cifra.c-aviso b { color: var(--ambar); }
+  .comp-acciones { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0; }
+  .comp-filtros { margin: 0 0 10px; }
+  .comp-tabla { overflow: hidden; }
+  .comp-tabla td a { color: inherit; }
+  .comp-tabla .neg-dif { color: var(--oxido); font-weight: 700; }
+  .comp-tabla .pos-dif { color: var(--ambar); font-weight: 700; }
+  .comp-notas { font-size: .8rem; color: var(--plomo); max-width: 340px; }
   .lote + .lote { border-top: 1px solid var(--linea-suave); }
   .lote-num { font-weight: 600; overflow-wrap: anywhere; }
   .lote-saldo { text-align: right; font-weight: 600; white-space: nowrap; }
@@ -81,6 +98,8 @@
           <label class="chip"><input type="checkbox" id="vacios"> Mostrar lotes vacíos</label>
           <button type="button" class="chip chip-neg" id="negativos" aria-pressed="false">Ver negativos <span class="cant" id="cantNeg"></span></button>
           <button type="button" class="chip" id="exportar">Exportar a Excel</button>
+          <button type="button" class="chip" id="comparar">Comparar con inventario Excel</button>
+          <input type="file" id="archivo-inv" accept=".xls,.xlsx" hidden>
         </div>
       </div>
 
@@ -217,7 +236,133 @@
       visibles.map(f => [f.art, f.desc, titulo(f.dep), f.part, f.desp, HT.fecha(f.venc), HT.unidad(f.um), f.s]));
   });
 
+  // ---------------------------------------------------------------- comparar con el Excel de inventario
+  // Se sube el Inventario_Metco (.xls o .xlsx); el servidor lo compara con los saldos de Tango
+  // (contra Central; los otros depositos aparte) y devuelve el detalle y un Excel con todo. No toca Tango.
+  let comparacion = null;       // resultado mientras se ve la comparacion
+  let filtroComp = "dif";
+  const GRUPOS_COMP = [
+    { id: "dif", titulo: "Diferencias", estados: ["Tango tiene menos", "Tango tiene más"] },
+    { id: "unidad", titulo: "Unidad para revisar", estados: ["Revisar unidad"] },
+    { id: "falta", titulo: "No están en Tango", estados: ["No está en Tango"] },
+    { id: "solo", titulo: "Solo en Tango", estados: ["Solo en Tango"] },
+  ];
+  $("comparar").addEventListener("click", () => $("archivo-inv").click());
+  $("archivo-inv").addEventListener("change", async () => {
+    const f = $("archivo-inv").files[0];
+    $("archivo-inv").value = "";
+    if (!f) return;
+    comparacion = { cargando: f.name };
+    dibujarComparacion();
+    try {
+      const b64 = await new Promise((ok, mal) => {
+        const r = new FileReader();
+        r.onload = () => ok(String(r.result).split(",")[1] || "");
+        r.onerror = () => mal(new Error("No se pudo leer el archivo."));
+        r.readAsDataURL(f);
+      });
+      const resp = await fetch("/api/inventario/comparar", { method: "POST", cache: "no-store",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nombre: f.name, archivo: b64 }) });
+      let d; try { d = await resp.json(); } catch { d = { ok: false, error: `El programa respondió algo inesperado (código ${resp.status}).` }; }
+      if (!d.ok) throw new Error(d.error || "No se pudo comparar.");
+      comparacion = d.datos;
+      filtroComp = GRUPOS_COMP.find(g => g.estados.some(e => (comparacion.resumen.estados[e] || 0) > 0))?.id || "dif";
+    } catch (e) {
+      comparacion = { error: HT.textoError(e) };
+    }
+    dibujarComparacion();
+  });
+
+  function descargarComparacion() {
+    const bin = atob(comparacion.archivo);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const a = el("a");
+    a.href = URL.createObjectURL(new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+    const base = (comparacion.resumen.archivo || "inventario").replace(/\.xlsx?$/i, "");
+    a.download = `Comparación ${base} vs Tango ${new Date().toLocaleDateString("es-AR").replace(/\//g, "-")}.xlsx`;
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  }
+
+  function dibujarComparacion() {
+    const c = comparacion;
+    const frag = document.createDocumentFragment();
+    const volver = el("button", "boton chico", "‹ Volver al stock"); volver.type = "button";
+    volver.addEventListener("click", () => { comparacion = null; render(); });
+    if (c.cargando) {
+      const t = el("div", "tarjeta comp-cab");
+      t.append(el("b", "", `Comparando ${c.cargando} con Tango…`), el("p", "nota", "Se lee el Excel y se cruza con los saldos actuales. Tarda unos segundos."));
+      frag.append(t, HT.esqueleto(6));
+      ui.resultados.replaceChildren(frag); return;
+    }
+    if (c.error) {
+      frag.append(volver, HT.cajaError(c.error, () => $("archivo-inv").click()));
+      ui.resultados.replaceChildren(frag); return;
+    }
+    const r = c.resumen, est = r.estados;
+    const cab = el("div", "tarjeta comp-cab");
+    cab.append(el("h2", "", `${r.archivo || "Inventario"} vs Tango`),
+      el("p", "nota", `Saldos de Tango de las ${HT.hora(new Date(r.saldos_tango))} h · ${fmt.format(r.articulos_comparados)} artículos del Excel (${r.hojas.join(", ")}) · comparado contra el depósito Central`));
+    const cifras = el("div", "comp-cifras");
+    const cifra = (n, t, cl) => { const d = el("div", "comp-cifra " + (cl || "")); d.append(el("b", "", fmt.format(n || 0)), el("span", "", t)); cifras.append(d); };
+    cifra(est["Coincide"], "coinciden", "c-ok");
+    cifra((est["Tango tiene menos"] || 0) + (est["Tango tiene más"] || 0), "con diferencias", "c-mal");
+    cifra(est["No está en Tango"], "no están en Tango", "c-aviso");
+    cifra(est["Solo en Tango"], "solo en Tango", "c-aviso");
+    if (est["Revisar unidad"]) cifra(est["Revisar unidad"], "unidad para revisar", "c-aviso");
+    cab.append(cifras);
+    const acc = el("div", "comp-acciones");
+    const desc = el("button", "boton primario chico", "Descargar Excel de resultados"); desc.type = "button"; desc.addEventListener("click", descargarComparacion);
+    const otra = el("button", "boton chico", "Comparar otro archivo"); otra.type = "button"; otra.addEventListener("click", () => $("archivo-inv").click());
+    acc.append(desc, otra, volver);
+    cab.append(acc,
+      el("p", "nota", "Diferencia = Tango Central − Excel. Polvos y alambres pasados de libras a kilos. Si el Excel es de hace unos días, los remitos y ajustes posteriores también aparecen como diferencia. No se modifica nada en Tango."));
+    frag.append(cab);
+
+    const pest = el("div", "filtros comp-filtros");
+    for (const g of GRUPOS_COMP) {
+      const n = g.estados.reduce((a, e) => a + (est[e] || 0), 0);
+      if (!n && g.id !== filtroComp) continue;
+      const b = el("button", "filtro", g.titulo); b.type = "button"; b.setAttribute("aria-pressed", String(g.id === filtroComp));
+      b.append(el("b", "", fmt.format(n)));
+      b.addEventListener("click", () => { filtroComp = g.id; dibujarComparacion(); });
+      pest.append(b);
+    }
+    frag.append(pest);
+    const g = GRUPOS_COMP.find(x => x.id === filtroComp);
+    const filas = c.filas.filter(f => g.estados.includes(f.estado));
+    if (!filas.length) frag.append(el("p", "aviso", "No hay artículos en este grupo."));
+    else {
+      const tabla = el("table", "tabla tarjeta comp-tabla");
+      const th = el("tr");
+      for (const [x, cl] of [["Artículo", ""], ["Excel", "der"], ["Tango Central", "der"], ["Diferencia", "der"], ["Notas", ""]]) th.append(el("th", cl, x));
+      const thead = el("thead"); thead.append(th); const tb = el("tbody");
+      for (const f of filas) {
+        const tr = el("tr");
+        const art = el("td");
+        const cod = f.codigo_tango || f.codigo_excel;
+        if (f.codigo_tango) { const a = el("a", "", f.descripcion_tango || f.descripcion_excel || cod); a.href = "/buscar?art=" + encodeURIComponent(f.codigo_tango); art.append(a); }
+        else art.append(el("span", "", f.descripcion_excel || cod));
+        art.firstChild.style.fontWeight = "600";
+        art.append(el("div", "nota", [cod, f.tipo].filter(Boolean).join(" · ")));
+        const u = HT.unidad(f.unidad_tango) || f.unidad_excel || "";
+        const excel = f.excel_en_unidad_tango == null ? (f.cantidad_excel == null ? "—" : `${num(f.cantidad_excel)} ${f.unidad_excel}`) : `${num(f.excel_en_unidad_tango)} ${u}`;
+        const difCl = f.diferencia == null ? "" : f.diferencia < 0 ? " neg-dif" : " pos-dif";
+        tr.append(art, el("td", "der", excel), el("td", "der", f.codigo_tango ? `${num(f.tango_central)} ${u}` : "—"),
+                  el("td", "der" + difCl, f.diferencia == null ? "—" : (f.diferencia > 0 ? "+" : "") + num(f.diferencia)),
+                  el("td", "comp-notas", [f.tango_otros_depositos && "Otros depósitos: " + f.tango_otros_depositos, f.notas].filter(Boolean).join(" · ")));
+        tb.append(tr);
+      }
+      tabla.append(thead, tb);
+      frag.append(tabla);
+      if (c.total_distintas > c.filas.length) frag.append(el("p", "mas", `Se ven ${fmt.format(c.filas.length)} de ${fmt.format(c.total_distintas)}. El Excel de resultados tiene todos.`));
+    }
+    ui.resultados.replaceChildren(frag);
+  }
+
   function render() {
+    if (comparacion) { dibujarComparacion(); return; }
     const texto = ui.q.value;
     ui.limpiar.hidden = !texto;
     const negs = agrupar(filasDelDeposito()).reduce((a, g) => a + g.negativos.length, 0);
