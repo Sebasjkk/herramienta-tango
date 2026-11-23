@@ -212,7 +212,13 @@ window.HT = (() => {
     nav.setAttribute("aria-label", "Secciones");
     const marca = el("a", "marca");
     marca.href = "/";
-    marca.innerHTML = '<img src="/icono-192.png" alt=""> <div>Herramienta <span>Tango</span></div>';
+    marca.setAttribute("aria-label", "Sianco · Herramienta Tango (inicio)");
+    marca.title = "Herramienta Tango";
+    // Logo de Sianco: «sianco» y el ovalo de circulos, dibujado para que se vea bien en claro y en oscuro
+    marca.innerHTML = '<img src="/icono-192.png" alt=""><span class="logo-sianco">sianco' +
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke-linecap="round">' +
+      '<path d="M7.6 19.6A9.8 9.8 0 1 1 12.9 21.8"/><path d="M9.3 16.6A6.1 6.1 0 1 1 13 18.1"/>' +
+      '<path d="M10.7 14.1A2.6 2.6 0 1 1 12.6 14.6"/></g></svg></span>';
     const ul = el("ul", "nav-lista");
     let grupo = null;
     for (const m of MODULOS) {

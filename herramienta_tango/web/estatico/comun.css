@@ -67,10 +67,13 @@ body { margin: 0; background: var(--zinc); color: var(--grafito); font: 16px/1.4
 
 /* ------------------------------------------------------------------ marco */
 .app-nav { background: var(--papel); }
-.marca { display: flex; align-items: center; gap: 10px; color: var(--grafito); text-decoration: none; font-weight: 700; letter-spacing: -0.01em; }
-.marca img { width: 28px; height: 28px; border-radius: 7px; }
-.marca span { color: var(--patina); }
-.marca div { white-space: nowrap; }
+.marca { display: inline-flex; align-items: center; gap: 10px; align-self: flex-start; color: var(--grafito); text-decoration: none;
+  background: var(--ambar-suave); border: 1px solid var(--ambar-borde); border-radius: 999px; padding: 6px 16px 6px 7px; }
+.marca:hover { border-color: var(--ambar-fuerte); }
+.marca img { width: 28px; height: 28px; border-radius: 8px; flex: none; }
+.logo-sianco { display: inline-flex; align-items: center; gap: 3px; font-size: 1.55rem; font-weight: 700; letter-spacing: -0.045em;
+  line-height: 1; padding-bottom: 2px; }
+.logo-sianco svg { width: .95em; height: .95em; margin-top: 2px; stroke: var(--patina); stroke-width: 2.1; }
 .nav-lista { list-style: none; margin: 0; padding: 0; }
 .nav-item a { display: flex; align-items: center; gap: 12px; color: var(--plomo); text-decoration: none; font-weight: 600; }
 .nav-item svg { width: 22px; height: 22px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
@@ -102,7 +105,9 @@ body { margin: 0; background: var(--zinc); color: var(--grafito); font: 16px/1.4
   .nav-item .largo { display: none; }
   .nav-item.solo-pc { display: none; }
   .barra-movil { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px 4px; }
-  .barra-movil .marca { font-size: .98rem; }
+  .barra-movil .marca { padding: 4px 13px 4px 5px; }
+  .barra-movil .marca img { width: 24px; height: 24px; }
+  .barra-movil .logo-sianco { font-size: 1.3rem; }
   .app-principal { padding-bottom: 72px; }
 }
 /* PC: navegacion fija a la izquierda */
@@ -110,7 +115,7 @@ body { margin: 0; background: var(--zinc); color: var(--grafito); font: 16px/1.4
   .app { display: grid; grid-template-columns: var(--ancho-nav) 1fr; min-height: 100vh; }
   .app-nav { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; gap: 22px;
     padding: 22px 14px 18px; border-right: 1px solid var(--linea); }
-  .app-nav .marca { padding: 0 10px; font-size: 1.05rem; }
+  .app-nav .marca { margin-left: 4px; }
   /* La lista de modulos scrollea si no entra; marca y pie quedan fijos */
   .nav-lista { display: grid; gap: 2px; align-content: start; flex: 1 1 auto; min-height: 0; overflow-y: auto;
     margin: 0 -6px; padding: 0 6px; scrollbar-width: thin; scrollbar-color: var(--linea) transparent; }

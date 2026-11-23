@@ -54,7 +54,7 @@
   .det-tabla .nota { font-size: .8rem; color: var(--plomo); }
   .det-tabla .origen { font-size: .78rem; color: var(--plomo); }
   .det-tabla tr.verificar td:first-child { box-shadow: inset 3px 0 0 var(--ambar-fuerte); }
-  .marca { display: inline-block; font-size: .72rem; font-weight: 700; color: var(--ambar); border: 1px solid var(--ambar-borde);
+  .chip-verif { display: inline-block; font-size: .72rem; font-weight: 700; color: var(--ambar); border: 1px solid var(--ambar-borde);
     background: var(--ambar-suave); border-radius: 999px; padding: 0 7px; margin-left: 6px; vertical-align: 1px; }
   .mas { display: flex; justify-content: center; margin: 12px 0; }
   .criterio { margin-top: 18px; padding: 4px 16px; }
@@ -254,7 +254,7 @@
       const tr = el("tr", (f.cantidad < 0 ? "neg " : "") + (f.verificar ? "verificar" : ""));
       const art = el("td"); const a = el("a", "", f.descripcion || f.codigo); a.href = "/buscar?art=" + encodeURIComponent(f.codigo);
       art.append(a);
-      if (f.verificar && filtro !== "verificar") art.append(el("span", "marca", "verificar"));
+      if (f.verificar && filtro !== "verificar") art.append(el("span", "chip-verif", "verificar"));
       art.append(el("div", "nota", f.codigo));
       const costo = f.costo == null ? "—" : fmtPrecio.format(f.costo);
       const valor = f.valor == null ? "—" : fmtPrecio.format(f.valor);
