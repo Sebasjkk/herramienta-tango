@@ -266,7 +266,7 @@
       ui.estado.textContent = "Datos de Tango de las " + HT.hora(new Date(d.actualizado)) + " h";
     } catch (e) {
       ui.estado.textContent = "Sin datos";
-      ui.resultados.replaceChildren(cajaError(textoError(e), () => cargarListas(true)));
+      ui.resultados.replaceChildren(cajaError(e, () => cargarListas(true)));
       return;
     } finally { ui.resultados.classList.remove("cargando"); }
     render();
@@ -280,7 +280,7 @@
       actual = d.datos;
       ui.estado.textContent = "Datos de Tango de las " + HT.hora(new Date(d.actualizado)) + " h";
     } catch (e) {
-      ui.resultados.replaceChildren(cajaError(textoError(e), () => abrirLista(id, true)));
+      ui.resultados.replaceChildren(cajaError(e, () => abrirLista(id, true)));
       return;
     } finally { ui.resultados.classList.remove("cargando"); }
     render();
@@ -335,7 +335,7 @@
       const a = el("div", "aviso");
       const p = el("p"); p.append("Ninguna lista coincide con ", el("strong", "", `«${ui.q.value.trim()}»`), ".");
       const p2 = el("p"); const link = el("a", "", "Buscar ese artículo");
-      link.href = "/?q=" + encodeURIComponent(ui.q.value.trim()); link.style.color = "var(--patina)";
+      link.href = "/buscar?q=" + encodeURIComponent(ui.q.value.trim()); link.style.color = "var(--patina)";
       p2.append("Si buscás el precio de un artículo en todas las listas: ", link, ".");
       a.append(p, p2); frag.append(a);
     }

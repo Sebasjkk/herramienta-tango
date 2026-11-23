@@ -114,14 +114,14 @@
       dibujarNueva();
     } catch (e) {
       $("estado").textContent = "Sin datos";
-      $("nueva").replaceChildren(cajaError(textoError(e), () => cargar(true)));
+      $("nueva").replaceChildren(cajaError(e, () => cargar(true)));
     }
     pedir("/api/remitos").then(d => { remitos = d.datos; }).catch(() => {});
   }
 
   async function cargarMezclas() {
     try { mezclas = (await pedir("/api/mezclas", true)).datos; dibujarHistorial(); }
-    catch (e) { $("historial").replaceChildren(cajaError(textoError(e), cargarMezclas)); }
+    catch (e) { $("historial").replaceChildren(cajaError(e, cargarMezclas)); }
   }
 
   // ---------------------------------------------------------------- buscador con sugerencias

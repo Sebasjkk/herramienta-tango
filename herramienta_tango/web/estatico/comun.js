@@ -9,6 +9,8 @@ window.HT = (() => {
   "use strict";
 
   const ICONOS = {
+    inicio: '<path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z"/>',
+    mas: '<circle cx="5.5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="18.5" cy="12" r="1.4"/>',
     buscar: '<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/>',
     stock: '<path d="M4 8.5 12 4l8 4.5v7L12 20l-8-4.5z"/><path d="M4 8.5 12 13l8-4.5M12 13v7"/>',
     precios: '<path d="M3.5 12.2V4.5a1 1 0 0 1 1-1h7.7l8.3 8.3a1 1 0 0 1 0 1.4l-7.2 7.2a1 1 0 0 1-1.4 0z"/><circle cx="8" cy="8" r="1.4"/>',
@@ -20,13 +22,15 @@ window.HT = (() => {
     usuarios: '<circle cx="9" cy="8" r="3.2"/><path d="M3 19c.6-3.3 3-5 6-5s5.4 1.7 6 5"/><path d="M16 5.2a3 3 0 0 1 0 5.6M18 14.4c1.6.7 2.6 2.2 3 4.6"/>',
     persona: '<circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c.8-3.9 3.7-6 7.5-6s6.7 2.1 7.5 6"/>',
   };
+  // movil: va en la barra de abajo del celular; el resto queda en "Más"
   const MODULOS = [
-    { id: "inicio", titulo: "Buscar artículo", corto: "Buscar", href: "/", icono: "buscar" },
-    { id: "stock", titulo: "Stock por partida", corto: "Stock", href: "/stock", icono: "stock" },
+    { id: "inicio", titulo: "Inicio", corto: "Inicio", href: "/", icono: "inicio", movil: true },
+    { id: "buscar", titulo: "Buscar artículo", corto: "Buscar", href: "/buscar", icono: "buscar", movil: true },
+    { id: "stock", titulo: "Stock por partida", corto: "Stock", href: "/stock", icono: "stock", movil: true },
     { id: "precios", titulo: "Listas de precios", corto: "Precios", href: "/precios", icono: "precios" },
     { id: "cotizaciones", titulo: "Cotizaciones", corto: "Cotiz.", href: "/cotizaciones", icono: "cotizaciones" },
     { id: "pedidos", titulo: "Pedidos", corto: "Pedidos", href: "/pedidos", icono: "pedidos" },
-    { id: "mezclas", titulo: "Mezclas", corto: "Mezclas", href: "/mezclas", icono: "mezclas" },
+    { id: "mezclas", titulo: "Mezclas", corto: "Mezclas", href: "/mezclas", icono: "mezclas", movil: true },
     { id: "etiquetas", titulo: "Etiquetas de envío", corto: "Etiquetas", href: "/etiquetas", icono: "etiquetas" },
   ];
 
@@ -48,21 +52,46 @@ window.HT = (() => {
   const fecha = iso => iso ? new Date(iso + "T00:00:00").toLocaleDateString("es-AR") : "";
   const unidad = um => ({ KG: "kg", KGR: "kg", UNI: "u.", "C/U": "u.", UN: "u." })[(um || "").toUpperCase()] || (um || "").toLowerCase();
 
+  // Los errores llevan "origen", para decir de quien es la falla:
+  //   red: no se llega al programa del servidor · tango: Tango no respondio o rechazo el pedido
+  //   config: falta configurar · dato: el pedido estaba mal · programa: error interno
   async function pedir(ruta, forzar) {
-    const r = await fetch(ruta + (forzar ? (ruta.includes("?") ? "&" : "?") + "refrescar=1" : ""), { cache: "no-store" });
-    const d = await r.json();
-    if (!d.ok) throw new Error(d.error || "Error al consultar Tango.");
+    let r;
+    try {
+      r = await fetch(ruta + (forzar ? (ruta.includes("?") ? "&" : "?") + "refrescar=1" : ""), { cache: "no-store" });
+    } catch {
+      throw Object.assign(new Error("Failed to fetch"), { origen: "red" });
+    }
+    let d;
+    try { d = await r.json(); } catch { d = { ok: false, error: `El programa respondió algo inesperado (código ${r.status}).` }; }
+    if (!d.ok) {
+      const origen = r.status === 502 ? "tango" : r.status === 503 ? "config" : r.status >= 500 ? "programa" : "dato";
+      throw Object.assign(new Error(d.error || "Error al consultar Tango."), { origen });
+    }
     return d;
   }
 
+  const TITULOS_ERROR = {
+    red: "Sin conexión con el servidor",
+    tango: "Tango no respondió",
+    config: "Falta configurar la Herramienta",
+    programa: "Error en la Herramienta",
+  };
+
   function textoError(e) {
-    return e && e.message === "Failed to fetch"
+    return e && (e.origen === "red" || e.message === "Failed to fetch")
       ? "No hay conexión con el programa del servidor. Revisá que estés en la red o el Wi-Fi de la oficina."
       : (e && e.message) || "Error al consultar Tango.";
   }
 
+  // texto: string o Error (con un Error se agrega el titulo segun de quien es la falla)
   function cajaError(texto, reintentar) {
     const d = el("div", "error");
+    if (texto instanceof Error) {
+      const titulo = TITULOS_ERROR[texto.origen];
+      if (titulo) d.append(el("strong", "error-titulo", titulo));
+      texto = textoError(texto);
+    }
     d.append(el("p", "", texto));
     if (reintentar) {
       const b = el("button", "boton-texto", "Volver a intentar");
@@ -88,7 +117,7 @@ window.HT = (() => {
     marca.innerHTML = '<img src="/icono-192.png" alt=""> <div>Herramienta <span>Tango</span></div>';
     const ul = el("ul", "nav-lista");
     for (const m of MODULOS) {
-      const li = el("li", "nav-item");
+      const li = el("li", "nav-item" + (m.movil ? "" : " solo-pc"));
       const a = el("a");
       a.href = m.href;
       if (m.id === activo) a.setAttribute("aria-current", "page");
@@ -96,6 +125,15 @@ window.HT = (() => {
       a.append(el("span", "largo", m.titulo), el("span", "corto", m.corto));
       li.append(a); ul.append(li);
     }
+    // Celular: los modulos que no entran en la barra van en "Más"
+    const liMas = el("li", "nav-item solo-movil");
+    const mas = el("a");
+    mas.href = "#"; mas.setAttribute("role", "button");
+    if (MODULOS.some(m => m.id === activo && !m.movil)) mas.setAttribute("aria-current", "page");
+    mas.innerHTML = svg("mas");
+    mas.append(el("span", "corto", "Más"));
+    mas.addEventListener("click", e => { e.preventDefault(); menuMas(activo); });
+    liMas.append(mas); ul.append(liMas);
     const abajo = el("div", "nav-abajo");
     const con = el("div", "conexion", "Conectando…");
     con.id = "conexion";
@@ -122,6 +160,61 @@ window.HT = (() => {
     const aviso = el("div", "info app-aviso");
     aviso.id = "app-aviso"; aviso.hidden = true; aviso.setAttribute("role", "status");
     principal.querySelector(".pagina").prepend(aviso);
+  }
+
+  function menuMas(activo) {
+    const d = el("dialog", "hoja-mas");
+    const cerrar = () => { if (d.open) d.close(); d.remove(); };
+    d.addEventListener("cancel", () => setTimeout(() => d.remove(), 0));
+    d.addEventListener("click", e => { if (e.target === d) cerrar(); });   // tocar afuera cierra
+    const ul = el("ul", "hoja-lista");
+    for (const m of MODULOS.filter(m => !m.movil)) {
+      const a = el("a"); a.href = m.href;
+      if (m.id === activo) a.setAttribute("aria-current", "page");
+      a.innerHTML = svg(m.icono); a.append(el("span", "", m.titulo));
+      const li = el("li"); li.append(a); ul.append(li);
+    }
+    const c = el("button", "boton", "Cerrar"); c.type = "button"; c.addEventListener("click", cerrar);
+    d.append(ul, c);
+    document.body.append(d);
+    d.showModal();
+  }
+
+  // Renglones grises mientras cargan los datos (con la forma de una lista)
+  function esqueleto(filas = 6, clase = "") {
+    const d = el("div", "esqueleto " + clase);
+    d.setAttribute("aria-hidden", "true");
+    for (let i = 0; i < filas; i++) {
+      const f = el("div", "esq-fila");
+      f.append(el("span", "esq esq-corta"), el("span", "esq esq-larga"), el("span", "esq esq-num"));
+      d.append(f);
+    }
+    return d;
+  }
+
+  // Mensaje breve abajo de la pantalla
+  function avisar(texto) {
+    let t = $("ht-aviso-breve");
+    if (!t) { t = el("div", "aviso-breve"); t.id = "ht-aviso-breve"; t.setAttribute("role", "status"); document.body.append(t); }
+    t.textContent = texto;
+    t.classList.add("visible");
+    clearTimeout(avisar.t);
+    avisar.t = setTimeout(() => t.classList.remove("visible"), 2600);
+  }
+
+  // Copia el link a algo puntual (un articulo, un pedido) para mandarlo por WhatsApp o mail
+  async function copiarLink(ruta) {
+    const url = location.origin + ruta;
+    try {
+      if (navigator.share && esCelular) { await navigator.share({ url }); return; }
+    } catch (e) { if (e && e.name === "AbortError") return; }
+    try {
+      await navigator.clipboard.writeText(url);
+      avisar("Link copiado");
+    } catch {
+      // Sin HTTPS algunos navegadores no dejan usar el portapapeles: se muestra para copiar a mano
+      prompt("Copiá el link:", url);
+    }
   }
 
   // Como crear el acceso directo con el icono de la Herramienta: lo hace el
@@ -279,7 +372,7 @@ window.HT = (() => {
   }
 
   return { MODULOS, $, el, norm, sinCeros, tokens, fmt, fmtPrecio, num, hora, fecha, unidad, pedir, textoError,
-           cajaError, esCelular, instalada, iniciar, conectarBuscador, svg,
+           cajaError, esCelular, instalada, iniciar, conectarBuscador, svg, esqueleto, avisar, copiarLink,
            // quien modifica
            nombre: leerNombre, pedirNombre: () => pedirNombre(false), alCambiarNombre: f => oyentes.push(f),
            escribir, ventana, campo, botones };

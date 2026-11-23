@@ -117,7 +117,7 @@
       dibujarLista();
     } catch (e) {
       $("estado").textContent = "Sin datos";
-      $("remitos").replaceChildren(cajaError(textoError(e), () => cargar(true)));
+      $("remitos").replaceChildren(cajaError(e, () => cargar(true)));
     }
   }
 

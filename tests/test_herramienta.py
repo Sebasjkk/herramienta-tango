@@ -271,12 +271,42 @@ class TestServidor(unittest.TestCase):
         self.assertEqual(estado, 200)
         self.assertIn(b"Stock por partida", cuerpo)
         _, inicio = self._get("/")
-        self.assertIn(b"/etiqueta-codigo.js", inicio)       # codigo de barras en la ficha del articulo
+        self.assertIn(b"<h1>Inicio</h1>", inicio)            # el inicio es el resumen
+        estado, buscar = self._get("/buscar")
+        self.assertEqual(estado, 200)
+        self.assertIn(b"/etiqueta-codigo.js", buscar)       # codigo de barras en la ficha del articulo
+        # Links viejos de Buscar (cuando estaba en el inicio) siguen andando
+        _, viejo = self._get("/?q=zinc")
+        self.assertIn(b"Buscar art", viejo)
+        self.assertIn(b"/etiqueta-codigo.js", viejo)
         for archivo, texto in (("/codigo128.js", b"Codigo128"), ("/etiqueta-codigo.js", b"EtiquetaCodigo"),
                                ("/etiqueta-codigo.css", b"@page")):
             estado, cuerpo = self._get(archivo)
             self.assertEqual(estado, 200, archivo)
             self.assertIn(texto, cuerpo)
+
+    def test_cotizaciones_de_un_articulo(self):
+        from herramienta_tango.tango.modelos import Cotizacion, RenglonCotizacion
+        from herramienta_tango.web.servidor import cotizaciones_de_articulo
+
+        def cot(id_, numero, fecha, estado):
+            return Cotizacion.desde_tango({"ID_GVA08": id_, "NRO_COTIZACION": numero, "FECHA": fecha, "ESTADO": estado,
+                                           "COD_CLIENTE": "CLI01", "RAZON_SOCIAL": "CLIENTE PRUEBA", "MONEDA": True})
+
+        class Servicio:
+            def cotizaciones(self, forzar=False):
+                return [cot(1, "0000100003200", "2026-10-01", 4), cot(2, "0000100003215", "2026-11-16", 2)], 0.0
+            def renglones_cotizaciones(self, forzar=False):
+                r = lambda n, c, q: RenglonCotizacion.desde_tango({"NRO_COTIZACION": n, "COD_ARTICULO": c, "CANTIDAD": q, "PRECIO": 10})
+                return [r("0000100003200", "ZINC ", 5), r("0000100003215", "ZINC", 7), r("0000100003215", "OTRO", 1),
+                        r("0000199999999", "ZINC", 1)], 123.0     # la ultima no tiene cabecera: se ignora
+
+        datos, momento = cotizaciones_de_articulo(Servicio(), "ZINC")
+        self.assertEqual(momento, 123.0)
+        self.assertEqual([(d["numero_corto"], d["cantidad"]) for d in datos], [("BA3215", 7), ("BA3200", 5)])   # nuevas primero
+        estado, cuerpo = self._get("/api/articulos/ZINC/cotizaciones")
+        self.assertEqual(estado, 200)
+        self.assertTrue(json.loads(cuerpo)["ok"])
 
     def test_precios(self):
         estado, cuerpo = self._get("/api/precios")

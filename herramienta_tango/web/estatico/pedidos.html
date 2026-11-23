@@ -122,6 +122,8 @@
   let grupo = "todos";
   let elegido = null;
   const detalles = new Map();   // id -> detalle | "cargando" | Error
+  // /pedidos?ver=<id>: abrir ese pedido (enlace desde Inicio o Precios)
+  let verPendiente = Number(new URLSearchParams(location.search).get("ver")) || null;
 
   async function cargar(forzar) {
     $("estado").textContent = "Consultando Tango…";
@@ -133,13 +135,22 @@
       render();
     } catch (e) {
       $("estado").textContent = "Sin datos";
-      $("col-lista").replaceChildren(cajaError(textoError(e), () => cargar(true)));
+      $("col-lista").replaceChildren(cajaError(e, () => cargar(true)));
     }
   }
 
   const coincide = (p, ts) => ts.every(t => norm([corto(p.numero), p.numero, p.cliente, p.codigo_cliente, p.orden_compra_cliente, p.numero_remito].join(" ")).includes(t));
 
   function render() {
+    if (verPendiente && peds.length) {          // abrir el pedido pedido en la pestaña que lo contenga
+      const p = peds.find(x => x.id === verPendiente);
+      if (p) {
+        if (!GRUPOS.find(g => g.id === grupo).f(p)) { const g = GRUPOS.find(g => g.id !== "todos" && g.f(p)); if (g) grupo = g.id; }
+        elegido = p.id;
+        if (!window.matchMedia("(min-width: 960px)").matches) $("contenido").classList.add("viendo");
+      }
+      verPendiente = null;
+    }
     const ts = tokens($("q").value);
     const pe = $("pestanas"); pe.replaceChildren();
     for (const g of GRUPOS) {
@@ -152,7 +163,7 @@
     $("explica").textContent = GRUPOS.find(g => g.id === grupo).ayuda;
     const lista = peds.filter(p => GRUPOS.find(g => g.id === grupo).f(p) && coincide(p, ts));
     const col = $("col-lista");
-    if (!lista.length) { col.replaceChildren(el("p", "aviso", peds.length ? "No hay pedidos en este grupo." : "Cargando…")); $("detalle").replaceChildren(); return; }
+    if (!lista.length) { col.replaceChildren(peds.length ? el("p", "aviso", "No hay pedidos en este grupo.") : HT.esqueleto(6)); $("detalle").replaceChildren(); return; }
     if (!elegido || !lista.some(p => p.id === elegido)) elegido = window.matchMedia("(min-width: 960px)").matches ? lista[0].id : null;
     const ul = el("ul", "lista-cot");
     for (const p of lista) {
@@ -198,7 +209,7 @@
     t.append(datos);
 
     const s = el("section", "seccion"); s.append(el("h3", "", "Artículos"));
-    if (d === "cargando" || !d) s.append(el("p", "nota", "Cargando…"));
+    if (d === "cargando" || !d) s.append(HT.esqueleto(3, "plano"));
     else if (d instanceof Error) s.append(el("p", "nota", d.message));
     else {
       if (!d.renglones.length) s.append(el("p", "nota", "Sin renglones."));
@@ -296,6 +307,7 @@
   window.addEventListener("popstate", () => { if (!location.hash.startsWith("#ped=")) $("contenido").classList.remove("viendo"); });
   if (location.hash.startsWith("#ped=")) history.replaceState(null, "", location.pathname);
   pedir("/api/opciones", true).then(d => { opc = d.datos; dibujarFicha(); }).catch(() => {});
+  render();
   cargar(false);
 })();
 </script>

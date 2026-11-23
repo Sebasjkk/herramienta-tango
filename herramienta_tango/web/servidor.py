@@ -23,6 +23,7 @@ Listas de precios (leidas de las tablas de Tango, no de la consulta 12742):
     GET /api/listas                  listas con cantidad de articulos y clientes asignados
     GET /api/listas/<id>             articulos de una lista, con precios especiales por cliente
     GET /api/articulos/<codigo>/precios   en que listas esta un articulo
+    GET /api/articulos/<codigo>/cotizaciones   cotizaciones donde aparece (con cantidad y precio)
     GET /api/cotizaciones            todas las cotizaciones (consulta 17948)
     GET /api/cotizaciones/<numero>/renglones
     GET /api/listas/<id>/comprobantes?anio=  comprobantes de venta de un año con esa lista (base, solo lectura)
@@ -213,10 +214,31 @@ def ruta_variable(contexto, ruta: str):
     if len(partes) == 4 and partes[:2] == ["api", "clientes"] and partes[2].isdigit() and partes[3] == "envio":
         id_cliente = int(partes[2])
         return lambda qs, f: (contexto.servicio().datos_envio(id_cliente), time.time())
+    if len(partes) == 4 and partes[:2] == ["api", "articulos"] and partes[3] == "cotizaciones":
+        codigo = urllib.parse.unquote(partes[2]).strip()
+        return lambda qs, f: cotizaciones_de_articulo(contexto.servicio(), codigo, f)
     if len(partes) == 4 and partes[:2] == ["api", "articulos"] and partes[3] == "precios":
         codigo = urllib.parse.unquote(partes[2])
         return lambda qs, f: (contexto.servicio().editor.precios_de_articulo(codigo), time.time())
     return None
+
+
+def cotizaciones_de_articulo(servicio, codigo: str, forzar: bool = False):
+    """Cotizaciones en las que aparece un articulo, de la mas nueva a la mas vieja.
+    Usa las mismas consultas (y la misma cache) que la pantalla de Cotizaciones."""
+    renglones, momento = servicio.renglones_cotizaciones(forzar)
+    cotizaciones, _ = servicio.cotizaciones(forzar)
+    por_numero = {c.numero.strip(): c for c in cotizaciones}
+    salida = []
+    for r in renglones:
+        if r.codigo_articulo.strip() != codigo:
+            continue
+        c = por_numero.get(r.numero.strip())
+        if c is None:
+            continue
+        salida.append({**asdict(c), "cantidad": r.cantidad, "precio": r.precio, "descuento": r.descuento})
+    salida.sort(key=lambda x: (x["fecha"] or "", x["numero"]), reverse=True)
+    return salida, momento
 
 
 def crear_manejador(contexto):
@@ -352,7 +374,11 @@ def crear_manejador(contexto):
                     else:
                         self._responder(302, "text/plain; charset=utf-8", b"", {"Location": "/"})
                 elif url.path in ("", "/"):
-                    self._estatico("index.html")
+                    if url.query and ("q" in qs or "art" in qs):
+                        # Links viejos (Buscar estaba en el inicio): /?q=... -> /buscar?q=...
+                        self._responder(302, "text/plain; charset=utf-8", b"", {"Location": "/buscar?" + url.query})
+                    else:
+                        self._estatico("inicio.html")
                 elif url.path == "/acceso-directo.url":
                     self._acceso_directo()
                 elif url.path.startswith("/cotizacion/") and url.path.endswith(".pdf"):

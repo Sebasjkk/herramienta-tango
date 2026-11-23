@@ -127,7 +127,7 @@
       render();
     } catch (e) {
       $("estado").textContent = "Sin datos";
-      $("col-lista").replaceChildren(cajaError(textoError(e), () => cargar(true)));
+      $("col-lista").replaceChildren(cajaError(e, () => cargar(true)));
     } finally { $("contenido").classList.remove("cargando"); }
   }
 
@@ -161,7 +161,7 @@
     const lista = filtradas();
     const col = $("col-lista");
     if (!lista.length) {
-      col.replaceChildren(el("p", "aviso", cots.length ? "No hay cotizaciones en este grupo." : "Cargando…"));
+      col.replaceChildren(cots.length ? el("p", "aviso", "No hay cotizaciones en este grupo.") : HT.esqueleto(6));
       $("detalle").replaceChildren();
       return;
     }
@@ -222,7 +222,7 @@
     s.append(el("h3", "", "Renglones"));
     cargarRenglones(c);
     const rs = renglones.get(c.numero);
-    if (rs === "cargando") s.append(el("p", "nota", "Cargando renglones…"));
+    if (rs === "cargando") s.append(HT.esqueleto(3, "plano"));
     else if (rs instanceof Error) s.append(el("p", "nota", rs.message));
     else if (!rs.length) s.append(el("p", "nota", "No se encontraron renglones."));
     else {
@@ -236,7 +236,10 @@
       for (const r of rs) {
         const tr = el("tr");
         const art = el("td"); art.append(el("div", "", r.descripcion || r.codigo_articulo)); art.lastChild.style.fontWeight = "600";
-        art.append(el("div", "nota", r.codigo_articulo));
+        // El codigo lleva a la ficha del articulo (stock, partidas, precios)
+        const cod = el("a", "nota", r.codigo_articulo); cod.href = "/buscar?art=" + encodeURIComponent(r.codigo_articulo.trim());
+        cod.style.display = "block"; cod.style.color = "var(--patina)";
+        art.append(cod);
         const sub = r.cantidad * r.precio * (1 - (r.descuento || 0) / 100);
         total += sub;
         tr.append(art, el("td", "der", fmt.format(r.cantidad)), el("td", "der", fmtPrecio.format(r.precio)),
@@ -259,6 +262,7 @@
   const verId = Number(new URLSearchParams(location.search).get("ver")) || null;
   if (verId) { verPendiente = verId; if (!window.matchMedia("(min-width: 960px)").matches) $("contenido").classList.add("viendo"); }
   if (location.hash.startsWith("#cot=")) history.replaceState(null, "", location.pathname);
+  render();
   cargar(false);
 })();
 </script>

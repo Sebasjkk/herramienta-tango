@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0B6E69">
+<title>Inicio | Herramienta Tango</title>
+<link rel="icon" href="/icono-192.png">
+<link rel="apple-touch-icon" href="/icono-192.png">
+<link rel="manifest" href="/manifest.json">
+<link rel="stylesheet" href="/comun.css">
+<style>
+  .fecha-hoy { font-size: .9rem; color: var(--plomo); margin: 4px 0 0; }
+  .buscador-rapido { margin: 14px 0 18px; }
+
+  /* Numeros grandes arriba: cada uno lleva a su pantalla */
+  .cifras { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 18px; }
+  .cifra { display: block; background: var(--papel); border: 1px solid var(--linea); border-radius: var(--radio); padding: 14px 16px 12px;
+    color: inherit; text-decoration: none; min-height: 104px; position: relative; }
+  .cifra:hover { border-color: var(--patina); }
+  .cifra .rotulo { display: block; font-size: .82rem; font-weight: 600; color: var(--plomo); }
+  .cifra .valor { display: block; font-size: 2rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; margin: 4px 0 2px;
+    font-variant-numeric: tabular-nums; }
+  .cifra .detalle { display: block; font-size: .8rem; color: var(--plomo); }
+  .cifra.atencion { border-color: #E9C98A; box-shadow: inset 3px 0 0 #D9A441; }
+  .cifra.atencion .valor { color: #8A5A00; }
+  .cifra.mal { border-color: #F1C4BF; box-shadow: inset 3px 0 0 var(--oxido); }
+  .cifra.mal .valor { color: var(--oxido); }
+  .cifra.ok .valor { color: var(--verde); }
+  .cifra .esq { margin-top: 12px; }
+  .cifra .falla { display: block; font-size: .82rem; color: var(--oxido); margin-top: 10px; }
+
+  /* Tarjetas con listas */
+  .paneles { display: grid; gap: 14px; }
+  .panel { padding: 16px 18px 10px; }
+  .panel-cab { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+  .panel h2 { font-size: 1rem; margin: 0; }
+  .panel-cab a { font-size: .85rem; font-weight: 600; color: var(--patina); white-space: nowrap; }
+  .panel .vacio { color: var(--plomo); font-size: .92rem; margin: 6px 0 10px; }
+  .filas { list-style: none; margin: 0; padding: 0; }
+  .filas li { border-top: 1px solid var(--linea-suave); }
+  .filas li:first-child { border-top: 0; }
+  .filas a { display: grid; grid-template-columns: 1fr auto; gap: 1px 12px; align-items: center; padding: 9px 0; color: inherit; text-decoration: none; }
+  .filas a:hover .fila-tit { color: var(--patina); text-decoration: underline; }
+  .fila-tit { font-weight: 600; overflow-wrap: anywhere; }
+  .fila-sub { grid-column: 1; font-size: .8rem; color: var(--plomo); overflow-wrap: anywhere; }
+  .fila-der { grid-column: 2; grid-row: 1 / span 2; text-align: right; font-size: .85rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .fila-der.neg { color: var(--oxido); font-weight: 700; }
+  .mas-filas { font-size: .82rem; color: var(--plomo); margin: 4px 0 8px; }
+
+  @media (min-width: 700px) { .cifras { grid-template-columns: repeat(4, 1fr); } }
+  @media (min-width: 960px) { .paneles { grid-template-columns: 1fr 1fr; align-items: start; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="app-nav" id="app-nav"></nav>
+  <div class="app-principal">
+    <div class="pagina">
+      <header class="cabecera">
+        <div class="cabecera-sup">
+          <div>
+            <h1>Inicio</h1>
+            <p class="fecha-hoy" id="hoy"></p>
+          </div>
+          <div class="datos"><span id="datos">Consultando Tango…</span><button type="button" class="boton-texto" id="actualizar">Actualizar</button></div>
+        </div>
+      </header>
+
+      <form class="buscador buscador-rapido" id="form-buscar" action="/buscar" role="search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>
+        <label for="q" style="position:absolute;left:-9999px">Buscar artículo</label>
+        <input id="q" name="q" type="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+               placeholder="Buscar artículo: código, descripción o partida" enterkeyhint="search">
+      </form>
+
+      <section class="cifras" id="cifras" aria-label="Resumen"></section>
+      <div class="paneles" id="paneles"></div>
+
+      <p class="pie">Esta pantalla solo consulta: junta lo que requiere atención en Tango y en la Herramienta. Tocá cualquier renglón para ir al detalle.</p>
+    </div>
+  </div>
+</div>
+
+<script src="/comun.js"></script>
+<script>
+(() => {
+  "use strict";
+  const { $, el, fmt, fmtPrecio, num, fecha, unidad, pedir } = HT;
+  HT.iniciar("inicio");
+
+  const EPS = 0.0001;
+  const DIAS_AVISO = 15;          // cotizaciones que vencen en los proximos N dias
+  const MAX_FILAS = 6;
+  const hoyIso = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+  const sumarDias = (iso, n) => { const d = new Date(iso + "T00:00:00"); d.setDate(d.getDate() + n); return new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+  const diasHasta = iso => Math.round((new Date(iso + "T00:00:00") - new Date(hoyIso() + "T00:00:00")) / 86400000);
+  const corto = n => (n || "").trim().slice(-8).replace(/^0+/, "") || "0";   // como en Pedidos: sin el prefijo de sucursal
+  const titulo = d => d ? d.charAt(0) + d.slice(1).toLowerCase() : "";
+
+  $("hoy").textContent = new Date().toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" })
+    .replace(/^./, c => c.toUpperCase());
+
+  // ---------------------------------------------------------------- piezas
+  // Cada cifra y cada panel cargan por separado: si una consulta falla, las demas se ven igual
+  const CIFRAS = [
+    { id: "cot", rotulo: "Cotizaciones por vencer", href: "/cotizaciones" },
+    { id: "ped", rotulo: "Pedidos pendientes", href: "/pedidos" },
+    { id: "neg", rotulo: "Artículos en negativo", href: "/buscar?f=neg" },
+    { id: "mez", rotulo: "Mezclas sin subir", href: "/mezclas" },
+  ];
+  const PANELES = [
+    { id: "cot", titulo: "Cotizaciones que vencen pronto", link: ["Ver todas", "/cotizaciones"] },
+    { id: "ped", titulo: "Pedidos pendientes", link: ["Ver todos", "/pedidos"] },
+    { id: "stock", titulo: "Stock para revisar", link: ["Ver negativos", "/buscar?f=neg"] },
+    { id: "precios", titulo: "Últimos cambios de precios", link: ["Ir a Precios", "/precios"] },
+  ];
+
+  function armar() {
+    const c = $("cifras"); c.replaceChildren();
+    for (const x of CIFRAS) {
+      const a = el("a", "cifra"); a.href = x.href; a.id = "cifra-" + x.id;
+      a.append(el("span", "rotulo", x.rotulo), el("span", "esq esq-num"));
+      c.append(a);
+    }
+    const p = $("paneles"); p.replaceChildren();
+    for (const x of PANELES) {
+      const t = el("section", "tarjeta panel"); t.id = "panel-" + x.id;
+      const cab = el("div", "panel-cab");
+      const l = el("a", "", x.link[0]); l.href = x.link[1];
+      cab.append(el("h2", "", x.titulo), l);
+      t.append(cab, el("div", "cuerpo"));
+      t.lastChild.append(HT.esqueleto(3, "plano"));
+      p.append(t);
+    }
+    if (HT.esCelular && !HT.instalada) {
+      const t = el("section", "tarjeta panel");
+      t.append(el("div", "panel-cab"));
+      t.firstChild.append(el("h2", "", "Tenerlo como app"));
+      const txt = el("p", "vacio");
+      txt.innerHTML = "En Chrome, tocá el menú ⋮ y elegí <strong>Agregar a la pantalla principal</strong>. En iPhone, en Safari: Compartir y <strong>Agregar a inicio</strong>.";
+      t.append(txt);
+      p.append(t);
+    }
+  }
+
+  // valor: numero; tono: "ok" | "atencion" | "mal" | ""
+  function cifra(id, valor, detalle, tono) {
+    const a = $("cifra-" + id);
+    a.className = "cifra" + (tono ? " " + tono : "");
+    a.replaceChildren(el("span", "rotulo", CIFRAS.find(x => x.id === id).rotulo), el("span", "valor", fmt.format(valor)),
+                      el("span", "detalle", detalle || ""));
+  }
+  function cifraError(id, e) {
+    const a = $("cifra-" + id);
+    a.className = "cifra";
+    a.replaceChildren(el("span", "rotulo", CIFRAS.find(x => x.id === id).rotulo), el("span", "falla", e.origen === "red" ? "Sin conexión" : "No se pudo consultar"));
+  }
+
+  function panel(id, ...contenido) { $("panel-" + id).querySelector(".cuerpo").replaceChildren(...contenido); }
+  function panelError(id, e, reintentar) { panel(id, HT.cajaError(e, reintentar)); }
+
+  // filas: [{ href, tit, sub, der, derClase, estado: [clase, texto] }]
+  function lista(filas, vacio, total) {
+    if (!filas.length) return el("p", "vacio", vacio);
+    const ul = el("ul", "filas");
+    for (const f of filas.slice(0, MAX_FILAS)) {
+      const a = el("a"); a.href = f.href;
+      a.append(el("span", "fila-tit", f.tit), el("span", "fila-sub", f.sub || ""));
+      const der = el("span", "fila-der" + (f.derClase ? " " + f.derClase : ""));
+      if (f.estado) der.append(el("span", "etiqueta-estado e-" + f.estado[0], f.estado[1]));
+      if (f.der) { if (f.estado) der.append(el("br")); der.append(f.der); }
+      a.append(der);
+      const li = el("li"); li.append(a); ul.append(li);
+    }
+    const frag = document.createDocumentFragment();
+    frag.append(ul);
+    const n = total ?? filas.length;
+    if (n > MAX_FILAS) frag.append(el("p", "mas-filas", `y ${fmt.format(n - MAX_FILAS)} más.`));
+    return frag;
+  }
+
+  // ---------------------------------------------------------------- cotizaciones
+  async function cotizaciones(forzar) {
+    try {
+      const d = await pedir("/api/cotizaciones", forzar);
+      const hoy = hoyIso(), limite = sumarDias(hoy, DIAS_AVISO);
+      const vigentes = d.datos.filter(c => c.estado === 2 && c.vigencia && c.vigencia >= hoy);
+      const pronto = vigentes.filter(c => c.vigencia <= limite).sort((a, b) => a.vigencia.localeCompare(b.vigencia));
+      const vencidas = d.datos.filter(c => c.estado === 2 && c.vigencia && c.vigencia < hoy).length;
+      cifra("cot", pronto.length, `en ${DIAS_AVISO} días · ${fmt.format(vigentes.length)} en curso`, pronto.length ? "atencion" : "ok");
+      panel("cot", lista(pronto.map(c => {
+        const dias = diasHasta(c.vigencia);
+        return { href: "/cotizaciones?ver=" + c.id, tit: `${c.numero_corto} · ${c.cliente || c.codigo_cliente}`,
+                 sub: `Vence el ${fecha(c.vigencia)}${c.vendedor ? " · " + c.vendedor : ""}`,
+                 estado: dias <= 3 ? ["vencida", dias === 0 ? "Vence hoy" : dias === 1 ? "Mañana" : `En ${dias} días`] : null,
+                 der: dias > 3 ? `en ${dias} días` : "" };
+      }), `No hay cotizaciones que venzan en los próximos ${DIAS_AVISO} días.` + (vencidas ? ` Hay ${vencidas} vencidas sin procesar.` : "")));
+      return d;
+    } catch (e) {
+      cifraError("cot", e); panelError("cot", e, () => cotizaciones(true));
+    }
+  }
+
+  // ---------------------------------------------------------------- pedidos
+  async function pedidos(forzar) {
+    try {
+      const d = await pedir("/api/pedidos", forzar);
+      const hoy = hoyIso();
+      const pend = d.datos.filter(p => p.estado === 1 || p.estado === 2)
+        .sort((a, b) => (a.fecha_entrega || "9").localeCompare(b.fecha_entrega || "9"));
+      const atrasados = pend.filter(p => p.fecha_entrega && p.fecha_entrega < hoy).length;
+      cifra("ped", pend.length, atrasados ? `${fmt.format(atrasados)} con la entrega pasada` : pend.length ? "ninguno atrasado" : "",
+            atrasados ? "atencion" : "");
+      panel("ped", lista(pend.map(p => {
+        const atrasado = p.fecha_entrega && p.fecha_entrega < hoy;
+        return { href: "/pedidos?ver=" + p.id, tit: `Pedido ${corto(p.numero)} · ${p.cliente || p.codigo_cliente}`,
+                 sub: [p.fecha_entrega && "Entrega " + fecha(p.fecha_entrega), p.orden_compra_cliente && "OC " + p.orden_compra_cliente].filter(Boolean).join(" · "),
+                 estado: atrasado ? ["atrasado", "Atrasado"] : null, der: atrasado ? "" : fecha(p.fecha) };
+      }), "No hay pedidos pendientes."));
+      return d;
+    } catch (e) {
+      cifraError("ped", e); panelError("ped", e, () => pedidos(true));
+    }
+  }
+
+  // ---------------------------------------------------------------- stock
+  // Negativos: articulos cuyo saldo (sumando lotes o depositos) da menos de cero, o con algun lote negativo.
+  // Bajo punto de pedido: articulos con punto de pedido cargado en Tango y saldo por debajo.
+  async function stock(forzar) {
+    try {
+      const [part, porArt, arts] = await Promise.all([pedir("/api/stock/partidas", forzar), pedir("/api/stock/articulos", forzar),
+                                                      pedir("/api/articulos", forzar)]);
+      const info = new Map();
+      for (const a of arts.datos) info.set(a.codigo, { cod: a.codigo, desc: a.descripcion, um: a.unidad, usa: a.usa_partidas, pp: a.punto_pedido, total: 0, lotesNeg: 0 });
+      const dato = (cod, desc, um) => { if (!info.has(cod)) info.set(cod, { cod, desc, um, usa: true, pp: 0, total: 0, lotesNeg: 0 }); return info.get(cod); };
+      for (const l of part.datos) {
+        const x = dato(l.codigo_articulo, l.descripcion, l.unidad);
+        x.total += l.saldo; if (l.saldo < -EPS) x.lotesNeg++;
+      }
+      for (const s of porArt.datos) {        // los que no llevan partidas: saldo por deposito
+        const x = info.get(s.codigo_articulo);
+        if (x && x.usa === false) x.total += s.saldo;
+      }
+      const todos = [...info.values()];
+      const negs = todos.filter(x => x.total < -EPS || x.lotesNeg).sort((a, b) => a.total - b.total);
+      const bajos = todos.filter(x => x.pp > 0 && x.total >= -EPS && x.total < x.pp).sort((a, b) => a.total / a.pp - b.total / b.pp);
+      const conStock = todos.filter(x => x.total > EPS).length;
+      cifra("neg", negs.length, `${fmt.format(conStock)} artículos con stock`, negs.length ? "mal" : "ok");
+      const filas = [
+        ...bajos.map(x => ({ href: "/buscar?art=" + encodeURIComponent(x.cod), tit: x.desc || x.cod, sub: `${x.cod} · punto de pedido ${num(x.pp)}`,
+                             estado: ["vencida", "Reponer"], der: `${num(x.total)} ${unidad(x.um)}` })),
+        ...negs.map(x => ({ href: "/buscar?art=" + encodeURIComponent(x.cod), tit: x.desc || x.cod,
+                            sub: x.cod + (x.lotesNeg ? ` · ${x.lotesNeg} ${x.lotesNeg === 1 ? "lote" : "lotes"} en negativo` : ""),
+                            der: `${num(x.total)} ${unidad(x.um)}`, derClase: x.total < -EPS ? "neg" : "" })),
+      ];
+      panel("stock", lista(filas, "No hay artículos en negativo ni debajo del punto de pedido."));
+      return part;
+    } catch (e) {
+      cifraError("neg", e); panelError("stock", e, () => stock(true));
+    }
+  }
+
+  // ---------------------------------------------------------------- mezclas y precios (registros de la Herramienta)
+  async function mezclas() {
+    try {
+      const d = await pedir("/api/mezclas");
+      const falta = d.datos.filter(m => m.estado !== "subida");
+      const ultima = d.datos.map(m => m.fecha).sort().pop();
+      cifra("mez", falta.length, ultima ? "última: " + fecha(ultima.slice(0, 10)) : "todavía no hay mezclas", falta.length ? "atencion" : "ok");
+    } catch (e) { cifraError("mez", e); }
+  }
+
+  const ACCIONES = { "cambiar precio": "Cambio de precio", "agregar artículo": "Artículo agregado", "quitar artículo": "Artículo quitado",
+                     "crear lista": "Lista creada", "eliminar lista": "Lista eliminada", "asignar lista": "Lista asignada", "restaurar lista": "Lista restaurada" };
+  const precio = v => typeof v === "number" ? fmtPrecio.format(v) : (v ?? "");
+  async function precios() {
+    try {
+      const d = await pedir("/api/precios/cambios");
+      const cambios = d.datos.filter(c => !String(c.accion || "").startsWith("error"));
+      panel("precios", lista(cambios.map(c => {
+        const quien = String(c.quien || "").replace(/\s*\([^)]*\)$/, "") || c.quien;   // sin la IP
+        const cuando = new Date(c.fecha);
+        const det = c.accion === "cambiar precio" ? `${precio(c.antes)} → ${precio(c.despues)}`
+                  : c.accion === "asignar lista" ? (c.razon_social || c.cliente || "") : "";
+        return { href: "/precios" + (c.lista ? "?q=" + encodeURIComponent(c.lista) : ""),
+                 tit: [ACCIONES[c.accion] || c.accion, c.articulo].filter(Boolean).join(" · "),
+                 sub: [c.lista, quien].filter(Boolean).join(" · "),
+                 der: det ? det : cuando.toLocaleDateString("es-AR", { day: "numeric", month: "short" }) };
+      }), "Todavía no se cambiaron precios desde la Herramienta."));
+    } catch (e) { panelError("precios", e, precios); }
+  }
+
+  // ---------------------------------------------------------------- carga
+  async function cargar(forzar) {
+    $("datos").textContent = "Consultando Tango…";
+    const r = (await Promise.all([cotizaciones(forzar), pedidos(forzar), stock(forzar), mezclas(), precios()])).filter(Boolean);
+    $("datos").textContent = r.length
+      ? "Datos de Tango de las " + HT.hora(r.map(d => new Date(d.actualizado)).sort((a, b) => a - b)[0]) + " h"
+      : "Sin datos de Tango";
+  }
+
+  $("actualizar").addEventListener("click", () => { armar(); cargar(true); });
+  $("form-buscar").addEventListener("submit", e => { if (!$("q").value.trim()) e.preventDefault(); });
+  armar();
+  cargar(false);
+})();
+</script>
+</body>
+</html>

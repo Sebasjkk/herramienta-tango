@@ -60,26 +60,28 @@
   .tabla-envoltura { overflow-x: auto; margin: 0 -18px; padding: 0 6px; }
   .volver { display: none; }
 
-  /* Inicio sin busqueda */
-  .bienvenida { display: grid; gap: 14px; margin-top: 8px; }
-  .bienvenida .tarjeta { padding: 16px 18px; }
-  .bienvenida h2 { font-size: 1rem; margin: 0 0 6px; }
-  .bienvenida p { margin: 0 0 6px; color: var(--plomo); font-size: .92rem; }
-  .bienvenida a { color: var(--patina); font-weight: 600; }
-  .ejemplos { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-  .revisar { list-style: none; margin: 0; padding: 0; }
-  .revisar li { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-top: 1px solid var(--linea-suave); font-size: .92rem; }
-  .revisar li:first-child { border-top: 0; }
+  /* Filtros y orden debajo del buscador */
+  .barra-filtros { margin-top: 10px; }
+  .resumen-fila { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 2px 0 8px; }
+  .resumen-fila .resumen { margin: 0 2px; }
+  .resumen-fila select { flex: none; min-height: 34px; font-size: .82rem; padding-top: 3px; padding-bottom: 3px; }
+  .ver-mas { display: block; width: 100%; margin: 4px 0 12px; }
+  .ficha-acciones { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 2px; }
+  .lista-mini { list-style: none; margin: 0; padding: 0; }
+  .lista-mini li { display: grid; grid-template-columns: 1fr auto; gap: 0 12px; align-items: baseline; padding: 8px 0; border-top: 1px solid var(--linea-suave); font-size: .92rem; }
+  .lista-mini li:first-child { border-top: 0; }
+  .lista-mini a { font-weight: 600; color: var(--patina); }
+  .lista-mini small { grid-column: 1 / -1; color: var(--plomo); font-size: .8rem; }
 
   @media (min-width: 960px) {
     .busqueda.con-resultados { display: grid; grid-template-columns: minmax(300px, 400px) 1fr; gap: 20px; align-items: start; }
     .detalle { position: sticky; top: 88px; max-height: calc(100vh - 104px); overflow-y: auto; }
-    .bienvenida { grid-template-columns: 1fr 1fr; }
-  }
+      }
   @media (max-width: 959px) {
     .busqueda.viendo-ficha .resultados-col { display: none; }
     .busqueda:not(.viendo-ficha) .detalle { display: none; }
     .volver { display: inline-flex; margin: 0 0 10px; }
+    body:has(.busqueda.viendo-ficha) .barra-filtros { display: none; }   /* en la ficha no hacen falta */
   }
 </style>
 </head>
@@ -99,8 +101,19 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>
           <label for="q" style="position:absolute;left:-9999px">Buscar artículo</label>
           <input id="q" type="search" inputmode="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-                 placeholder="Código, descripción o código de barras" enterkeyhint="search" autofocus>
+                 placeholder="Filtrar por código, descripción, partida o código de barras" enterkeyhint="search" autofocus>
           <button type="button" class="limpiar" id="limpiar" aria-label="Borrar búsqueda" hidden>×</button>
+        </div>
+        <div class="barra-filtros">
+          <div class="filtros" id="filtros" role="group" aria-label="Filtros"></div>
+        </div>
+        <div hidden>
+          <select id="orden" aria-label="Ordenar">
+            <option value="relevancia">Más parecidos</option>
+            <option value="desc">Descripción A–Z</option>
+            <option value="cod">Código</option>
+            <option value="stock">Más stock</option>
+          </select>
         </div>
       </div>
 
@@ -122,9 +135,23 @@
   "use strict";
   const { $, el, norm, sinCeros, tokens, fmt, fmtPrecio, num, fecha, unidad, pedir, textoError, cajaError } = HT;
   const EC = window.EtiquetaCodigo;
-  HT.iniciar("inicio");
+  HT.iniciar("buscar");
 
-  const MAX_RESULTADOS = 60;
+  const PAGINA = 60;            // filas que se dibujan de entrada; "Mostrar más" suma otra tanda
+  let mostrar = PAGINA;
+  // Filtros rapidos: cada uno recibe el articulo y su stock (stockDe)
+  const FILTROS = [
+    { id: "todos", titulo: "Todos", f: () => true },
+    { id: "stock", titulo: "Con stock", f: (a, st) => st.total > EPS },
+    { id: "sin", titulo: "Sin stock", f: (a, st) => Math.abs(st.total) <= EPS },
+    { id: "neg", titulo: "Negativos", f: (a, st) => st.total < -EPS || st.conSaldo.some(l => l.saldo < -EPS), alerta: true },
+    { id: "partidas", titulo: "Con partidas", f: a => a.usaPart === true },
+    { id: "precio", titulo: "Con precio", f: a => (preciosPor.get(a.cod) || []).some(p => p.precio > 0) },
+  ];
+  const params = new URLSearchParams(location.search);
+  let filtro = FILTROS.some(f => f.id === params.get("f")) ? params.get("f") : "todos";
+  const selOrden = $("orden");                  // se muestra junto a la cantidad de resultados
+  let orden = params.get("orden") || "";        // "" = automatico: parecidos si hay texto, A-Z si no
   const EPS = 0.0001;
   let arts = new Map();        // codigo -> articulo
   let stockPor = new Map();    // codigo -> [lotes]
@@ -137,7 +164,7 @@
 
   // ---------------------------------------------------------------- datos
   async function cargar(forzar) {
-    $("busqueda").classList.add("cargando");
+    if (arts.size) $("busqueda").classList.add("cargando");
     $("datos").textContent = "Consultando Tango…";
     errores = [];
     const tareas = [
@@ -145,7 +172,7 @@
       pedir("/api/stock/partidas", forzar).then(d => { indexarStock(d.datos); cargado.stock = true; return d; }),
       pedir("/api/stock/articulos", forzar).then(d => { indexarStockArt(d.datos); cargado.stockArt = true; return d; }),
       pedir("/api/precios", forzar).then(d => { indexarPrecios(d.datos); cargado.precios = true; return d; }),
-    ].map(p => p.then(d => { render(); return d; }, e => { errores.push(textoError(e)); render(); return null; }));
+    ].map(p => p.then(d => { render(); return d; }, e => { errores.push(e); render(); return null; }));
     const listos = (await Promise.all(tareas)).filter(Boolean);
     $("busqueda").classList.remove("cargando");
     if (listos.length) {
@@ -223,59 +250,112 @@
   }
 
   // ---------------------------------------------------------------- busqueda
+  // Sin texto devuelve todo el catalogo. Cada resultado trae su stock ya calculado.
   function buscar(texto) {
     const ts = tokens(texto);
-    if (!ts.length) return [];
     const q = sinCeros(norm(texto));
     const out = [];
     for (const a of arts.values()) {
-      if (!ts.every(t => a._txt.includes(t) || a._cod.includes(sinCeros(t)))) continue;
-      const exacto = a._cod === q || norm(a.barras) === norm(texto) ? 0 : a._cod.startsWith(q) ? 1 : 2;
-      const st = stockDe(a.cod);
-      out.push({ a, exacto, tieneStock: st.total > EPS ? 0 : 1 });
+      if (ts.length && !ts.every(t => a._txt.includes(t) || a._cod.includes(sinCeros(t)))) continue;
+      const exacto = !ts.length ? 2 : a._cod === q || norm(a.barras) === norm(texto) ? 0 : a._cod.startsWith(q) ? 1 : 2;
+      out.push({ a, st: stockDe(a.cod), exacto });
     }
-    out.sort((x, y) => x.exacto - y.exacto || x.tieneStock - y.tieneStock || x.a.desc.localeCompare(y.a.desc, "es"));
-    return out.map(r => r.a);
+    return out;
+  }
+
+  function ordenar(lista, conTexto) {
+    const modo = orden || (conTexto ? "relevancia" : "desc");
+    const porDesc = (x, y) => (x.a.desc || "~").localeCompare(y.a.desc || "~", "es");
+    const cmp = {
+      relevancia: (x, y) => x.exacto - y.exacto || (y.st.total > EPS) - (x.st.total > EPS) || porDesc(x, y),
+      desc: porDesc,
+      cod: (x, y) => x.a.cod.localeCompare(y.a.cod, "es", { numeric: true }),
+      stock: (x, y) => y.st.total - x.st.total || porDesc(x, y),
+    }[modo] || porDesc;
+    return lista.sort(cmp);
+  }
+
+  // Lo elegido (texto, filtro, orden, articulo) queda en la direccion: se puede recargar o mandar el link
+  function guardarEnUrl() {
+    const p = new URLSearchParams();
+    const q = $("q").value.trim();
+    if (q) p.set("q", q);
+    if (filtro !== "todos") p.set("f", filtro);
+    if (orden) p.set("orden", orden);
+    if (seleccion) p.set("art", seleccion);
+    const nueva = location.pathname + (p.toString() ? "?" + p : "") + location.hash;
+    if (nueva !== location.pathname + location.search + location.hash) history.replaceState(history.state, "", nueva);
   }
 
   // ---------------------------------------------------------------- dibujo
+  function dibujarFiltros(base) {
+    const cont = $("filtros");
+    cont.replaceChildren();
+    for (const f of FILTROS) {
+      const n = base.filter(r => f.f(r.a, r.st)).length;
+      if (f.id !== "todos" && f.id !== filtro && !n) continue;     // no mostrar filtros vacios
+      const b = el("button", "filtro" + (f.alerta ? " alerta" : ""), f.titulo);
+      b.type = "button";
+      b.setAttribute("aria-pressed", String(f.id === filtro));
+      b.append(el("b", "", fmt.format(n)));
+      b.addEventListener("click", () => { filtro = f.id; mostrar = PAGINA; render(); });
+      cont.append(b);
+    }
+  }
+
   function render() {
     const texto = $("q").value;
     const col = $("resultados-col");
     const bus = $("busqueda");
-    if (!tokens(texto).length) {
-      bus.classList.remove("con-resultados", "viendo-ficha");
-      $("detalle").replaceChildren();
-      col.replaceChildren(bienvenida());
-      return;
-    }
+    selOrden.value = orden || (tokens(texto).length ? "relevancia" : "desc");
     if (!arts.size) {
-      col.replaceChildren(errores.length ? cajaError(errores[0], () => cargar(true)) : el("p", "aviso", "Cargando artículos de Tango…"));
+      bus.classList.remove("con-resultados");
+      $("filtros").replaceChildren();
+      col.replaceChildren(errores.length ? cajaError(errores[0], () => cargar(true)) : HT.esqueleto(8));
       return;
     }
-    resultados = buscar(texto);
+    const base = buscar(texto);
+    dibujarFiltros(base);
+    const f = FILTROS.find(x => x.id === filtro);
+    resultados = ordenar(base.filter(r => f.f(r.a, r.st)), tokens(texto).length).map(r => r.a);
     if (!resultados.length) {
       bus.classList.remove("con-resultados", "viendo-ficha");
       $("detalle").replaceChildren();
       const a = el("div", "aviso");
       const p = el("p");
-      p.append("Ningún artículo coincide con ", el("strong", "", `«${texto.trim()}»`), ".");
-      a.append(p, el("p", "", "Probá con menos palabras o con parte del código."));
+      if (tokens(texto).length) p.append("Ningún artículo coincide con ", el("strong", "", `«${texto.trim()}»`), filtro !== "todos" ? " con ese filtro." : ".");
+      else p.append("No hay artículos con ese filtro.");
+      a.append(p);
+      if (filtro !== "todos") {
+        const b = el("button", "boton chico", "Ver todos"); b.type = "button";
+        b.addEventListener("click", () => { filtro = "todos"; render(); });
+        a.append(b);
+      } else a.append(el("p", "", "Probá con menos palabras o con parte del código."));
       col.replaceChildren(a);
+      guardarEnUrl();
       return;
     }
     bus.classList.add("con-resultados");
-    if (!seleccion || !resultados.some(a => a.cod === seleccion)) {
+    if (!seleccion || !arts.has(seleccion)) {
       seleccion = window.matchMedia("(min-width: 960px)").matches ? resultados[0].cod : null;
     }
     const frag = document.createDocumentFragment();
-    frag.append(el("p", "resumen", resultados.length === 1 ? "1 artículo" :
-      resultados.length > MAX_RESULTADOS ? `${fmt.format(resultados.length)} artículos: se muestran los primeros ${MAX_RESULTADOS}` :
-      `${fmt.format(resultados.length)} artículos`));
+    const n = resultados.length;
+    const cab = el("div", "resumen-fila");
+    frag.append(cab);
+    cab.append(el("p", "resumen", n === 1 ? "1 artículo" : n > mostrar
+      ? `${fmt.format(n)} artículos · se ven ${fmt.format(mostrar)}` : `${fmt.format(n)} artículos`), selOrden);
     const ul = el("ul", "resultados");
-    for (const a of resultados.slice(0, MAX_RESULTADOS)) ul.append(filaResultado(a));
+    for (const a of resultados.slice(0, mostrar)) ul.append(filaResultado(a));
     frag.append(ul);
+    if (n > mostrar) {
+      const mas = el("button", "boton ver-mas", `Mostrar ${fmt.format(Math.min(100, n - mostrar))} más`);
+      mas.type = "button";
+      mas.addEventListener("click", () => { mostrar += 100; render(); });
+      frag.append(mas);
+    }
     col.replaceChildren(frag);
+    guardarEnUrl();
     dibujarFicha();
   }
 
@@ -300,6 +380,7 @@
     b.append(caja);
     b.addEventListener("click", () => {
       seleccion = a.cod;
+      guardarEnUrl();
       for (const x of document.querySelectorAll(".res")) x.setAttribute("aria-pressed", String(x === b));
       if (!window.matchMedia("(min-width: 960px)").matches) {
         history.pushState({ ficha: a.cod }, "", "#art=" + encodeURIComponent(a.cod));
@@ -475,9 +556,14 @@
     dato("Código de barras", a.barras);
     if (a.puntoPedido) dato("Punto de pedido", num(a.puntoPedido));
     if (datos.childNodes.length) t.append(datos);
-    t.append(codigoDeBarras(a));
+    const acc = el("div", "ficha-acciones");
+    const link = el("button", "boton chico", "Copiar link"); link.type = "button";
+    link.title = "Para mandar este artículo por WhatsApp o mail";
+    link.addEventListener("click", () => HT.copiarLink("/buscar?art=" + encodeURIComponent(a.cod)));
+    acc.append(link);
+    t.append(acc, codigoDeBarras(a));
 
-    t.append(seccionStock(a), seccionPrecios(a));
+    t.append(seccionStock(a), seccionPrecios(a), seccionCotizaciones(a));
     cont.replaceChildren(t);
   }
 
@@ -574,7 +660,7 @@
     s.append(cab);
     cargarPreciosDe(a.cod);
     const ps = preciosArt.get(a.cod);
-    if (ps === "cargando") { s.append(el("p", "nota", "Cargando precios…")); return s; }
+    if (ps === "cargando") { s.append(HT.esqueleto(2, "plano")); return s; }
     if (ps instanceof Error) { s.append(el("p", "nota alerta", ps.message)); return s; }
     if (!ps.length) { s.append(el("p", "nota", "No está en ninguna lista de precios.")); return s; }
     const tabla = el("table", "tabla");
@@ -604,77 +690,74 @@
     return s;
   }
 
-  const titulo = d => d ? d.charAt(0) + d.slice(1).toLowerCase() : "";
-
-  function bienvenida() {
-    const cont = el("div", "bienvenida");
-    const t1 = el("div", "tarjeta");
-    t1.append(el("h2", "", "Todo de un artículo en un solo lugar"),
-      el("p", "", "Escribí el código o parte de la descripción: ves cuánto hay, en qué lotes y a qué precio está en cada lista."));
-    const ej = el("div", "ejemplos");
-    for (const x of ["zinc", "metco 130", "o-ring"]) {
-      const b = el("button", "chip", x);
-      b.type = "button";
-      b.addEventListener("click", () => { $("q").value = x; $("q").dispatchEvent(new Event("input")); $("q").focus(); });
-      ej.append(b);
+  // Cotizaciones en las que aparece el articulo (las mas nuevas primero)
+  const cotizArt = new Map();     // codigo -> datos | "cargando" | Error
+  function seccionCotizaciones(a) {
+    const s = el("section", "seccion");
+    const cab = el("div", "seccion-cab");
+    cab.append(el("h3", "", "Cotizaciones"));
+    s.append(cab);
+    if (!cotizArt.has(a.cod)) {
+      cotizArt.set(a.cod, "cargando");
+      pedir("/api/articulos/" + encodeURIComponent(a.cod) + "/cotizaciones")
+        .then(d => cotizArt.set(a.cod, d.datos), e => cotizArt.set(a.cod, e))
+        .then(() => { if (seleccion === a.cod) dibujarFicha(); });
     }
-    t1.append(ej);
-    cont.append(t1);
-
-    const t2 = el("div", "tarjeta");
-    t2.append(el("h2", "", "Para revisar"));
-    const ul = el("ul", "revisar");
-    if (cargado.stock) {
-      let negs = 0;
-      for (const ls of stockPor.values()) negs += ls.filter(l => l.saldo < -EPS).length;
+    const cs = cotizArt.get(a.cod);
+    if (cs === "cargando") { s.append(HT.esqueleto(2, "plano")); return s; }
+    if (cs instanceof Error) { s.append(el("p", "nota alerta", textoError(cs))); return s; }
+    if (!cs.length) { s.append(el("p", "nota", "No aparece en ninguna cotización cargada en Tango.")); return s; }
+    const hoy = new Date().toISOString().slice(0, 10);
+    const ul = el("ul", "lista-mini");
+    for (const c of cs.slice(0, 8)) {
       const li = el("li");
-      li.append(el("span", "", negs ? `${negs} lotes en negativo` : "No hay lotes en negativo"));
-      if (negs) { const a = el("a", "", "Ver"); a.href = "/stock#negativos"; li.append(a); }
+      const l = el("a", "", c.numero_corto); l.href = "/cotizaciones?ver=" + c.id;
+      const izq = el("span"); izq.append(l, " · " + (c.cliente || c.codigo_cliente));
+      const vencida = c.estado === 2 && c.vigencia && c.vigencia < hoy;
+      const clase = vencida ? "vencida" : ({ 2: "autorizada", 4: "procesada", 5: "anulada" })[c.estado] || "";
+      li.append(izq, el("span", "etiqueta-estado e-" + clase, vencida ? "Vencida" : c.estado_texto),
+                el("small", "", `${fecha(c.fecha)} · ${num(c.cantidad)} ${unidad(a.um)} a ${c.moneda} ${fmtPrecio.format(c.precio)}`));
       ul.append(li);
     }
-    if (cargado.articulos) {
-      const li = el("li");
-      li.append(el("span", "", `${fmt.format(arts.size)} artículos en Tango`));
-      ul.append(li);
-    }
-    if (cargado.precios) {
-      const listas = new Set();
-      for (const ps of preciosPor.values()) for (const p of ps) listas.add(p.numero_lista);
-      const li = el("li");
-      li.append(el("span", "", `${listas.size} listas de precios`));
-      const a = el("a", "", "Ver"); a.href = "/precios"; li.append(a);
-      ul.append(li);
-    }
-    if (!ul.childNodes.length) ul.append(el("li", "", errores[0] || "Cargando datos de Tango…"));
-    t2.append(ul);
-    cont.append(t2);
-
-    if (HT.esCelular && !HT.instalada) {
-      const t3 = el("div", "tarjeta");
-      t3.append(el("h2", "", "Tenerlo como app"));
-      const p = el("p");
-      p.innerHTML = "En Chrome, tocá el menú ⋮ y elegí <strong>Agregar a la pantalla principal</strong>. En iPhone, en Safari: Compartir y <strong>Agregar a inicio</strong>.";
-      t3.append(p);
-      cont.append(t3);
-    }
-    return cont;
+    s.append(ul);
+    if (cs.length > 8) s.append(el("p", "nota", `y ${cs.length - 8} más.`));
+    return s;
   }
 
+  const titulo = d => d ? d.charAt(0) + d.slice(1).toLowerCase() : "";
+
   // ---------------------------------------------------------------- eventos
-  const inicial = new URLSearchParams(location.search).get("q");
-  if (inicial) $("q").value = inicial;
+  if (params.get("q")) $("q").value = params.get("q");
+  // /buscar?art=<codigo>: abrir directo la ficha (links desde Inicio, Cotizaciones o compartidos)
+  if (params.get("art")) {
+    seleccion = params.get("art");
+    if (!window.matchMedia("(min-width: 960px)").matches) {
+      history.replaceState(null, "", location.pathname + location.search);
+      history.pushState({ ficha: seleccion }, "", "#art=" + encodeURIComponent(seleccion));
+      $("busqueda").classList.add("viendo-ficha");
+    }
+  }
   HT.conectarBuscador($("q"), $("limpiar"), () => {
     // Una busqueda nueva vuelve a la lista de resultados (en el celular)
     seleccion = null;
+    mostrar = PAGINA;
     $("busqueda").classList.remove("viendo-ficha");
     if (location.hash.startsWith("#art=")) history.replaceState(null, "", location.pathname + location.search);
     render();
   });
-  $("actualizar").addEventListener("click", () => { preciosArt.clear(); cargar(true); });
+  selOrden.addEventListener("change", () => { orden = selOrden.value; mostrar = PAGINA; render(); });
+  $("actualizar").addEventListener("click", () => { preciosArt.clear(); cotizArt.clear(); cargar(true); });
   window.addEventListener("popstate", () => {
     if (!location.hash.startsWith("#art=")) $("busqueda").classList.remove("viendo-ficha");
   });
-  if (location.hash.startsWith("#art=")) history.replaceState(null, "", location.pathname + location.search);
+  if (location.hash.startsWith("#art=") && !params.get("art")) history.replaceState(null, "", location.pathname + location.search);
+  // "/" enfoca el buscador desde cualquier lado (como en muchas webs)
+  document.addEventListener("keydown", e => {
+    if (e.key === "/" && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName) && !document.querySelector("dialog[open]")) {
+      e.preventDefault(); $("q").focus(); $("q").select();
+    }
+  });
+  render();
   cargar(false);
 })();
 </script>
