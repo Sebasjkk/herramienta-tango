@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0B6E69">
+<title>Importaciones | Herramienta Tango</title>
+<link rel="icon" href="/icono-192.png">
+<link rel="apple-touch-icon" href="/icono-192.png">
+<link rel="manifest" href="/manifest.json">
+<link rel="stylesheet" href="/comun.css">
+<script>try{var t=localStorage.getItem("ht_tema");if(t==="claro"||t==="oscuro")document.documentElement.dataset.tema=t}catch(e){}</script>
+<style>
+  .barra .filtros { margin-top: 10px; }
+  .explica { margin: 8px 2px 0; font-size: .86rem; color: var(--plomo); max-width: 75ch; }
+
+  /* Lista de carpetas */
+  .lista-car { list-style: none; margin: 0; padding: 0; }
+  .car { width: 100%; display: grid; grid-template-columns: 1fr auto; gap: 2px 14px; text-align: left; font: inherit; color: inherit;
+    background: var(--papel); border: 1px solid var(--linea); border-radius: var(--radio); padding: 11px 14px; margin-bottom: 8px; cursor: pointer; }
+  .car:hover { border-color: var(--patina); }
+  .car[aria-pressed="true"] { border-color: var(--patina); box-shadow: inset 3px 0 0 var(--patina); background: var(--seleccion); }
+  .car .num { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .car .prov { overflow-wrap: anywhere; }
+  .car .der { grid-column: 2; grid-row: 1 / span 2; text-align: right; font-size: .82rem; color: var(--plomo); line-height: 1.45; }
+  .car .meta { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 10px; font-size: .8rem; color: var(--plomo); padding-top: 4px; }
+
+  /* Ficha de la carpeta */
+  .ficha { padding: 18px; }
+  .ficha h2 { font-size: 1.35rem; margin: 4px 0 2px; letter-spacing: -0.01em; }
+  .ficha .prov { font-weight: 600; }
+  .datos-car { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px 16px; margin: 14px 0 4px; font-size: .9rem; }
+  .datos-car span { display: block; color: var(--plomo); font-size: .78rem; }
+  .ficha-acciones { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 2px; }
+  .avance-car { display: grid; gap: 6px; margin: 12px 0 2px; font-size: .9rem; }
+  .seccion { border-top: 1px solid var(--linea); margin: 16px -18px 0; padding: 14px 18px 6px; }
+  .seccion h3 { font-size: .95rem; margin: 0 0 8px; }
+  .tabla-envoltura { overflow-x: auto; margin: 0 -18px; padding: 0 6px; }
+  .tabla a { color: inherit; }
+  .tabla td.falta.hay { color: var(--ambar); font-weight: 700; }
+  .total-car { text-align: right; font-weight: 700; padding: 8px 12px 0; font-variant-numeric: tabular-nums; }
+  .nota { font-size: .86rem; color: var(--plomo); margin: 6px 0; }
+  .lista-mini { list-style: none; margin: 0; padding: 0; }
+  .lista-mini li { display: grid; grid-template-columns: 1fr auto; gap: 1px 12px; padding: 8px 0; border-top: 1px solid var(--linea-suave); font-size: .92rem; }
+  .lista-mini li:first-child { border-top: 0; }
+  .lista-mini small { grid-column: 1 / -1; color: var(--plomo); font-size: .8rem; }
+  .lista-mini a { color: var(--patina); font-weight: 600; }
+  .volver { display: none; }
+
+  /* En camino */
+  .camino-tabla { background: var(--papel); border: 1px solid var(--linea); border-radius: var(--radio); overflow: hidden; }
+  .camino-tabla td.vienen { color: var(--patina); font-weight: 700; }
+  .camino-tabla .car-chip { display: block; margin: 1px 0; font-size: .8rem; color: var(--plomo); }
+  .camino-tabla .car-chip a { color: var(--patina); font-weight: 600; }
+  .resumen-fila { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0 10px; }
+  .resumen-fila .resumen { margin: 0 2px; }
+
+  /* Celular: en las tablas, una linea que se lee sola en lugar de columnas sin titulo */
+  .m-resumen { display: none; }
+  @media (max-width: 599px) {
+    .tabla td.m-oculto { display: none; }
+    .m-resumen { display: block; font-size: .84rem; color: var(--grafito); margin-top: 3px; }
+    .m-resumen b { color: var(--patina); }
+    .m-resumen b.falta { color: var(--ambar); }
+  }
+  @media (min-width: 960px) {
+    .contenido-car { display: grid; grid-template-columns: minmax(300px, 400px) 1fr; gap: 20px; align-items: start; }
+    .detalle { position: sticky; top: 130px; max-height: calc(100vh - 146px); overflow-y: auto; }
+  }
+  @media (max-width: 959px) {
+    .contenido-car.viendo .col-lista { display: none; }
+    .contenido-car:not(.viendo) .detalle { display: none; }
+    body:has(.contenido-car.viendo) .barra .filtros { display: none; }
+    .volver { display: inline-flex; margin-bottom: 10px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="app-nav" id="app-nav"></nav>
+  <div class="app-principal">
+    <div class="pagina">
+      <header class="cabecera">
+        <div class="cabecera-sup">
+          <h1 id="titulo">Carpetas de importación</h1>
+          <div class="datos"><span id="estado">Consultando Tango…</span><button type="button" class="boton-texto" id="actualizar">Actualizar</button></div>
+        </div>
+      </header>
+      <div class="barra">
+        <div class="buscador">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>
+          <label for="q" style="position:absolute;left:-9999px">Buscar</label>
+          <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="Número de carpeta, proveedor o artículo" enterkeyhint="search">
+          <button type="button" class="limpiar" id="limpiar" aria-label="Borrar búsqueda" hidden>×</button>
+        </div>
+        <div class="filtros" id="filtros" role="group" aria-label="Filtros"></div>
+        <p class="explica" id="explica"></p>
+      </div>
+      <div class="contenido-car" id="contenido">
+        <div class="col-lista" id="col-lista" aria-live="polite"></div>
+        <section class="detalle" id="detalle" aria-live="polite"></section>
+      </div>
+      <p class="pie">Esta pantalla solo consulta: se lee de las carpetas de importación de Tango (cabecera, renglones y despachos). Los precios son los del proveedor, sin gastos de importación. Las cantidades de la carpeta están en la unidad de compra; «En camino» las pasa a la unidad de stock.</p>
+    </div>
+  </div>
+</div>
+
+<script src="/comun.js"></script>
+<script>
+(() => {
+  "use strict";
+  const { $, el, norm, sinCeros, tokens, fmt, fmtPrecio, num, fecha, unidad, pedir, cajaError } = HT;
+  const params = new URLSearchParams(location.search);
+  const vista = params.get("vista") === "camino" ? "camino" : "carpetas";
+  HT.iniciar(vista === "camino" ? "en-camino" : "carpetas");
+  document.title = (vista === "camino" ? "En camino" : "Carpetas de importación") + " | Herramienta Tango";
+  $("titulo").textContent = vista === "camino" ? "En camino" : "Carpetas de importación";
+  if (vista === "camino") $("q").placeholder = "Artículo, carpeta o proveedor";
+
+  const EPS = 0.0001;
+  let datos = null;                  // { carpetas, articulos }
+  const arts = new Map();            // codigo -> { desc, um }
+  const stock = new Map();           // codigo -> saldo en Central
+  let elegida = params.get("ver") || null;
+  let abiertaInicial = false;
+  let filtro = vista === "camino" ? "todo" : "abiertas";
+
+  const pendiente = c => !c.cerrada && c.renglones.some(r => r.falta > EPS);
+  const avance = c => {
+    const ped = c.renglones.reduce((a, r) => a + r.pedido, 0), lleg = c.renglones.reduce((a, r) => a + Math.min(r.nacionalizado, r.pedido), 0);
+    return ped > EPS ? Math.round(100 * lleg / ped) : 0;
+  };
+  const total = c => c.renglones.reduce((a, r) => a + r.pedido * r.precio, 0);
+  const desc = cod => (arts.get(cod) || {}).desc || "";
+  const um = cod => unidad((arts.get(cod) || {}).um);
+  const textoEstado = c => c.cerrada ? "Cerrada" : pendiente(c) ? "Abierta" : "Abierta · llegó todo";
+
+  const FILTROS = {
+    carpetas: [
+      { id: "abiertas", titulo: "Con mercadería en camino", f: pendiente, ayuda: "Carpetas abiertas a las que todavía les falta llegar algo." },
+      { id: "sin-cerrar", titulo: "Abiertas", f: c => !c.cerrada, ayuda: "Todas las carpetas que no están cerradas en Tango." },
+      { id: "cerradas", titulo: "Cerradas", f: c => c.cerrada, ayuda: "Carpetas cerradas: ya no se espera nada de ellas." },
+      { id: "todas", titulo: "Todas", f: () => true, ayuda: "Todas las carpetas de importación de Tango." },
+    ],
+    camino: [
+      { id: "todo", titulo: "Todo lo que viene", f: () => true, ayuda: "Lo pedido en carpetas abiertas que todavía no se nacionalizó, por artículo y en unidad de stock." },
+      { id: "sin-stock", titulo: "Sin stock hoy", f: x => !(stock.get(x.cod) > EPS), ayuda: "Artículos que hoy no tienen stock en Central y vienen en camino." },
+    ],
+  };
+
+  // ---------------------------------------------------------------- datos
+  async function cargar(forzar) {
+    $("estado").textContent = "Consultando Tango…";
+    const indexArts = d => { for (const a of d.datos) arts.set(a.codigo, { desc: a.descripcion, um: a.unidad, usa: a.usa_partidas }); render(); };
+    pedir("/api/articulos", forzar, { previo: indexArts }).then(indexArts, () => {});
+    if (vista === "camino") {
+      // Stock de hoy en Central, para ver al lado de lo que viene
+      const indexStock = (part, sart) => {
+        stock.clear();
+        for (const p of part.datos) if ((p.deposito || "").toUpperCase() === "CENTRAL") stock.set(p.codigo_articulo, (stock.get(p.codigo_articulo) || 0) + p.saldo);
+        for (const s of sart.datos) if ((s.deposito || "").toUpperCase() === "CENTRAL" && !(arts.get(s.codigo_articulo) || {}).usa && !stock.has(s.codigo_articulo)) stock.set(s.codigo_articulo, s.saldo);
+        render();
+      };
+      Promise.all([pedir("/api/stock/partidas", forzar), pedir("/api/stock/articulos", forzar)]).then(([a, b]) => indexStock(a, b), () => {});
+    }
+    let previo = null;
+    const usar = d => { datos = d.datos; $("estado").textContent = HT.textoDatos(d); render(); };
+    try {
+      usar(await pedir("/api/importaciones", forzar, { previo: g => { previo = g; usar(g); } }));
+    } catch (e) {
+      if (previo) { $("estado").textContent = HT.textoDatos(previo).replace("actualizando…", "sin conexión con Tango"); return; }
+      $("estado").textContent = "Sin datos";
+      $("col-lista").replaceChildren(cajaError(e, () => cargar(true)));
+    }
+  }
+
+  function dibujarFiltros(base, f) {
+    const cont = $("filtros"); cont.replaceChildren();
+    for (const x of FILTROS[vista]) {
+      const n = base.filter(x.f).length;
+      const b = el("button", "filtro", x.titulo); b.type = "button";
+      b.setAttribute("aria-pressed", String(x.id === filtro)); b.append(el("b", "", fmt.format(n)));
+      b.addEventListener("click", () => { filtro = x.id; render(); });
+      cont.append(b);
+    }
+    $("explica").textContent = FILTROS[vista].find(x => x.id === filtro).ayuda;
+  }
+
+  function render() {
+    if (!datos) { if (!$("col-lista").querySelector(".error")) $("col-lista").replaceChildren(HT.esqueleto(6)); return; }
+    if (vista === "camino") return renderCamino();
+    const ts = tokens($("q").value);
+    const coincide = c => !ts.length || ts.every(t => norm([c.numero, c.corto, c.proveedor, c.referencia,
+      ...c.renglones.map(r => r.codigo + " " + desc(r.codigo))].join(" ")).includes(t) || c.renglones.some(r => sinCeros(norm(r.codigo)) === sinCeros(t)));
+    const base = datos.carpetas.filter(coincide);
+    dibujarFiltros(base);
+    const lista = base.filter(FILTROS.carpetas.find(x => x.id === filtro).f);
+    const col = $("col-lista");
+    // /importaciones?ver=<id>: si la carpeta no esta en el filtro elegido, se pasa a "Todas"
+    if (elegida && !lista.some(c => c.id === elegida) && datos.carpetas.some(c => c.id === elegida) && !abiertaInicial) { filtro = "todas"; abiertaInicial = true; return render(); }
+    if (!lista.length) {
+      col.replaceChildren(el("p", "aviso", datos.carpetas.length ? "No hay carpetas en este grupo." : "Tango no tiene carpetas de importación."));
+      $("detalle").replaceChildren(); return;
+    }
+    if (!elegida || !datos.carpetas.some(c => c.id === elegida)) elegida = window.matchMedia("(min-width: 960px)").matches ? lista[0].id : null;
+    const ul = el("ul", "lista-car");
+    for (const c of lista) {
+      const b = el("button", "car"); b.type = "button"; b.setAttribute("aria-pressed", String(c.id === elegida));
+      const der = el("span", "der");
+      der.append(el("span", "etiqueta-estado " + (c.cerrada ? "e-cerrado" : pendiente(c) ? "e-parcial" : "e-entregado"), textoEstado(c)), el("br"), fecha(c.fecha));
+      const a = avance(c);
+      const meta = el("span", "meta");
+      const barra = el("span", "avance" + (a < 100 && !c.cerrada ? " parcial" : "")); const i = el("i"); i.style.width = a + "%"; barra.append(i);
+      meta.append(barra, `${c.renglones.length} art. · llegó ${a}%`);
+      b.append(el("span", "num", "Carpeta " + c.corto), el("span", "prov", c.proveedor || "Sin proveedor"), der, meta);
+      b.addEventListener("click", () => {
+        elegida = c.id;
+        history.replaceState(history.state, "", "/importaciones?ver=" + encodeURIComponent(c.id) + location.hash);
+        if (!window.matchMedia("(min-width: 960px)").matches) { history.pushState({}, "", "#car"); $("contenido").classList.add("viendo"); window.scrollTo(0, 0); }
+        render();
+      });
+      const li = el("li"); li.append(b); ul.append(li);
+    }
+    col.replaceChildren(ul);
+    dibujarCarpeta();
+  }
+
+  function dibujarCarpeta() {
+    const cont = $("detalle");
+    const c = datos.carpetas.find(x => x.id === elegida);
+    if (!c) { cont.replaceChildren(); return; }
+    const t = el("article", "tarjeta ficha");
+    const volver = el("button", "boton volver", "‹ Carpetas"); volver.type = "button"; volver.addEventListener("click", () => history.back());
+    t.append(volver, el("span", "etiqueta-estado " + (c.cerrada ? "e-cerrado" : pendiente(c) ? "e-parcial" : "e-entregado"), textoEstado(c)),
+             el("h2", "", "Carpeta " + c.numero), el("div", "prov", c.proveedor || "Sin proveedor"));
+    const d = el("div", "datos-car");
+    const dato = (et, v) => { const x = el("div"); x.append(el("span", "", et), v || "—"); d.append(x); };
+    dato("Apertura", fecha(c.fecha)); dato("Estado en Tango", c.estado); dato("Moneda", c.moneda);
+    dato("Cotización", c.cotizacion ? fmtPrecio.format(c.cotizacion) : ""); dato("Total pedido", `${c.moneda || ""} ${fmtPrecio.format(total(c))}`.trim());
+    if (c.referencia) dato("Referencia", c.referencia);
+    t.append(d);
+    const a = avance(c);
+    const av = el("div", "avance-car");
+    av.append(el("span", "", c.cerrada ? `Cerrada · llegó el ${a}% de lo pedido` : `Llegó el ${a}% de lo pedido`));
+    const barra = el("span", "avance" + (a < 100 && !c.cerrada ? " parcial" : "")); const i = el("i"); i.style.width = a + "%"; barra.append(i);
+    av.append(barra); t.append(av);
+    const acc = el("div", "ficha-acciones");
+    const link = el("button", "boton chico", "Copiar link"); link.type = "button";
+    link.addEventListener("click", () => HT.copiarLink("/importaciones?ver=" + encodeURIComponent(c.id)));
+    acc.append(link, HT.botonExportar(() => HT.exportar(`Carpeta ${c.numero}`,
+      [["Código"], ["Artículo"], ["Pedido", "numero"], ["Nacionalizado", "numero"], ["Falta", "numero"], ["Facturado", "numero"], ["Precio", "numero"], ["Subtotal", "numero"], ["Equivalencia", "numero"]],
+      c.renglones.map(r => [r.codigo, desc(r.codigo), r.pedido, r.nacionalizado, r.falta, r.facturado, r.precio, Math.round(r.pedido * r.precio * 100) / 100, r.equivalencia]))));
+    t.append(acc);
+
+    // Renglones
+    const s = el("section", "seccion"); s.append(el("h3", "", "Artículos"));
+    const tabla = el("table", "tabla"); const th = el("tr");
+    for (const [x, cl] of [["Artículo", ""], ["Pedido", "der"], ["Llegó", "der"], ["Falta", "der"], ["Precio", "der"], ["Subtotal", "der"]]) th.append(el("th", cl, x));
+    const thead = el("thead"); thead.append(th); const tb = el("tbody");
+    for (const r of c.renglones) {
+      const tr = el("tr", r.falta > EPS && !c.cerrada && r.nacionalizado > EPS ? "parcial" : "");
+      const art = el("td"); const l = el("a", "", desc(r.codigo) || r.codigo); l.href = "/buscar?art=" + encodeURIComponent(r.codigo);
+      l.style.fontWeight = "600"; art.append(l, el("div", "nota", r.codigo + (Math.abs(r.equivalencia - 1) > EPS ? ` · equivalencia ${num(r.equivalencia)}` : "")));
+      art.lastChild.style.margin = "0";
+      const mr = el("div", "m-resumen");
+      mr.append(`Pedido ${num(r.pedido)} · llegó ${num(r.nacionalizado)}`);
+      if (r.falta > EPS && !c.cerrada) mr.append(" · ", el("b", "falta", `faltan ${num(r.falta)}`));
+      if (r.precio) mr.append(` · ${c.moneda || ""} ${fmtPrecio.format(r.precio)} c/u`);
+      art.append(mr);
+      tr.append(art, el("td", "der m-oculto", num(r.pedido)), el("td", "der m-oculto", r.nacionalizado ? num(r.nacionalizado) : "—"),
+        el("td", "der m-oculto falta" + (r.falta > EPS && !c.cerrada ? " hay" : ""), r.falta > EPS ? num(r.falta) : "—"),
+        el("td", "der m-oculto", r.precio ? fmtPrecio.format(r.precio) : "—"), el("td", "der", r.precio ? fmtPrecio.format(r.pedido * r.precio) : "—"));
+      tb.append(tr);
+    }
+    tabla.append(thead, tb);
+    const env = el("div", "tabla-envoltura"); env.append(tabla);
+    s.append(env, el("div", "total-car", `Total pedido: ${c.moneda || ""} ${fmtPrecio.format(total(c))}`.trim()));
+    if (c.cerrada && c.renglones.some(r => r.falta > EPS)) s.append(el("p", "nota", "La carpeta está cerrada: lo que figura como faltante ya no se espera."));
+    t.append(s);
+
+    // Despachos y partidas
+    const sd = el("section", "seccion"); sd.append(el("h3", "", "Despachos"));
+    if (!c.despachos.length) sd.append(el("p", "nota", "Todavía no tiene despachos: no llegó nada a stock."));
+    else {
+      const ul = el("ul", "lista-mini");
+      for (const x of c.despachos) {
+        const li = el("li");
+        const p = el("a", "", "partida " + x.partida); p.href = "/stock?q=" + encodeURIComponent(x.partida);
+        const izq = el("span"); izq.append("Despacho " + (x.despacho || "sin número"), " · ", p);
+        li.append(izq, el("span", "", fecha(x.fecha)));
+        ul.append(li);
+      }
+      sd.append(ul);
+    }
+    t.append(sd);
+    cont.replaceChildren(t);
+    if (!abiertaInicial && params.get("ver") === c.id && !window.matchMedia("(min-width: 960px)").matches) {
+      abiertaInicial = true; history.pushState({}, "", "#car"); $("contenido").classList.add("viendo");
+    }
+    abiertaInicial = true;
+  }
+
+  // ---------------------------------------------------------------- en camino (por articulo)
+  function renderCamino() {
+    $("contenido").classList.remove("contenido-car");
+    const ts = tokens($("q").value);
+    const base = Object.entries(datos.articulos).filter(([, v]) => v.en_camino > EPS).map(([cod, v]) => ({ cod, ...v }))
+      .filter(x => !ts.length || ts.every(t => norm([x.cod, desc(x.cod), ...x.carpetas_en_camino.map(c => c.corto + " " + c.proveedor)].join(" ")).includes(t)))
+      .sort((a, b) => (desc(a.cod) || a.cod).localeCompare(desc(b.cod) || b.cod, "es"));
+    dibujarFiltros(base);
+    const lista = base.filter(FILTROS.camino.find(x => x.id === filtro).f);
+    const col = $("col-lista");
+    $("detalle").replaceChildren();
+    if (!lista.length) { col.replaceChildren(el("p", "aviso", base.length ? "No hay artículos en este grupo." : "No hay nada en camino: ninguna carpeta abierta tiene mercadería pendiente.")); return; }
+    const frag = document.createDocumentFragment();
+    const cab = el("div", "resumen-fila");
+    const res = el("p", "resumen", lista.length === 1 ? "1 artículo en camino" : `${fmt.format(lista.length)} artículos en camino`);
+    const exp = HT.botonExportar(() => HT.exportar("En camino", [["Código"], ["Artículo"], ["Unidad"], ["Stock hoy (Central)", "numero"], ["En camino", "numero"], ["Carpetas"], ["Último precio", "numero"], ["Moneda"]],
+      lista.map(x => [x.cod, desc(x.cod), um(x.cod), stock.has(x.cod) ? Math.round(stock.get(x.cod) * 100) / 100 : null, x.en_camino,
+                      x.carpetas_en_camino.map(c => `${c.corto} (${num(c.falta)})`).join(", "), x.ultima_compra ? x.ultima_compra.precio : null, x.ultima_compra ? x.ultima_compra.moneda : ""])), "Excel");
+    exp.className = "boton-texto";
+    cab.append(res, exp);
+    frag.append(cab);
+    const tabla = el("table", "tabla camino-tabla"); const th = el("tr");
+    for (const [x, cl] of [["Artículo", ""], ["Stock hoy", "der"], ["Vienen", "der"], ["Carpetas", ""], ["Último precio", "der"]]) th.append(el("th", cl, x));
+    const thead = el("thead"); thead.append(th); const tb = el("tbody");
+    for (const x of lista) {
+      const tr = el("tr");
+      const art = el("td"); const l = el("a", "", desc(x.cod) || x.cod); l.href = "/buscar?art=" + encodeURIComponent(x.cod); l.style.fontWeight = "600";
+      art.append(l, el("div", "nota", x.cod)); art.lastChild.style.margin = "0";
+      const st = stock.get(x.cod);
+      const car = el("td");
+      for (const c of x.carpetas_en_camino) {
+        const chip = el("span", "car-chip"); const a = el("a", "", c.corto);
+        a.href = "/importaciones?ver=" + encodeURIComponent(c.id);
+        chip.append("Carpeta ", a, ` · ${num(c.falta)}${c.fecha ? " · " + fecha(c.fecha) : ""}`);
+        car.append(chip);
+      }
+      const pr = el("td", "der");
+      if (x.ultima_compra) pr.append(el("span", "moneda", x.ultima_compra.moneda || ""), fmtPrecio.format(x.ultima_compra.precio)); else pr.textContent = "—";
+      const mr = el("div", "m-resumen");
+      mr.append(`Hoy ${st === undefined ? "—" : num(st) + " " + um(x.cod)} · `, el("b", "", `vienen ${num(x.en_camino)} ${um(x.cod)}`),
+                x.ultima_compra ? ` · ${x.ultima_compra.moneda || ""} ${fmtPrecio.format(x.ultima_compra.precio)}` : "");
+      art.append(mr);
+      pr.classList.add("m-oculto");
+      tr.append(art, el("td", "der m-oculto", st === undefined ? "—" : `${num(st)} ${um(x.cod)}`), el("td", "der vienen m-oculto", `${num(x.en_camino)} ${um(x.cod)}`), car, pr);
+      tb.append(tr);
+    }
+    tabla.append(thead, tb);
+    frag.append(tabla);
+    col.replaceChildren(frag);
+  }
+
+  HT.conectarBuscador($("q"), $("limpiar"), () => { if (vista === "carpetas") { elegida = null; $("contenido").classList.remove("viendo"); } render(); });
+  $("actualizar").addEventListener("click", () => cargar(true));
+  window.addEventListener("popstate", () => { if (location.hash !== "#car") $("contenido").classList.remove("viendo"); });
+  if (location.hash === "#car") history.replaceState(null, "", location.pathname + location.search);
+  render();
+  cargar(false);
+})();
+</script>
+</body>
+</html>

@@ -799,6 +799,7 @@
     const s = el("section", "seccion");
     const cab = el("div", "seccion-cab");
     cab.append(el("h3", "", "Importaciones"));
+    const ver = el("a", "", "Ver lo que viene"); ver.href = "/importaciones?vista=camino"; cab.append(ver);
     s.append(cab);
     if (importaciones === null) { s.append(HT.esqueleto(2, "plano")); return s; }
     if (importaciones instanceof Error) { s.append(el("p", "nota", "No se pudieron leer las carpetas de importación: " + textoError(importaciones))); return s; }
@@ -811,7 +812,9 @@
       const ul = el("ul", "lista-mini");
       for (const c of im.carpetas_en_camino) {
         const li = el("li");
-        li.append(el("span", "", `Carpeta ${c.corto}${c.proveedor ? " · " + c.proveedor : ""}`),
+        const lk = el("a", "", `Carpeta ${c.corto}`); lk.href = "/importaciones?ver=" + encodeURIComponent(c.id);
+        const izq = el("span"); izq.append(lk, c.proveedor ? " · " + c.proveedor : "");
+        li.append(izq,
                   el("span", "der", `faltan ${num(c.falta)} ${u}`),
                   el("small", "", [c.fecha && "abierta el " + fecha(c.fecha), `pedido ${num(c.pedido)}, llegó ${num(c.llego)}`, c.estado && "estado " + c.estado].filter(Boolean).join(" · ")));
         ul.append(li);
@@ -836,7 +839,8 @@
         for (const x of im.compras) {
           const tr = el("tr");
           const pr = el("td", "der"); pr.append(el("span", "moneda", x.moneda || ""), fmtPrecio.format(x.precio));
-          tr.append(el("td", "", x.corto), el("td", "", fecha(x.fecha)), el("td", "", x.proveedor), el("td", "der", num(x.cantidad) + " " + u), pr);
+          const lc = el("td"); const lk = el("a", "", x.corto); lk.href = "/importaciones?ver=" + encodeURIComponent(x.id); lc.append(lk);
+          tr.append(lc, el("td", "", fecha(x.fecha)), el("td", "", x.proveedor), el("td", "der", num(x.cantidad) + " " + u), pr);
           tb.append(tr);
         }
         tabla.append(thead, tb);

@@ -123,11 +123,11 @@ def armar(datos: dict) -> dict:
         a = por_articulo[cod]
         if falta > EPS and not cab["cerrada"]:
             a["en_camino"] += falta * eq
-            a["carpetas_en_camino"].append({"carpeta": cab["numero"], "corto": cab["corto"], "fecha": cab["fecha"], "proveedor": cab["proveedor"],
+            a["carpetas_en_camino"].append({"id": cab["id"], "carpeta": cab["numero"], "corto": cab["corto"], "fecha": cab["fecha"], "proveedor": cab["proveedor"],
                                             "falta": renglon["falta_stock"], "pedido": round(pedido * eq, 4), "llego": round(llego * eq, 4),
                                             "estado": cab["estado"]})
         if precio > 0:
-            a["compras"].append({"carpeta": cab["numero"], "corto": cab["corto"], "fecha": cab["fecha"], "proveedor": cab["proveedor"],
+            a["compras"].append({"id": cab["id"], "carpeta": cab["numero"], "corto": cab["corto"], "fecha": cab["fecha"], "proveedor": cab["proveedor"],
                                  "moneda": cab["moneda"], "precio": renglon["precio_stock"], "precio_compra": precio, "equivalencia": eq,
                                  "cantidad": round(pedido * eq, 4)})
     for a in por_articulo.values():

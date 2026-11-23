@@ -10,6 +10,7 @@ Hoy es **solo lectura**: no carga ni modifica nada en Tango.
 |---|---|---|
 | Inicio | Listo | Resumen: cotizaciones por vencer, pedidos pendientes, stock negativo o bajo punto de pedido, mezclas sin subir, últimos cambios de precios |
 | Buscar artículo | Listo | Buscar (`/buscar`): catálogo completo con filtros y orden, vistos hace poco; ficha con stock por lote, movimientos (base), precios y cotizaciones |
+| Importaciones | Listo | Carpetas (`/importaciones`): pedido, llegado y faltante por artículo, total, despachos y partidas. En camino (`/importaciones?vista=camino`): todo lo que viene por artículo, con el stock de hoy y el último precio |
 | Clientes | Listo | Clientes (`/clientes`): lista de precios, precios especiales, pedidos, cotizaciones y direcciones de entrega |
 | Stock por partida | Listo | Stock |
 | Listas de precios | Ver y modificar | Precios |
