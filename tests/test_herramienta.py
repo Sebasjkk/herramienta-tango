@@ -316,6 +316,18 @@ class TestServidor(unittest.TestCase):
         self.assertEqual(estado, 400)
         self.assertFalse(json.loads(cuerpo)["ok"])
 
+    def test_pagina_valorizacion(self):
+        estado, cuerpo = self._get("/valorizacion")
+        self.assertEqual(estado, 200)
+        self.assertIn(b"Valorizaci", cuerpo)
+        _, js = self._get("/comun.js")
+        self.assertIn(b'href: "/valorizacion"', js)
+        estado, cuerpo = self._get("/api/valorizacion")          # sin base (no es Windows): explica, no rompe
+        self.assertEqual(estado, 400)
+        self.assertFalse(json.loads(cuerpo)["ok"])
+        estado, _ = self._get("/valorizacion.xlsx")
+        self.assertEqual(estado, 400)
+
     def test_pagina_clientes(self):
         estado, cuerpo = self._get("/clientes")
         self.assertEqual(estado, 200)

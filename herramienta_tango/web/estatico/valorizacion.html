@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0B6E69">
+<title>Valorización | Herramienta Tango</title>
+<link rel="icon" href="/icono-192.png">
+<link rel="apple-touch-icon" href="/icono-192.png">
+<link rel="manifest" href="/manifest.json">
+<link rel="stylesheet" href="/comun.css">
+<script>try{var t=localStorage.getItem("ht_tema");if(t==="claro"||t==="oscuro")document.documentElement.dataset.tema=t}catch(e){}</script>
+<style>
+  .total { padding: 18px 20px 16px; margin-bottom: 12px; display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; align-items: end; }
+  .total .rotulo { font-size: .85rem; font-weight: 600; color: var(--plomo); }
+  .total .valor { font-size: 2.6rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; font-variant-numeric: tabular-nums; color: var(--patina); }
+  .total .valor small { font-size: 1rem; font-weight: 600; color: var(--plomo); margin-right: 6px; }
+  .total .detalle { grid-column: 1; font-size: .86rem; color: var(--plomo); }
+  .total .acciones { grid-column: 2; grid-row: 1 / span 3; display: flex; flex-direction: column; gap: 8px; align-self: center; }
+
+  .cifras { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 14px; }
+  .cifra { display: block; text-align: left; font: inherit; color: inherit; background: var(--papel); border: 1px solid var(--linea);
+    border-radius: var(--radio); padding: 12px 14px 10px; cursor: pointer; }
+  .cifra:hover { border-color: var(--patina); }
+  .cifra .rotulo { display: block; font-size: .8rem; font-weight: 600; color: var(--plomo); }
+  .cifra .num { display: block; font-size: 1.5rem; font-weight: 700; line-height: 1.2; margin: 3px 0 1px; font-variant-numeric: tabular-nums; }
+  .cifra .det { display: block; font-size: .78rem; color: var(--plomo); }
+  .cifra.atencion { border-color: var(--ambar-borde); box-shadow: inset 3px 0 0 var(--ambar-fuerte); }
+  .cifra.atencion .num { color: var(--ambar); }
+  .cifra.mal { border-color: var(--oxido-borde); box-shadow: inset 3px 0 0 var(--oxido); }
+  .cifra.mal .num { color: var(--oxido); }
+  @media (min-width: 700px) { .cifras { grid-template-columns: repeat(4, 1fr); } }
+
+  .paneles { display: grid; gap: 12px; margin-bottom: 16px; }
+  @media (min-width: 900px) { .paneles { grid-template-columns: 1fr 1fr; } }
+  .panel { padding: 14px 16px; }
+  .panel h2 { font-size: .95rem; margin: 0 0 10px; }
+  .barras { display: grid; gap: 7px; }
+  .barra-fila { display: grid; grid-template-columns: minmax(70px, 38%) 1fr auto; gap: 10px; align-items: center; font-size: .86rem; }
+  .barra-fila .nom { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .barra-fila .nom small { color: var(--plomo); }
+  .barra-fila .pista { height: 10px; background: var(--linea-suave); border-radius: 5px; overflow: hidden; }
+  .barra-fila .pista i { display: block; height: 100%; background: var(--patina); border-radius: 5px; }
+  .barra-fila.sin .pista i { background: var(--plomo); }
+  .barra-fila .monto { font-variant-numeric: tabular-nums; font-weight: 600; text-align: right; min-width: 92px; }
+  .barra-fila .monto small { display: block; font-weight: 400; font-size: .74rem; color: var(--plomo); }
+
+  .barra .filtros { margin-top: 10px; }
+  .explica { margin: 8px 2px 0; font-size: .86rem; color: var(--plomo); max-width: 80ch; }
+  .resumen-fila { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0 10px; }
+  .resumen-fila .resumen { margin: 0 2px; }
+  .det-tabla { background: var(--papel); border: 1px solid var(--linea); border-radius: var(--radio); overflow: hidden; }
+  .det-tabla a { color: inherit; font-weight: 600; }
+  .det-tabla .nota { font-size: .8rem; color: var(--plomo); }
+  .det-tabla .origen { font-size: .78rem; color: var(--plomo); }
+  .det-tabla tr.verificar td:first-child { box-shadow: inset 3px 0 0 var(--ambar-fuerte); }
+  .marca { display: inline-block; font-size: .72rem; font-weight: 700; color: var(--ambar); border: 1px solid var(--ambar-borde);
+    background: var(--ambar-suave); border-radius: 999px; padding: 0 7px; margin-left: 6px; vertical-align: 1px; }
+  .mas { display: flex; justify-content: center; margin: 12px 0; }
+  .criterio { margin-top: 18px; padding: 4px 16px; }
+  .criterio summary { cursor: pointer; font-weight: 600; padding: 10px 0; }
+  .criterio li { margin: 4px 0; font-size: .9rem; }
+  .m-resumen { display: none; }
+  @media (max-width: 599px) {
+    .total { grid-template-columns: 1fr; }
+    .total .acciones { grid-column: 1; grid-row: auto; flex-direction: row; margin-top: 8px; }
+    .total .valor { font-size: 2.1rem; }
+    .tabla td.m-oculto { display: none; }
+    .det-tabla tr.verificar td:first-child { box-shadow: none; }
+    .det-tabla tr.verificar { box-shadow: inset 3px 0 0 var(--ambar-fuerte); }
+    .m-resumen { display: block; font-size: .84rem; color: var(--grafito); margin-top: 3px; font-weight: 400; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="app-nav" id="app-nav"></nav>
+  <div class="app-principal">
+    <div class="pagina">
+      <header class="cabecera">
+        <div class="cabecera-sup">
+          <h1>Valorización del stock</h1>
+          <div class="datos"><span id="estado">Calculando…</span><button type="button" class="boton-texto" id="actualizar">Actualizar</button></div>
+        </div>
+      </header>
+      <div id="arriba"></div>
+      <div class="barra" id="barra" hidden>
+        <div class="buscador">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>
+          <label for="q" style="position:absolute;left:-9999px">Buscar</label>
+          <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="Artículo, partida, despacho o carpeta" enterkeyhint="search">
+          <button type="button" class="limpiar" id="limpiar" aria-label="Borrar búsqueda" hidden>×</button>
+        </div>
+        <div class="filtros" id="filtros" role="group" aria-label="Filtros"></div>
+        <p class="explica" id="explica"></p>
+      </div>
+      <div id="lista" aria-live="polite"></div>
+      <details class="tarjeta criterio" id="criterio" hidden>
+        <summary>Cómo se calcula</summary>
+        <ul>
+          <li>Se toma el stock de cada partida en el depósito 1 (CENTRAL). No se cuenta el artículo INSUMOS.</li>
+          <li>El costo de una partida que entró por despacho es el de su carpeta de importación: el precio de la factura del proveedor más los gastos de despacho que estén cargados en Tango, repartidos como los reparte Tango. Es el mismo número que da la Simulación de Generación de costos.</li>
+          <li>Si la partida no tiene carpeta pero en Tango ya tiene un costo grabado (por ejemplo, un ajuste valorizado), se usa ese.</li>
+          <li>Si no, se usa el precio de la última importación del mismo artículo, sin gastos.</li>
+          <li>Si tampoco hay eso, queda «sin costo» y no suma. Los saldos negativos y los artículos que no llevan partidas también van aparte.</li>
+          <li>Todo en dólares: lo cargado en pesos se pasa con la cotización de ese gasto.</li>
+          <li><strong>No incluye</strong> derechos de importación ni gastos que no estén cargados en Tango, así que el costo real puesto en el depósito es algo mayor.</li>
+          <li>«Para verificar»: renglones con costo unitario de USD <span id="v-costo">2.000</span> o más, o que valen USD <span id="v-valor">10.000</span> o más. Conviene ver que existan antes de dar el número por bueno, sobre todo las partidas de 2016 a 2018.</li>
+        </ul>
+      </details>
+      <p class="pie">Esta pantalla solo consulta la base de Tango y calcula; no graba nada en Tango.</p>
+    </div>
+  </div>
+</div>
+
+<script src="/comun.js"></script>
+<script>
+(() => {
+  "use strict";
+  const { $, el, norm, tokens, fmt, fmtPrecio, num, fecha, pedir, cajaError } = HT;
+  HT.iniciar("valorizacion");
+  const usd = n => "USD " + new Intl.NumberFormat("es-AR", { maximumFractionDigits: 0 }).format(Math.round(n || 0));
+  const PAGINA = 200;
+  const params = new URLSearchParams(location.search);
+  let datos = null, filtro = params.get("f") || "todo", mostrar = PAGINA;
+
+  const ORIGEN_CORTO = { carpeta: "Carpeta de la partida", tango: "Costo grabado en Tango", ultima: "Última importación", sin: "Sin costo" };
+  const FILTROS = [
+    { id: "todo", titulo: "Todo", lista: () => datos.filas, ayuda: "Todos los renglones con saldo en Central, del más caro al más barato." },
+    { id: "verificar", titulo: "Para verificar", lista: () => datos.filas.filter(f => f.verificar), ayuda: "Lo que más pesa en el total: conviene ver que exista físicamente." },
+    { id: "ultima", titulo: "Con costo estimado", lista: () => datos.filas.filter(f => f.origen === "ultima"), ayuda: "No tienen costo propio: se valorizan con el precio de la última importación del artículo." },
+    { id: "sin", titulo: "Sin costo", lista: () => datos.filas.filter(f => f.origen === "sin"), ayuda: "No hay ningún precio en Tango para estos renglones: no suman al total. Hace falta que alguien diga cuánto valen (o si valen cero)." },
+    { id: "negativos", titulo: "Saldos negativos", lista: () => datos.negativos, ayuda: "Partidas con saldo negativo en Central: es un error de carga. No se restan del total." },
+    { id: "sin-partidas", titulo: "Sin partidas", lista: () => datos.sin_partidas, ayuda: "Artículos del catálogo viejo que no llevan partidas y tienen saldo en Central. No suman; el valor es estimado con la última importación." },
+  ];
+
+  async function cargar(forzar) {
+    $("estado").textContent = "Calculando…";
+    let previo = null;
+    const usar = d => { datos = d.datos; $("estado").textContent = HT.textoDatos(d); render(); };
+    try {
+      usar(await pedir("/api/valorizacion", forzar, { previo: g => { previo = g; usar(g); } }));
+    } catch (e) {
+      if (previo) { $("estado").textContent = HT.textoDatos(previo).replace("actualizando…", "sin conexión con Tango"); return; }
+      $("estado").textContent = "Sin datos";
+      $("arriba").replaceChildren(cajaError(e, () => cargar(true)));
+    }
+  }
+
+  function elegir(id) {
+    filtro = id; mostrar = PAGINA;
+    history.replaceState(null, "", id === "todo" ? "/valorizacion" : "/valorizacion?f=" + id);
+    render();
+    $("barra").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function barras(items, max) {
+    const cont = el("div", "barras");
+    for (const x of items) {
+      const f = el("div", "barra-fila" + (x.sin ? " sin" : ""));
+      const nom = el("span", "nom", x.nombre); nom.title = x.nombre;
+      const pista = el("span", "pista"); const i = el("i"); i.style.width = (max > 0 ? Math.max(0, 100 * x.valor / max) : 0) + "%"; pista.append(i);
+      const m = el("span", "monto", x.sin ? "—" : usd(x.valor)); m.append(el("small", "", x.detalle));
+      f.append(nom, pista, m); cont.append(f);
+    }
+    return cont;
+  }
+
+  function render() {
+    if (!datos) { if (!$("arriba").querySelector(".error")) $("arriba").replaceChildren(HT.esqueleto(4)); return; }
+    const r = datos.resumen;
+    const arriba = document.createDocumentFragment();
+
+    const t = el("section", "tarjeta total");
+    const v = el("div", "valor"); v.append(el("small", "", "USD"), new Intl.NumberFormat("es-AR", { maximumFractionDigits: 0 }).format(Math.round(r.total)));
+    const acc = el("div", "acciones");
+    const xls = el("a", "boton", "Descargar Excel"); xls.href = "/valorizacion.xlsx"; xls.setAttribute("download", "");
+    acc.append(xls);
+    t.append(el("div", "rotulo", "Stock en Central, al costo"), v,
+      el("div", "detalle", `${fmt.format(r.renglones)} renglones · ${fmt.format(r.articulos)} artículos · sin derechos de importación`), acc);
+    arriba.append(t);
+
+    const cifras = el("section", "cifras");
+    const cifra = (id, rotulo, numero, det, tono) => {
+      const b = el("button", "cifra" + (tono ? " " + tono : "")); b.type = "button";
+      b.append(el("span", "rotulo", rotulo), el("span", "num", numero), el("span", "det", det));
+      b.addEventListener("click", () => elegir(id)); cifras.append(b);
+    };
+    const sin = r.por_origen.sin;
+    cifra("verificar", "Para verificar", usd(r.verificar.valor), `${fmt.format(r.verificar.renglones)} renglones caros`, r.verificar.renglones ? "atencion" : "");
+    cifra("sin", "Sin costo", fmt.format(sin.renglones), "renglones que no suman", sin.renglones ? "atencion" : "");
+    cifra("negativos", "Saldos negativos", fmt.format(r.negativos.renglones), "aparte, no restan", r.negativos.renglones ? "mal" : "");
+    cifra("sin-partidas", "Sin partidas", fmt.format(r.sin_partidas.articulos), `artículos aparte · ${usd(r.sin_partidas.valor_estimado)} est.`);
+    arriba.append(cifras);
+
+    const paneles = el("section", "paneles");
+    const p1 = el("div", "tarjeta panel"); p1.append(el("h2", "", "De dónde sale el costo"));
+    const origenes = Object.entries(r.por_origen).filter(([, o]) => o.renglones).map(([k, o]) =>
+      ({ nombre: ORIGEN_CORTO[k], valor: o.valor, sin: k === "sin", detalle: `${fmt.format(o.renglones)} renglones` }));
+    p1.append(barras(origenes, Math.max(...origenes.map(o => o.valor), 0)));
+    const p2 = el("div", "tarjeta panel"); p2.append(el("h2", "", "Por año en que entró la partida"));
+    const anios = r.por_anio.map(a => ({ nombre: a.anio, valor: a.valor, detalle: `${Math.round(100 * a.valor / (r.total || 1))}% · ${fmt.format(a.renglones)} r.` }));
+    p2.append(barras(anios, Math.max(...anios.map(a => a.valor), 0)));
+    paneles.append(p1, p2);
+    arriba.append(paneles);
+    $("arriba").replaceChildren(arriba);
+
+    const c = datos.criterio || {};
+    if (c.verificar_costo) $("v-costo").textContent = fmt.format(c.verificar_costo);
+    if (c.verificar_valor) $("v-valor").textContent = fmt.format(c.verificar_valor);
+    $("barra").hidden = false; $("criterio").hidden = false;
+    renderLista();
+  }
+
+  function renderLista() {
+    if (!FILTROS.some(x => x.id === filtro)) filtro = "todo";
+    const ts = tokens($("q").value);
+    const coincide = f => !ts.length || ts.every(t => norm([f.codigo, f.descripcion, f.partida, f.despacho, f.carpeta, f.referencia, f.anio].join(" ")).includes(t));
+    const cont = $("filtros"); cont.replaceChildren();
+    for (const x of FILTROS) {
+      const b = el("button", "filtro", x.titulo); b.type = "button";
+      b.setAttribute("aria-pressed", String(x.id === filtro)); b.append(el("b", "", fmt.format(x.lista().filter(coincide).length)));
+      b.addEventListener("click", () => { filtro = x.id; mostrar = PAGINA; history.replaceState(null, "", x.id === "todo" ? "/valorizacion" : "/valorizacion?f=" + x.id); renderLista(); });
+      cont.append(b);
+    }
+    const def = FILTROS.find(x => x.id === filtro);
+    $("explica").textContent = def.ayuda;
+    const lista = def.lista().filter(coincide);
+    const col = $("lista");
+    if (!lista.length) { col.replaceChildren(el("p", "aviso", ts.length ? "Nada coincide con la búsqueda." : "No hay renglones en este grupo.")); return; }
+
+    const sinPart = filtro === "sin-partidas";
+    const frag = document.createDocumentFragment();
+    const cab = el("div", "resumen-fila");
+    const suma = lista.reduce((a, f) => a + (f.valor || 0), 0);
+    cab.append(el("p", "resumen", `${fmt.format(lista.length)} ${lista.length === 1 ? "renglón" : "renglones"}` +
+      (filtro !== "negativos" && filtro !== "sin" ? ` · ${usd(suma)}${sinPart ? " estimado" : ""}` : "")));
+    const exp = HT.botonExportar(() => sinPart
+      ? HT.exportar("Valorización - sin partidas", [["Código"], ["Artículo"], ["Cantidad", "numero"], ["Costo estimado USD", "numero"], ["Valor estimado USD", "numero"]],
+          lista.map(f => [f.codigo, f.descripcion, f.cantidad, f.costo, f.valor]))
+      : HT.exportar("Valorización - " + def.titulo.toLowerCase(),
+          [["Código"], ["Artículo"], ["Partida"], ["Despacho"], ["Carpeta"], ["Fecha partida"], ["Cantidad", "numero"], ["Costo USD", "numero"], ["Valor USD", "numero"], ["Origen del costo"], ["Carpeta de referencia"]],
+          lista.map(f => [f.codigo, f.descripcion, f.partida, f.despacho, f.carpeta, f.fecha || "", f.cantidad, f.costo, f.valor, ORIGEN_CORTO[f.origen], f.referencia])), "Excel");
+    exp.className = "boton-texto";
+    cab.append(exp);
+    frag.append(cab);
+
+    const tabla = el("table", "tabla det-tabla"); const th = el("tr");
+    const titulos = sinPart ? [["Artículo", ""], ["Cantidad", "der"], ["Costo est.", "der"], ["Valor est.", "der"]]
+                            : [["Artículo", ""], ["Partida", ""], ["Cantidad", "der"], ["Costo USD", "der"], ["Valor USD", "der"]];
+    for (const [x, cl] of titulos) th.append(el("th", cl, x));
+    const thead = el("thead"); thead.append(th); const tb = el("tbody");
+    for (const f of lista.slice(0, mostrar)) {
+      const tr = el("tr", (f.cantidad < 0 ? "neg " : "") + (f.verificar ? "verificar" : ""));
+      const art = el("td"); const a = el("a", "", f.descripcion || f.codigo); a.href = "/buscar?art=" + encodeURIComponent(f.codigo);
+      art.append(a);
+      if (f.verificar && filtro !== "verificar") art.append(el("span", "marca", "verificar"));
+      art.append(el("div", "nota", f.codigo));
+      const costo = f.costo == null ? "—" : fmtPrecio.format(f.costo);
+      const valor = f.valor == null ? "—" : fmtPrecio.format(f.valor);
+      const mr = el("div", "m-resumen");
+      if (sinPart) {
+        mr.textContent = `${num(f.cantidad)} · ${f.costo == null ? "sin costo" : "USD " + costo + " c/u"}`;
+        art.append(mr);
+        tr.append(art, el("td", "der m-oculto", num(f.cantidad)), el("td", "der m-oculto", costo), el("td", "der", valor));
+      } else {
+        const part = el("td");
+        part.append(el("div", "", f.partida || "—"));
+        const bits = [];
+        if (f.carpeta) bits.push("carpeta " + f.carpeta);
+        if (f.fecha) bits.push(fecha(f.fecha));
+        if (bits.length) part.append(el("div", "nota", bits.join(" · ")));
+        part.append(el("div", "origen", ORIGEN_CORTO[f.origen] + (f.origen === "ultima" && f.referencia ? " (carpeta " + f.referencia + ")" : "")));
+        mr.textContent = `${num(f.cantidad)} × ${f.costo == null ? "sin costo" : "USD " + costo}`;
+        art.append(mr);
+        tr.append(art, part, el("td", "der m-oculto", num(f.cantidad)), el("td", "der m-oculto", costo), el("td", "der", valor));
+      }
+      tb.append(tr);
+    }
+    tabla.append(thead, tb);
+    frag.append(tabla);
+    if (lista.length > mostrar) {
+      const m = el("div", "mas"); const b = el("button", "boton", `Mostrar ${fmt.format(Math.min(PAGINA, lista.length - mostrar))} más`); b.type = "button";
+      b.addEventListener("click", () => { mostrar += PAGINA; renderLista(); });
+      m.append(b); frag.append(m);
+    }
+    col.replaceChildren(frag);
+  }
+
+  HT.conectarBuscador($("q"), $("limpiar"), () => { mostrar = PAGINA; if (datos) renderLista(); });
+  $("actualizar").addEventListener("click", () => cargar(true));
+  render();
+  cargar(false);
+})();
+</script>
+</body>
+</html>

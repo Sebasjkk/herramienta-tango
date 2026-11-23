@@ -26,6 +26,8 @@ Listas de precios (leidas de las tablas de Tango, no de la consulta 12742):
     GET /api/listas/<id>             articulos de una lista, con precios especiales por cliente
     GET /api/articulos/<codigo>/precios   en que listas esta un articulo
     GET /api/articulos/<codigo>/cotizaciones   cotizaciones donde aparece (con cantidad y precio)
+    GET /api/valorizacion            stock de Central valorizado en USD, renglon por renglon (base, solo lectura)
+    GET /valorizacion.xlsx           lo mismo en Excel
     GET /api/importaciones           carpetas de importacion y, por articulo, en camino y precio de compra (base, solo lectura)
     GET /api/articulos/<codigo>/movimientos    ultimos movimientos de stock (base, solo lectura)
     POST /api/inventario/comparar    {"nombre", "archivo": base64 del .xls/.xlsx de inventario} -> diferencias con Tango + Excel
@@ -166,6 +168,13 @@ def crear_rutas(contexto) -> dict[str, Callable[[dict, bool], tuple]]:
         except base_tango.BaseNoDisponible as e:
             raise PedidoInvalido(str(e)) from None
 
+    def valorizacion(qs: dict, forzar: bool):
+        from .. import base_tango
+        try:
+            return base_tango.valorizacion_datos(forzar), time.time()
+        except base_tango.BaseNoDisponible as e:
+            raise PedidoInvalido(str(e)) from None
+
     return {
         "/api/stock/partidas": lambda qs, f: s().saldos_por_partida(f),
         "/api/stock/articulos": lambda qs, f: s().saldos_por_articulo(f),
@@ -186,6 +195,7 @@ def crear_rutas(contexto) -> dict[str, Callable[[dict, bool], tuple]]:
         "/api/listas/restaurar/estado": lambda qs, f: (s().editor.estado_restauracion(), time.time()),
         "/api/opciones": lambda qs, f: (opciones.leer(), time.time()),
         "/api/importaciones": importaciones,
+        "/api/valorizacion": valorizacion,
     }
 
 
@@ -433,6 +443,16 @@ def crear_manejador(contexto):
                     nombre, contenido = contexto.servicio().mezclas.planilla(ids)
                     self._responder(200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", contenido,
                                     {"Content-Disposition": f'attachment; filename="{nombre}"'})
+                elif url.path == "/valorizacion.xlsx":
+                    from .. import base_tango, valorizacion
+                    try:
+                        datos = base_tango.valorizacion_datos(False)
+                    except base_tango.BaseNoDisponible as e:
+                        raise PedidoInvalido(str(e)) from None
+                    hoy = time.strftime("%d-%m-%Y")
+                    contenido = valorizacion.excel(datos, datos.get("calculado") or hoy)
+                    self._responder(200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", contenido,
+                                    {"Content-Disposition": f'attachment; filename="Valorizacion stock {hoy}.xlsx"'})
                 elif url.path == "/icono.ico":
                     icono = ruta_recurso("recursos/icono.ico")
                     if icono.is_file():

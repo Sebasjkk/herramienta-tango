@@ -81,14 +81,14 @@ $out | ConvertTo-Json -Depth 4 -Compress
 """
 
 
-def _correr(script: str) -> dict:
+def _correr(script: str, tiempo: int = 60) -> dict:
     if sys.platform != "win32":
         raise BaseNoDisponible("La base de Tango solo se lee desde el servidor (Windows).")
     completo = (_FUNCION.replace("__SERVIDOR__", SERVIDOR_SQL).replace("__INSTANCIA__", INSTANCIA)
                 .replace("__BASE__", BASE) + script)
     try:
         r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", completo],
-                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=tiempo,
                            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except (OSError, subprocess.TimeoutExpired) as e:
         raise BaseNoDisponible(f"No se pudo consultar la base de Tango: {e}") from None
@@ -360,6 +360,45 @@ def importaciones_datos(forzar: bool = False) -> dict:
     return _remoto("importaciones", {"refrescar": "1"} if forzar else {})
 
 
+# ------------------------------------------------------------------ valorizacion
+# Lo necesario para valorizar el stock de Central en dolares (ver valorizacion.py):
+# saldos por partida (STA10) de Central y de las partidas que vinieron por despacho,
+# cabeceras de partidas (STA08), cantidades facturadas (CPA66), gastos de carpeta (CPA71)
+# y su reparto por partida (CPA74). Los articulos sin partidas salen de STA19.
+_VALORIZACION = r"""
+$out = [ordered]@{}
+$out.partidas = Q "SELECT ID_STA08, N_PARTIDA, N_DESPACHO, ID_CARPETA, FECHA FROM STA08"
+$out.saldos = Q "SELECT s.COD_ARTICU, s.N_PARTIDA, s.COD_DEPOSI, s.CANTIDAD, s.CANT_DESPA, s.COSTO_EX, s.ID_STA08 FROM STA10 s LEFT JOIN STA08 p ON p.ID_STA08 = s.ID_STA08 WHERE (LTRIM(RTRIM(s.COD_DEPOSI)) = '1' AND s.CANTIDAD <> 0) OR ISNULL(p.ID_CARPETA, '') <> ''"
+$out.renglones = Q "SELECT ID_CARPETA, COD_ARTICU, CANT_FACTU, CAN_EQUIVA FROM CPA66"
+$out.gastos = Q "SELECT * FROM CPA71"
+try { $out.distribucion = Q "SELECT * FROM CPA74" } catch { $out.distribucion = @() }
+$out.articulos = Q "SELECT COD_ARTICU, DESCRIPCIO FROM STA11"
+try { $out.sin_partidas = Q "SELECT * FROM STA19 WHERE LTRIM(RTRIM(COD_DEPOSI)) = '1'" } catch { $out.sin_partidas = @() }
+$out | ConvertTo-Json -Depth 4 -Compress
+"""
+VIGENCIA_VALORIZACION = 600
+
+
+def _valorizacion_local() -> dict:
+    from . import valorizacion
+    clave = ("valorizacion",)
+    if clave in _cache and time.time() - _cache[clave][0] < VIGENCIA_VALORIZACION:
+        return _cache[clave][1]
+    res = valorizacion.calcular(_correr(_VALORIZACION, tiempo=180))
+    res["calculado"] = time.strftime("%Y-%m-%d %H:%M")
+    _cache[clave] = (time.time(), res)
+    return res
+
+
+def valorizacion_datos(forzar: bool = False) -> dict:
+    """Stock de Central valorizado en dolares, renglon por renglon (base, solo lectura)."""
+    if forzar:
+        _cache.pop(("valorizacion",), None)
+    if es_servidor():
+        return _valorizacion_local()
+    return _remoto("valorizacion", {"refrescar": "1"} if forzar else {}, tiempo=200)
+
+
 # ------------------------------------------------------------------ desde otras PCs
 # La base esta solo en el servidor de Tango. Una Herramienta que corre en otra PC
 # no la puede leer: le pide el dato a la Herramienta del servidor (/api/base/...),
@@ -389,13 +428,13 @@ def es_servidor() -> bool:
     return host == nombre or host.split(".")[0] == nombre.split(".")[0]
 
 
-def _remoto(ruta: str, parametros: dict):
+def _remoto(ruta: str, parametros: dict, tiempo: int = 70):
     destino = _servidor_tango()
     if not destino:
         raise BaseNoDisponible("No sé cuál es el servidor de Tango para pedirle estos datos.")
     url = f"http://{destino[0]}:{destino[1]}/api/base/{ruta}?{urllib.parse.urlencode(parametros)}"
     try:
-        with urllib.request.urlopen(url, timeout=70) as r:
+        with urllib.request.urlopen(url, timeout=tiempo) as r:
             datos = json.loads(r.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         try:
@@ -456,6 +495,10 @@ def responder_remoto(ruta: str, qs: dict):
         if p("refrescar") == "1":
             _cache.pop(("importaciones",), None)
         return _importaciones_local()
+    if ruta == "valorizacion":
+        if p("refrescar") == "1":
+            _cache.pop(("valorizacion",), None)
+        return _valorizacion_local()
     if ruta == "remitos_pedido":
         return _remitos_pedido_local(int(p("id")))
     raise ValueError("Consulta desconocida.")

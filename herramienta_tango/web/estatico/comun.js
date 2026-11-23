@@ -10,6 +10,7 @@ window.HT = (() => {
 
   const ICONOS = {
     inicio: '<path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z"/>',
+    plata: '<circle cx="12" cy="12" r="8.5"/><path d="M14.8 9.2c-.5-.9-1.5-1.4-2.8-1.4-1.6 0-2.8.8-2.8 2.1 0 2.9 5.8 1.5 5.8 4.3 0 1.3-1.2 2.1-2.9 2.1-1.4 0-2.5-.6-3-1.6M12 6v1.8M12 16.3V18"/>',
     barco: '<path d="M3.5 15.5h17l-2.2 4H5.7z"/><path d="M6 15.5V10h12v5.5M9 10V6.5h6V10M12 4v2.5"/>',
     camino: '<path d="M3.5 7.5h10v9h-10zM13.5 10.5h3.8l3.2 3.2v2.8h-7"/><circle cx="7" cy="17.5" r="1.6"/><circle cx="17" cy="17.5" r="1.6"/>',
     mas: '<circle cx="5.5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="18.5" cy="12" r="1.4"/>',
@@ -35,6 +36,7 @@ window.HT = (() => {
     { id: "precios", grupo: "Ventas", titulo: "Listas de precios", corto: "Precios", href: "/precios", icono: "precios" },
     { id: "stock", grupo: "Stock", titulo: "Stock por partida", corto: "Stock", href: "/stock", icono: "stock", movil: true },
     { id: "mezclas", grupo: "Stock", titulo: "Mezclas", corto: "Mezclas", href: "/mezclas", icono: "mezclas", movil: true },
+    { id: "valorizacion", grupo: "Stock", titulo: "Valorización", corto: "Valor", href: "/valorizacion", icono: "plata" },
     { id: "etiquetas", grupo: "Stock", titulo: "Etiquetas de envío", corto: "Etiquetas", href: "/etiquetas", icono: "etiquetas" },
     { id: "carpetas", grupo: "Importaciones", titulo: "Carpetas", corto: "Carpetas", href: "/importaciones", icono: "barco" },
     { id: "en-camino", grupo: "Importaciones", titulo: "En camino", corto: "En camino", href: "/importaciones?vista=camino", icono: "camino" },

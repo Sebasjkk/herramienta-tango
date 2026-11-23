@@ -18,10 +18,10 @@
   --patina-suave: #DCEFED;
   --sobre-color: #FFFFFF; /* texto sobre patina u oxido */
   --seleccion: #F6FBFA;   /* renglon elegido */
-  --info-borde: var(--info-borde);
+  --info-borde: #BFE0DC;
   --oxido: #B3261E;       /* negativos y errores */
   --oxido-suave: #FBE9E7;
-  --oxido-borde: var(--oxido-borde);
+  --oxido-borde: #F0C4BF;
   --ambar: #8A5A00;       /* avisos: vencida, atrasado, falta subir */
   --ambar-suave: #FBF0D9;
   --ambar-borde: #E9C98A;
