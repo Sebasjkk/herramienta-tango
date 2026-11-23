@@ -49,7 +49,7 @@ for ($i = 0; $i -lt 60; $i++) {
 $r = Invoke-RestMethod 'http://127.0.0.1:8099/api/sistema/accesos-directos' -Method Post -Body '{}' `
      -ContentType 'application/json' -Headers @{ 'X-Herramienta-Tango' = '1' }
 Write-Output "Accesos directos: $($r.mensaje)"
-$lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Herramienta Tango.lnk'
+$lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Herramienta Sianco.lnk'
 $hayAcceso = Test-Path $lnk
 
 $sistema = Invoke-RestMethod 'http://127.0.0.1:8099/api/sistema'
