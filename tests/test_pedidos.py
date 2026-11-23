@@ -43,6 +43,22 @@ class TestPedidos(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
+    def test_entrega_parcial(self):
+        t = TangoFalso()
+        t.datos[19845][8] = {**PEDIDO, "ID_GVA21": 8, "ESTADO": 2, "N_REMITO": " 0000800000110", "RENGLON_DTO": [
+            {"COD_ARTICULO": "ZINC", "DESCRIPCION_ARTICULO": "ZINC", "CANTIDAD_PEDIDA": 100, "CANTIDAD_A_DESCARGAR": 40},
+            {"COD_ARTICULO": "METCO", "DESCRIPCION_ARTICULO": "METCO", "CANTIDAD_PEDIDA": 20, "CANTIDAD_A_DESCARGAR": 20}]}
+        t.datos[19845][9] = {**PEDIDO, "ID_GVA21": 9, "ESTADO": 2, "RENGLON_DTO": [
+            {"DESCRIPCION_ARTICULO": "X", "CANTIDAD_PEDIDA": 5, "CANTIDAD_A_DESCARGAR": 0}]}
+        e = EditorPedidos(t, Servicio(), self.registro)
+        d = e.detalle(8)
+        self.assertEqual([(r["codigo"], r["entregado"], r["falta"]) for r in d["renglones"]], [("ZINC", 60, 40), ("METCO", 0, 20)])
+        self.assertEqual((d["entrega"]["estado_entrega"], d["entrega"]["entregado"], d["entrega"]["falta"], d["entrega"]["porcentaje"]),
+                         ("parcial", 60, 60, 50))
+        self.assertEqual(d["ultimo_remito"], "0000800000110")
+        av = e.avance([8, 9, 999])          # el 999 no existe: queda afuera sin romper
+        self.assertEqual({i: a["estado_entrega"] for i, a in av.items()}, {8: "parcial", 9: "entregado"})
+
     def test_detalle(self):
         d = EditorPedidos(TangoFalso(), Servicio(), self.registro).detalle(7)
         self.assertEqual((d["numero"], d["estado_texto"], d["lista_precios"], d["cliente"]["codigo"]),

@@ -263,6 +263,68 @@ def _movimientos_local(codigo: str) -> list[dict]:
     return res
 
 
+# ------------------------------------------------------------------ remitos de un pedido
+# El pedido (GVA21) guarda solo el ultimo remito. Para ver todas las entregas hay que buscar
+# los renglones de stock (STA20) o las cabeceras (STA14) que apuntan al pedido. El nombre de esa
+# columna cambia entre versiones de Tango: se mira cuales existen y se usa la primera que este.
+# El numero del pedido se toma de GVA21 dentro del mismo SQL (por su ID, que es un entero).
+_REMITOS_PEDIDO = r"""
+$out = [ordered]@{}
+$cols = Q "SELECT TABLE_NAME AS t, COLUMN_NAME AS c FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME IN ('STA14','STA20') AND (COLUMN_NAME LIKE '%PEDI%' OR COLUMN_NAME LIKE '%GVA21%')"
+$out.columnas = @($cols | ForEach-Object { "$($_.t).$($_.c)" })
+$tiene = { param($t, $c) [bool]($cols | Where-Object { $_.t -eq $t -and $_.c -eq $c }) }
+$nro = "(SELECT NRO_PEDIDO FROM GVA21 WHERE ID_GVA21 = __ID__)"
+$sel = "c.T_COMP AS T_COMP, c.N_COMP AS N_COMP, c.FECHA_MOV AS FECHA, r.COD_ARTICU AS COD_ARTICU, r.CANTIDAD AS CANTIDAD, r.TIPO_MOV AS TIPO_MOV"
+$union = if (& $tiene 'STA20' 'ID_STA14') { "c.ID_STA14 = r.ID_STA14" } else { "c.TCOMP_IN_S = r.TCOMP_IN_S AND c.NCOMP_IN_S = r.NCOMP_IN_S" }
+$sql = $null
+if (& $tiene 'STA20' 'ID_GVA21') { $sql = "SELECT $sel FROM STA20 r JOIN STA14 c ON $union WHERE r.ID_GVA21 = __ID__" }
+elseif (& $tiene 'STA14' 'ID_GVA21') { $sql = "SELECT $sel FROM STA20 r JOIN STA14 c ON $union WHERE c.ID_GVA21 = __ID__" }
+else {
+  foreach ($c in @('NRO_PEDIDO', 'N_PEDIDO', 'NRO_PEDI')) {
+    if (& $tiene 'STA20' $c) { $sql = "SELECT $sel FROM STA20 r JOIN STA14 c ON $union WHERE r.$c = $nro"; break }
+    if (& $tiene 'STA14' $c) { $sql = "SELECT $sel FROM STA20 r JOIN STA14 c ON $union WHERE c.$c = $nro"; break }
+  }
+}
+if ($sql) { $out.filas = Q ($sql + " ORDER BY c.FECHA_MOV, c.N_COMP"); $out.relacion = $true } else { $out.filas = @(); $out.relacion = $false }
+$out | ConvertTo-Json -Depth 4 -Compress
+"""
+
+
+def _remitos_pedido_local(id_pedido: int) -> dict:
+    """Comprobantes de stock (remitos, devoluciones) hechos contra un pedido, agrupados por comprobante."""
+    id_pedido = int(id_pedido)
+    clave = ("remitos_pedido", id_pedido)
+    if clave in _cache and time.time() - _cache[clave][0] < VIGENCIA:
+        return _cache[clave][1]
+    datos = _correr(_REMITOS_PEDIDO.replace("__ID__", str(id_pedido)))
+    comprobantes: dict[tuple, dict] = {}
+    for f in _filas(datos):
+        t = str(f.get("T_COMP") or "").strip()
+        n = str(f.get("N_COMP") or "")
+        c = comprobantes.setdefault((t, n), {"t_comp": t, "tipo": _TIPOS.get(t, t), "numero": _numero_comprobante(n),
+                                             "fecha": f.get("FECHA"), "renglones": []})
+        try:
+            cant = abs(float(f.get("CANTIDAD") or 0))
+        except (TypeError, ValueError):
+            cant = 0.0
+        # Un remito saca del stock (S); una devolucion vuelve a entrar (E) y resta de lo entregado
+        signo = 1 if str(f.get("TIPO_MOV") or "S").strip().upper() == "S" else -1
+        c["renglones"].append({"codigo": str(f.get("COD_ARTICU") or "").strip(), "cantidad": round(cant * signo, 4)})
+    columnas = datos.get("columnas") or []
+    res = {"relacion": bool(datos.get("relacion")), "comprobantes": list(comprobantes.values()),
+           "columnas": columnas if isinstance(columnas, list) else [columnas]}
+    _cache[clave] = (time.time(), res)
+    return res
+
+
+def remitos_pedido(id_pedido: int) -> dict:
+    """Remitos y devoluciones hechos contra un pedido (base, solo lectura)."""
+    id_pedido = int(id_pedido)
+    if es_servidor():
+        return _remitos_pedido_local(id_pedido)
+    return _remoto("remitos_pedido", {"id": id_pedido})
+
+
 # ------------------------------------------------------------------ desde otras PCs
 # La base esta solo en el servidor de Tango. Una Herramienta que corre en otra PC
 # no la puede leer: le pide el dato a la Herramienta del servidor (/api/base/...),
@@ -355,4 +417,6 @@ def responder_remoto(ruta: str, qs: dict):
         return _renglones_local(p("t"), p("n"))
     if ruta == "movimientos":
         return _movimientos_local(p("art"))
+    if ruta == "remitos_pedido":
+        return _remitos_pedido_local(int(p("id")))
     raise ValueError("Consulta desconocida.")

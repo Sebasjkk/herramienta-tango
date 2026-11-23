@@ -207,19 +207,30 @@
   }
 
   // ---------------------------------------------------------------- pedidos
+  const avances = new Map();
+  let ultimosPedidos = null;
   async function pedidos(forzar) {
+    // El avance de entrega llega aparte (el servidor pide el detalle de cada pedido pendiente)
+    const conAvance = d => { avances.clear(); for (const a of d.datos) avances.set(a.id, a); if (ultimosPedidos) pintar(ultimosPedidos); };
+    pedir("/api/pedidos/avance", forzar, { previo: conAvance }).then(conAvance, () => {});
     const pintar = d => {
+      ultimosPedidos = d;
       const hoy = hoyIso();
       const pend = d.datos.filter(p => p.estado === 1 || p.estado === 2)
         .sort((a, b) => (a.fecha_entrega || "9").localeCompare(b.fecha_entrega || "9"));
       const atrasados = pend.filter(p => p.fecha_entrega && p.fecha_entrega < hoy).length;
-      cifra("ped", pend.length, atrasados ? `${fmt.format(atrasados)} con la entrega pasada` : pend.length ? "ninguno atrasado" : "",
-            atrasados ? "atencion" : "");
+      const parciales = pend.filter(p => (avances.get(p.id) || {}).estado_entrega === "parcial").length;
+      cifra("ped", pend.length, [atrasados && `${fmt.format(atrasados)} con la entrega pasada`, parciales && `${fmt.format(parciales)} con entrega parcial`]
+              .filter(Boolean).join(" · ") || (pend.length ? "ninguno atrasado" : ""), atrasados ? "atencion" : "");
       panel("ped", lista(pend.map(p => {
         const atrasado = p.fecha_entrega && p.fecha_entrega < hoy;
+        const av = avances.get(p.id);
+        const parcial = av && av.estado_entrega === "parcial";
         return { href: "/pedidos?ver=" + p.id, tit: `Pedido ${corto(p.numero)} · ${p.cliente || p.codigo_cliente}`,
-                 sub: [p.fecha_entrega && "Entrega " + fecha(p.fecha_entrega), p.orden_compra_cliente && "OC " + p.orden_compra_cliente].filter(Boolean).join(" · "),
-                 estado: atrasado ? ["atrasado", "Atrasado"] : null, der: atrasado ? "" : fecha(p.fecha) };
+                 sub: [p.fecha_entrega && "Entrega " + fecha(p.fecha_entrega), parcial && `faltan ${fmt.format(av.falta)} de ${fmt.format(av.pedido)}`,
+                       p.orden_compra_cliente && "OC " + p.orden_compra_cliente].filter(Boolean).join(" · "),
+                 estado: atrasado ? ["atrasado", parcial ? `Atrasado · ${av.porcentaje}%` : "Atrasado"] : parcial ? ["parcial", `Parcial · ${av.porcentaje}%`] : null,
+                 der: atrasado || parcial ? "" : fecha(p.fecha) };
       }), "No hay pedidos pendientes."));
     };
     try {

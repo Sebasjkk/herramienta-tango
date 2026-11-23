@@ -107,7 +107,8 @@
   const enCurso = c => c.estado === 2 && !(c.vigencia && c.vigencia < hoy);
 
   let clientes = [];
-  const pedidosDe = new Map(), cotizDe = new Map(), preciosDe = new Map();   // codigo de cliente -> [...]
+  const pedidosDe = new Map(), cotizDe = new Map(), preciosDe = new Map();
+  const avances = new Map();          // id de pedido -> avance de entrega (solo pendientes)   // codigo de cliente -> [...]
   let filtro = "todos";
   const params = new URLSearchParams(location.search);
   let elegido = params.get("ver") || null;          // codigo del cliente
@@ -136,6 +137,8 @@
     const extra = (ruta, mapa) => pedir(ruta, forzar, { previo: g => { agrupar(mapa, g.datos, "codigo_cliente"); render(); } })
       .then(d => { agrupar(mapa, d.datos, "codigo_cliente"); mapa.error = null; render(); }, e => { mapa.error = e; render(); });
     extra("/api/pedidos", pedidosDe);
+    pedir("/api/pedidos/avance", forzar, { previo: g => { avances.clear(); for (const a of g.datos) avances.set(a.id, a); render(); } })
+      .then(d => { avances.clear(); for (const a of d.datos) avances.set(a.id, a); render(); }, () => {});
     extra("/api/cotizaciones", cotizDe);
     extra("/api/precios", preciosDe);
     let previo = null;
@@ -238,7 +241,9 @@
       const ul = el("ul", "lista-mini");
       for (const p of peds.slice(0, 8)) ul.append(filaLink("/pedidos?ver=" + p.id, "Pedido " + cortoPed(p.numero),
         [fecha(p.fecha), p.orden_compra_cliente && "OC " + p.orden_compra_cliente].filter(Boolean).join(" · "),
-        el("span", "etiqueta-estado e-" + clasePed(p), ESTADOS_PED[p.estado] || p.estado)));
+        (avances.get(p.id) || {}).estado_entrega === "parcial"
+          ? el("span", "etiqueta-estado e-parcial", `Parcial · ${avances.get(p.id).porcentaje}%`)
+          : el("span", "etiqueta-estado e-" + clasePed(p), ESTADOS_PED[p.estado] || p.estado)));
       sp.append(ul);
       if (peds.length > 8) sp.append(el("p", "nota", `y ${peds.length - 8} más.`));
     }

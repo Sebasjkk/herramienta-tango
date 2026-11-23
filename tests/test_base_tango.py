@@ -90,6 +90,28 @@ class TestBaseTango(unittest.TestCase):
                 base_tango.movimientos_articulo(malo)
 
 
+    def test_remitos_de_un_pedido(self):
+        js = ('{"columnas":["STA20.NRO_PEDIDO"],"relacion":true,"filas":['
+              '{"T_COMP":"REM","N_COMP":"R000800000110","FECHA":"2026-11-14","COD_ARTICU":"ZINC","CANTIDAD":50,"TIPO_MOV":"S"},'
+              '{"T_COMP":"REM","N_COMP":"R000800000110","FECHA":"2026-11-14","COD_ARTICU":"METCO","CANTIDAD":5,"TIPO_MOV":"S"},'
+              '{"T_COMP":"DEV","N_COMP":"R000800000115","FECHA":"2026-11-18","COD_ARTICU":"ZINC","CANTIDAD":2,"TIPO_MOV":"E"}]}')
+        with mock.patch.object(base_tango.subprocess, "run", return_value=salida(js)) as run:
+            r = base_tango.remitos_pedido("31")
+        self.assertIn("WHERE ID_GVA21 = 31", run.call_args[0][0][-1])
+        self.assertTrue(r["relacion"])
+        self.assertEqual([(c["tipo"], c["numero"], len(c["renglones"])) for c in r["comprobantes"]],
+                         [("Remito", "R 0008-00000110", 2), ("Devolución", "R 0008-00000115", 1)])
+        self.assertEqual(r["comprobantes"][1]["renglones"][0]["cantidad"], -2)       # la devolucion resta
+        with self.assertRaises(ValueError):
+            base_tango.remitos_pedido("31; DROP TABLE GVA21")
+
+    def test_remitos_sin_relacion(self):
+        js = '{"columnas":"STA14.COD_PEDIDO_X","relacion":false,"filas":[]}'
+        with mock.patch.object(base_tango.subprocess, "run", return_value=salida(js)):
+            r = base_tango.remitos_pedido(31)
+        self.assertEqual((r["relacion"], r["comprobantes"], r["columnas"]), (False, [], ["STA14.COD_PEDIDO_X"]))
+
+
 class TestDesdeOtraPC(unittest.TestCase):
     def setUp(self):
         base_tango._cache.clear()

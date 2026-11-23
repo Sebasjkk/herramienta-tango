@@ -11,7 +11,9 @@ de la empresa consulte Tango sin conocer su API:
     GET /api/depositos
     GET /api/clientes
     GET /api/pedidos
-    GET /api/pedidos/<id>            detalle completo (renglones, notas, lista, cliente)
+    GET /api/pedidos/<id>            detalle completo (renglones con entregado y falta, notas, lista, cliente)
+    GET /api/pedidos/avance          cuanto se entrego de cada pedido pendiente (sin entregar / parcial / entregado)
+    GET /api/pedidos/<id>/remitos    remitos y devoluciones hechos contra el pedido (base, solo lectura)
     GET/POST /api/opciones           opciones para todos los equipos ({"clave", "valor"})
     POST /api/pedidos/eliminar       {"id": n, "confirmar": "31"}   copia en cambios_pedidos.jsonl
     GET /api/listas-precios
@@ -160,6 +162,7 @@ def crear_rutas(contexto) -> dict[str, Callable[[dict, bool], tuple]]:
         "/api/depositos": lambda qs, f: s().depositos(f),
         "/api/clientes": lambda qs, f: s().clientes(f),
         "/api/pedidos": lambda qs, f: s().pedidos(f),
+        "/api/pedidos/avance": lambda qs, f: s().avance_pedidos(f),
         "/api/listas-precios": lambda qs, f: s().listas_precios(f),
         "/api/precios": lambda qs, f: s().precios(f),
         "/api/ventas": ventas,
@@ -205,6 +208,15 @@ def ruta_variable(contexto, ruta: str):
         return base
     if partes == ["api", "comprobantes", "renglones"]:
         return lambda qs, f: (contexto.servicio().editor.renglones_comprobante((qs.get("t") or [""])[0], (qs.get("n") or [""])[0]), time.time())
+    if len(partes) == 4 and partes[:2] == ["api", "pedidos"] and partes[2].isdigit() and partes[3] == "remitos":
+        from .. import base_tango
+        id_pedido = int(partes[2])
+        def remitos(qs, f):
+            try:
+                return base_tango.remitos_pedido(id_pedido), time.time()
+            except base_tango.BaseNoDisponible as e:
+                raise PedidoInvalido(str(e)) from None
+        return remitos
     if len(partes) == 3 and partes[:2] == ["api", "pedidos"] and partes[2].isdigit():
         id_pedido = int(partes[2])
         return lambda qs, f: (contexto.servicio().gestion_pedidos.detalle(id_pedido), time.time())

@@ -18,6 +18,11 @@
   .pestana b { font-variant-numeric: tabular-nums; margin-left: 4px; color: var(--grafito); }
   .pestana[aria-selected="true"] { background: var(--patina); border-color: var(--patina); color: var(--sobre-color); }
   .pestana[aria-selected="true"] b { color: var(--sobre-color); }
+  @media (max-width: 599px) {   /* celular: una sola fila que se desliza */
+    .pestanas { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+    .pestanas::-webkit-scrollbar { display: none; }
+    .pestana { flex: none; }
+  }
 
   .lista-cot { list-style: none; margin: 0; padding: 0; }
   .cot { width: 100%; display: grid; grid-template-columns: 1fr auto; gap: 1px 14px; text-align: left; font: inherit; color: inherit;
@@ -55,6 +60,18 @@
   .total-cot { text-align: right; font-weight: 700; padding: 8px 12px 0; font-variant-numeric: tabular-nums; }
   .nota { font-size: .88rem; color: var(--plomo); }
   .volver { display: none; }
+  .entrega { margin: 2px 0 12px; display: grid; gap: 6px; }
+  .barra-ped { display: grid !important; grid-template-columns: 1fr auto; align-items: center; gap: 10px; padding-top: 4px; }
+  .entrega-tit { font-size: .9rem; }
+  .tabla td.falta.hay { color: var(--ambar); font-weight: 700; }
+  .tabla tr.parcial td:first-child { box-shadow: inset 3px 0 0 var(--ambar-fuerte); }
+  .remitos-ped { list-style: none; margin: 0; padding: 0; }
+  .remitos-ped li { padding: 8px 0; border-top: 1px solid var(--linea-suave); }
+  .remitos-ped li:first-child { border-top: 0; }
+  .rp-cab { display: flex; justify-content: space-between; gap: 12px; font-size: .92rem; }
+  .rp-cab span { color: var(--plomo); font-size: .85rem; }
+  .rp-renglon { font-size: .85rem; color: var(--plomo); }
+  .rp-renglon.devuelto { color: var(--oxido); }
 
   @media (min-width: 960px) {
     .contenido-cot { display: grid; grid-template-columns: minmax(300px, 400px) 1fr; gap: 20px; align-items: start; }
@@ -107,6 +124,8 @@
   const GRUPOS = [
     { id: "pendientes", titulo: "Pendientes", f: p => p.estado === 1 || p.estado === 2,
       ayuda: "Pendientes: pedidos ingresados o aprobados que todavía no se terminaron de entregar o facturar." },
+    { id: "parciales", titulo: "Entregas parciales", f: p => (avances.get(p.id) || {}).estado_entrega === "parcial",
+      ayuda: "Entregas parciales: pedidos pendientes que ya tienen algo remitido y les falta entregar el resto." },
     { id: "cumplidos", titulo: "Cumplidos", f: p => p.estado === 3,
       ayuda: "Cumplidos: se entregó y facturó todo lo pedido." },
     { id: "cerrados", titulo: "Cerrados", f: p => p.estado === 4,
@@ -123,11 +142,27 @@
   let grupo = "todos";
   let elegido = null;
   const detalles = new Map();   // id -> detalle | "cargando" | Error
+  const avances = new Map();    // id -> { estado_entrega, pedido, entregado, falta, porcentaje } (solo pendientes)
+  const remitosDe = new Map();  // id -> { relacion, comprobantes } | "cargando" | Error
+  const TEXTO_ENTREGA = { parcial: "Parcial", sin_entregar: "Sin entregar", entregado: "Entregado" };
+  function barra(av) {
+    const b = el("span", "avance" + (av.estado_entrega === "parcial" ? " parcial" : ""));
+    const i = el("i"); i.style.width = Math.max(0, Math.min(100, av.porcentaje)) + "%"; b.append(i);
+    b.title = `Entregado ${av.porcentaje}%`;
+    return b;
+  }
+  // Cuanto se entrego de cada pedido pendiente: Tango lo da por renglon, el servidor lo junta
+  function cargarAvance(forzar) {
+    const usar = d => { avances.clear(); for (const a of d.datos) avances.set(a.id, a); render(); };
+    pedir("/api/pedidos/avance", forzar, { previo: usar }).then(usar, () => {});
+  }
   // /pedidos?ver=<id>: abrir ese pedido (enlace desde Inicio o Precios)
   let verPendiente = Number(new URLSearchParams(location.search).get("ver")) || null;
 
   async function cargar(forzar) {
     $("estado").textContent = "Consultando Tango…";
+    cargarAvance(forzar);
+    if (forzar) remitosDe.clear();
     let previo = null;
     const usar = d => {
       peds = d.datos.sort((a, b) => (b.fecha || "").localeCompare(a.fecha || "") || b.numero.localeCompare(a.numero));
@@ -176,10 +211,17 @@
       const li = el("li");
       const b = el("button", "cot"); b.type = "button"; b.setAttribute("aria-pressed", String(p.id === elegido));
       const der = el("span", "der");
-      der.append(el("span", "etiqueta-estado e-" + clase(p), ESTADOS[p.estado] || p.estado), el("br"), fecha(p.fecha));
+      const av = avances.get(p.id);
+      if (av && av.estado_entrega === "parcial") der.append(el("span", "etiqueta-estado e-parcial", `Parcial · ${av.porcentaje}%`));
+      else der.append(el("span", "etiqueta-estado e-" + clase(p), ESTADOS[p.estado] || p.estado));
+      der.append(el("br"), fecha(p.fecha));
+
       b.append(el("span", "num", "Pedido " + corto(p.numero)), el("span", "cli", p.cliente || p.codigo_cliente), der,
                el("span", "meta", [p.orden_compra_cliente && "OC " + p.orden_compra_cliente, p.lista_precios, p.numero_remito && "remito " + p.numero_remito]
                  .filter(Boolean).join(" · ") || " "));
+      if (av && av.estado_entrega === "parcial") {
+        const m = el("span", "meta barra-ped"); m.append(barra(av), ` faltan ${fmt.format(av.falta)} de ${fmt.format(av.pedido)}`); b.append(m);
+      }
       b.addEventListener("click", () => {
         elegido = p.id;
         if (!window.matchMedia("(min-width: 960px)").matches) { history.pushState({}, "", "#ped=" + p.id); $("contenido").classList.add("viendo"); window.scrollTo(0, 0); }
@@ -196,6 +238,49 @@
     detalles.set(id, "cargando");
     pedir("/api/pedidos/" + id).then(d => detalles.set(id, d.datos), e => detalles.set(id, new Error(textoError(e))))
       .then(() => { if (elegido === id) dibujarFicha(); });
+  }
+
+  // Remitos (y devoluciones) hechos contra el pedido, leidos de la base de Tango
+  function seccionRemitos(p, d) {
+    const s = el("section", "seccion");
+    s.append(el("h3", "", "Remitos"));
+    if (!remitosDe.has(p.id)) {
+      remitosDe.set(p.id, "cargando");
+      pedir("/api/pedidos/" + p.id + "/remitos").then(x => remitosDe.set(p.id, x.datos), e => remitosDe.set(p.id, e))
+        .then(() => { if (elegido === p.id) dibujarFicha(); });
+    }
+    const r = remitosDe.get(p.id);
+    const ultimo = (d && d.ultimo_remito) || p.numero_remito;
+    const soloUltimo = motivo => {
+      s.append(el("p", "nota", ultimo ? `Último remito según el pedido: ${ultimo}.` : "El pedido todavía no tiene remitos."));
+      if (motivo) s.append(el("p", "nota", motivo));
+    };
+    if (r === "cargando") { s.append(HT.esqueleto(2, "plano")); return s; }
+    if (r instanceof Error) { soloUltimo("No se pudo leer el detalle de las entregas: " + textoError(r)); return s; }
+    if (!r.relacion) {
+      soloUltimo("En esta base de Tango no se encontró cómo se unen los remitos con el pedido, así que se ve solo el último.");
+      if (r.columnas && r.columnas.length) {
+        const det = el("details", "nota"); det.append(el("summary", "", "Datos para revisarlo"), el("p", "", r.columnas.join(", ")));
+        s.append(det);
+      }
+      return s;
+    }
+    if (!r.comprobantes.length) { s.append(el("p", "nota", "Todavía no se remitió nada de este pedido.")); return s; }
+    const desc = new Map(((d && d.renglones) || []).filter(x => x.codigo).map(x => [x.codigo, x.descripcion]));
+    const ul = el("ul", "remitos-ped");
+    for (const c of r.comprobantes) {
+      const li = el("li");
+      const cab = el("div", "rp-cab");
+      cab.append(el("b", "", `${c.tipo} ${c.numero}`), el("span", "", fecha(c.fecha)));
+      li.append(cab);
+      for (const x of c.renglones) {
+        li.append(el("div", "rp-renglon" + (x.cantidad < 0 ? " devuelto" : ""),
+          `${x.cantidad < 0 ? "Devolvió" : "Entregó"} ${fmt.format(Math.abs(x.cantidad))} de ${desc.get(x.codigo) || x.codigo}`));
+      }
+      ul.append(li);
+    }
+    s.append(ul);
+    return s;
   }
 
   function dibujarFicha() {
@@ -220,16 +305,35 @@
     else {
       if (!d.renglones.length) s.append(el("p", "nota", "Sin renglones."));
       else {
+        // Entrega: cuanto se pidio, cuanto se remitio y cuanto falta, por articulo
+        const e = d.entrega;
+        const pendiente = p.estado <= 2;
+        if (e && pendiente) {
+          const caja = el("div", "entrega");
+          const tit = el("div", "entrega-tit");
+          tit.append(el("span", "etiqueta-estado e-" + e.estado_entrega.replace("_", "-"), TEXTO_ENTREGA[e.estado_entrega]),
+                     e.estado_entrega === "parcial" ? ` Entregado ${fmt.format(e.entregado)} de ${fmt.format(e.pedido)} · faltan ${fmt.format(e.falta)}`
+                     : e.estado_entrega === "sin_entregar" ? " Todavía no se remitió nada." : " Se remitió todo; falta cerrarlo o facturarlo.");
+          caja.append(tit, barra(e));
+          s.append(caja);
+        }
         const tabla = el("table", "tabla"); const th = el("tr");
-        for (const [x, cl] of [["Artículo", ""], ["Cant.", "der"], ["Precio", "der"], ["Pend. facturar", "der"]]) th.append(el("th", cl, x));
+        const cols = [["Artículo", ""], ["Pedido", "der"], ...(pendiente ? [["Entregado", "der"], ["Falta", "der"]] : []), ["Precio", "der"], ["Pend. facturar", "der"]];
+        for (const [x, cl] of cols) th.append(el("th", cl, x));
         const thead = el("thead"); thead.append(th); const tb = el("tbody");
         let total = 0;
         for (const r of d.renglones) {
-          const tr = el("tr"); const art = el("td"); art.append(el("div", "", r.descripcion)); art.lastChild.style.fontWeight = "600";
+          const tr = el("tr", pendiente && r.falta > 0 && r.entregado > 0 ? "parcial" : "");
+          const art = el("td");
+          if (r.codigo) { const a = el("a", "", r.descripcion || r.codigo); a.href = "/buscar?art=" + encodeURIComponent(r.codigo); a.style.color = "inherit"; art.append(a); }
+          else art.append(el("div", "", r.descripcion));
+          art.firstChild.style.fontWeight = "600";
           if (r.adicional) art.append(el("div", "nota", r.adicional));
           total += (r.cantidad || 0) * (r.precio || 0) * (1 - (r.bonificacion || 0) / 100);
-          tr.append(art, el("td", "der", fmt.format(r.cantidad || 0)), el("td", "der", fmtPrecio.format(r.precio || 0)),
-                    el("td", "der", r.pendiente_facturar ? fmt.format(r.pendiente_facturar) : ""));
+          tr.append(art, el("td", "der", fmt.format(r.cantidad || 0)));
+          if (pendiente) tr.append(el("td", "der", r.entregado ? fmt.format(r.entregado) : "—"),
+                                   el("td", "der falta" + (r.falta > 0 ? " hay" : ""), r.falta > 0 ? fmt.format(r.falta) : "—"));
+          tr.append(el("td", "der", fmtPrecio.format(r.precio || 0)), el("td", "der", r.pendiente_facturar ? fmt.format(r.pendiente_facturar) : ""));
           tb.append(tr);
         }
         tabla.append(thead, tb);
@@ -244,7 +348,7 @@
         const ul = el("ul", "notas-ped"); for (const n of d.notas) ul.append(el("li", "", n)); s.append(ul);
       }
     }
-    t.append(s);
+    t.append(s, seccionRemitos(p, d));
 
     // Eliminar por la API necesita la "API de Transacciones Tango Ventas", que la licencia
     // no incluye (probado el 19/11/2026). El boton queda inactivo hasta que se active.

@@ -202,6 +202,15 @@ class ServicioTango:
             return salida
         return self._cacheado("remitos", "remitos", cargar, forzar)
 
+    def avance_pedidos(self, forzar: bool = False) -> tuple[list[dict], float]:
+        """Cuanto se entrego de cada pedido pendiente (Ingresado o Aprobado)."""
+        def cargar():
+            pedidos, _ = self.pedidos(forzar)
+            pendientes = [p.id for p in pedidos if p.estado in (1, 2) and p.id is not None]
+            avances = self.gestion_pedidos.avance(pendientes)
+            return [{"id": i, **d} for i, d in avances.items()]
+        return self._cacheado("avance_pedidos", "pedidos", cargar, forzar)
+
     def datos_envio(self, id_cliente: int) -> DatosEnvio:
         x = self._cliente.obtener(procesos.CLIENTES, id_cliente)
         if not x:

@@ -302,3 +302,11 @@ dialog { background: var(--papel); color: var(--grafito); }
   border-radius: 999px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 :root[data-tema="oscuro"] .aviso-breve button { color: var(--patina-oscura); }
 @media (prefers-color-scheme: dark) { :root:not([data-tema="claro"]) .aviso-breve button { color: var(--patina-oscura); } }
+
+/* Avance de entrega de un pedido: barra con lo entregado */
+.avance { display: block; height: 6px; border-radius: 3px; background: var(--linea-suave); overflow: hidden; }
+.avance > i { display: block; height: 100%; background: var(--patina); border-radius: 3px; }
+.avance.parcial > i { background: var(--ambar-fuerte); }
+.e-parcial { background: var(--ambar-suave); color: var(--ambar); }
+.e-sin-entregar { background: var(--zinc); color: var(--plomo); }
+.e-entregado { background: var(--patina-suave); color: var(--patina); }
