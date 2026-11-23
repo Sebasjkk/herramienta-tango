@@ -130,7 +130,9 @@ $out | ConvertTo-Json -Depth 4 -Compress
 """
 
 _TIPOS = {"FAC": "Factura", "N/C": "Nota de crédito", "N/D": "Nota de débito", "REM": "Remito", "REC": "Recibo",
-          "AJU": "Ajuste", "PED": "Pedido"}
+          "AJU": "Ajuste", "PED": "Pedido", "TIN": "Toma de inventario", "TRA": "Transferencia", "TRF": "Transferencia",
+          "DEV": "Devolución", "EGR": "Egreso", "ING": "Ingreso", "RCP": "Recepción", "RCO": "Remito de compra",
+          "DES": "Despacho", "IMP": "Importación"}
 
 
 def _filas(datos: dict) -> list[dict]:
@@ -195,6 +197,70 @@ def _renglones_local(t_comp: str, n_comp: str) -> list[dict]:
     _cache[clave] = (time.time(), res)
     return res
 
+
+
+# ------------------------------------------------------------------ movimientos de un articulo
+# STA14: cabecera del movimiento de stock (comprobante, fecha, cliente o proveedor)
+# STA20: renglones (articulo, cantidad, deposito, E/S)
+# La forma de unirlas cambio entre versiones de Tango (ID_STA14 o TCOMP_IN_S + NCOMP_IN_S) y no
+# todas las bases tienen los mismos nombres de columna: se prueba de la consulta mas completa a la
+# mas simple y se usa la primera que funcione. Todas son SELECT: nunca se escribe.
+_MOVIMIENTOS = r"""
+$out = [ordered]@{}
+$consultas = @(
+  "SELECT TOP __N__ c.T_COMP AS C_T_COMP, c.N_COMP AS C_N_COMP, c.FECHA_MOV AS C_FECHA, c.COD_PRO_CL AS C_COD, g.RAZON_SOCI AS C_CLIENTE, p.NOM_PROVEE AS C_PROVEEDOR, d.NOMBRE_SUC AS C_DEPOSITO, r.* FROM STA20 r JOIN STA14 c ON c.ID_STA14 = r.ID_STA14 LEFT JOIN GVA14 g ON g.COD_CLIENT = c.COD_PRO_CL LEFT JOIN CPA01 p ON p.COD_PROVEE = c.COD_PRO_CL LEFT JOIN STA22 d ON d.COD_SUCURS = r.COD_DEPOSI WHERE r.COD_ARTICU = '__COD__' ORDER BY c.FECHA_MOV DESC, c.ID_STA14 DESC",
+  "SELECT TOP __N__ c.T_COMP AS C_T_COMP, c.N_COMP AS C_N_COMP, c.FECHA_MOV AS C_FECHA, c.COD_PRO_CL AS C_COD, g.RAZON_SOCI AS C_CLIENTE, r.* FROM STA20 r JOIN STA14 c ON c.ID_STA14 = r.ID_STA14 LEFT JOIN GVA14 g ON g.COD_CLIENT = c.COD_PRO_CL WHERE r.COD_ARTICU = '__COD__' ORDER BY c.FECHA_MOV DESC, c.ID_STA14 DESC",
+  "SELECT TOP __N__ c.T_COMP AS C_T_COMP, c.N_COMP AS C_N_COMP, c.FECHA_MOV AS C_FECHA, c.COD_PRO_CL AS C_COD, r.* FROM STA20 r JOIN STA14 c ON c.TCOMP_IN_S = r.TCOMP_IN_S AND c.NCOMP_IN_S = r.NCOMP_IN_S WHERE r.COD_ARTICU = '__COD__' ORDER BY c.FECHA_MOV DESC",
+  "SELECT TOP __N__ r.* FROM STA20 r WHERE r.COD_ARTICU = '__COD__' ORDER BY r.FECHA_MOV DESC"
+)
+$ultimo = ''
+foreach ($sql in $consultas) {
+  try { $out.filas = Q $sql; $out.consulta = [array]::IndexOf($consultas, $sql); break }
+  catch { $ultimo = $_.Exception.Message }
+}
+if (-not $out.Contains('consulta')) { [Console]::Error.WriteLine("Movimientos: $ultimo"); exit 4 }
+$out | ConvertTo-Json -Depth 4 -Compress
+"""
+MAX_MOVIMIENTOS = 60
+_COD_ARTICULO = re.compile(r"[A-Za-z0-9 ._/\-]{1,20}")
+
+
+def _validar_articulo(codigo: str) -> str:
+    codigo = (codigo or "").strip()
+    if not _COD_ARTICULO.fullmatch(codigo):
+        raise ValueError("Código de artículo inválido.")
+    return codigo
+
+
+def _movimientos_local(codigo: str) -> list[dict]:
+    """Ultimos movimientos de stock de un articulo, del mas nuevo al mas viejo."""
+    codigo = _validar_articulo(codigo)
+    clave = ("movimientos", codigo)
+    if clave in _cache and time.time() - _cache[clave][0] < VIGENCIA:
+        return _cache[clave][1]
+    filas = _filas(_correr(_MOVIMIENTOS.replace("__COD__", codigo).replace("__N__", str(MAX_MOVIMIENTOS))))
+    res = []
+    for f in filas:
+        t = str(_campo(f, "C_T_COMP", "T_COMP", defecto="")).strip()
+        tipo_mov = str(f.get("TIPO_MOV") or "").strip().upper()
+        cantidad = _campo(f, "CANTIDAD", "CANT_STOCK", defecto=0) or 0
+        try:
+            cantidad = float(cantidad)
+        except (TypeError, ValueError):
+            cantidad = 0.0
+        partida = next((str(v).strip() for k, v in f.items() if "PARTIDA" in k.upper() and v not in (None, "")), "")
+        res.append({
+            "fecha": _campo(f, "C_FECHA", "FECHA_MOV"),
+            "t_comp": t, "tipo": _TIPOS.get(t, t),
+            "numero": _numero_comprobante(str(_campo(f, "C_N_COMP", "N_COMP", defecto=""))),
+            "entrada": tipo_mov != "S",
+            "cantidad": round(abs(cantidad), 4) * (-1 if tipo_mov == "S" else 1),
+            "deposito": str(_campo(f, "C_DEPOSITO", "COD_DEPOSI", defecto="")).strip(),
+            "tercero": str(_campo(f, "C_CLIENTE", "C_PROVEEDOR", "C_COD", defecto="")).strip(),
+            "partida": partida,
+        })
+    _cache[clave] = (time.time(), res)
+    return res
 
 
 # ------------------------------------------------------------------ desde otras PCs
@@ -270,6 +336,14 @@ def renglones_comprobante(t_comp: str, n_comp: str) -> list[dict]:
     return _remoto("renglones", {"t": t_comp, "n": n_comp})
 
 
+def movimientos_articulo(codigo: str) -> list[dict]:
+    """Ultimos movimientos de stock (STA14/STA20) de un articulo."""
+    codigo = _validar_articulo(codigo)
+    if es_servidor():
+        return _movimientos_local(codigo)
+    return _remoto("movimientos", {"art": codigo})
+
+
 def responder_remoto(ruta: str, qs: dict):
     """Lo que atiende el servidor para las otras PCs: siempre consulta local."""
     p = lambda k: (qs.get(k) or [""])[0]
@@ -279,4 +353,6 @@ def responder_remoto(ruta: str, qs: dict):
         return _comprobantes_local(int(p("nro")), int(p("anio")))
     if ruta == "renglones":
         return _renglones_local(p("t"), p("n"))
+    if ruta == "movimientos":
+        return _movimientos_local(p("art"))
     raise ValueError("Consulta desconocida.")

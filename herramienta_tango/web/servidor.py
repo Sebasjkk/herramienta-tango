@@ -24,6 +24,8 @@ Listas de precios (leidas de las tablas de Tango, no de la consulta 12742):
     GET /api/listas/<id>             articulos de una lista, con precios especiales por cliente
     GET /api/articulos/<codigo>/precios   en que listas esta un articulo
     GET /api/articulos/<codigo>/cotizaciones   cotizaciones donde aparece (con cantidad y precio)
+    GET /api/articulos/<codigo>/movimientos    ultimos movimientos de stock (base, solo lectura)
+    POST /api/exportar               {"nombre", "columnas": [{"titulo", "tipo"}], "filas": [[...]]} -> .xlsx
     GET /api/cotizaciones            todas las cotizaciones (consulta 17948)
     GET /api/cotizaciones/<numero>/renglones
     GET /api/listas/<id>/comprobantes?anio=  comprobantes de venta de un año con esa lista (base, solo lectura)
@@ -103,7 +105,8 @@ TIPOS = {".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".j
          ".png": "image/png", ".ico": "image/x-icon", ".svg": "image/svg+xml"}
 MAX_DIAS_VENTAS = 366
 MAX_CUERPO = 10_000
-MAX_CUERPO_ARCHIVO = 8_000_000      # Excel en base64 para importar listas
+MAX_CUERPO_ARCHIVO = 8_000_000      # Excel en base64 para importar listas, y datos para exportar
+MAX_COLUMNAS_EXPORTAR = 30
 ENCABEZADO_PANEL = "X-Herramienta-Tango"
 ENCABEZADO_NOMBRE = "X-Nombre"
 DIRECCIONES_LOCALES = {"127.0.0.1", "::1", "::ffff:127.0.0.1"}
@@ -214,6 +217,15 @@ def ruta_variable(contexto, ruta: str):
     if len(partes) == 4 and partes[:2] == ["api", "clientes"] and partes[2].isdigit() and partes[3] == "envio":
         id_cliente = int(partes[2])
         return lambda qs, f: (contexto.servicio().datos_envio(id_cliente), time.time())
+    if len(partes) == 4 and partes[:2] == ["api", "articulos"] and partes[3] == "movimientos":
+        from .. import base_tango
+        codigo = urllib.parse.unquote(partes[2]).strip()
+        def movimientos(qs, f):
+            try:
+                return base_tango.movimientos_articulo(codigo), time.time()
+            except (ValueError, base_tango.BaseNoDisponible) as e:
+                raise PedidoInvalido(str(e)) from None
+        return movimientos
     if len(partes) == 4 and partes[:2] == ["api", "articulos"] and partes[3] == "cotizaciones":
         codigo = urllib.parse.unquote(partes[2]).strip()
         return lambda qs, f: cotizaciones_de_articulo(contexto.servicio(), codigo, f)
@@ -507,8 +519,35 @@ def crear_manejador(contexto):
                 log.exception("Error al modificar")
                 self._json(500, {"ok": False, "error": f"Error inesperado: {e.__class__.__name__}"})
 
+        def _exportar(self) -> None:
+            """Arma un .xlsx con lo que manda la pagina (lo que se ve en pantalla). No toca Tango."""
+            from .. import xlsx
+            datos = self._leer_cuerpo(MAX_CUERPO_ARCHIVO)
+            if datos is None:
+                return
+            try:
+                columnas = [(str(c["titulo"])[:80], "numero" if c.get("tipo") == "numero" else "texto")
+                            for c in datos["columnas"]][:MAX_COLUMNAS_EXPORTAR]
+                filas = datos["filas"]
+                if not columnas or not isinstance(filas, list) or not all(isinstance(f, list) for f in filas):
+                    raise ValueError
+                contenido = xlsx.escribir(columnas, filas, str(datos.get("nombre") or "Datos"))
+            except ValueError as e:
+                self._json(400, {"ok": False, "error": str(e) or "Datos inválidos para exportar."})
+                return
+            except (KeyError, TypeError):
+                self._json(400, {"ok": False, "error": "Datos inválidos para exportar."})
+                return
+            nombre = " ".join(str(datos.get("nombre") or "Herramienta Tango").split())[:80]
+            ascii_ = nombre.encode("ascii", "replace").decode().replace('"', "").replace("?", "_")
+            self._responder(200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", contenido,
+                            {"Content-Disposition": f'attachment; filename="{ascii_}.xlsx"; filename*=UTF-8\'\'{urllib.parse.quote(nombre)}.xlsx'})
+
         def do_POST(self):
             url = urllib.parse.urlparse(self.path)
+            if url.path == "/api/exportar":
+                self._exportar()
+                return
             if url.path in RUTAS_APP:
                 self._post_app(url.path)
                 return

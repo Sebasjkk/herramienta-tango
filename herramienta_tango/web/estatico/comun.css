@@ -295,3 +295,10 @@ select { padding-right: 30px; -webkit-appearance: none; appearance: none;
 
 /* Ventanas: mismo fondo que las tarjetas en los dos temas */
 dialog { background: var(--papel); color: var(--grafito); }
+
+/* Aviso con boton (Deshacer) */
+.aviso-breve.con-accion { pointer-events: auto; display: flex; align-items: center; gap: 14px; padding-right: 8px; }
+.aviso-breve button { font: inherit; font-weight: 700; color: var(--patina-suave); background: none; border: 0; padding: 6px 10px;
+  border-radius: 999px; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+:root[data-tema="oscuro"] .aviso-breve button { color: var(--patina-oscura); }
+@media (prefers-color-scheme: dark) { :root:not([data-tema="claro"]) .aviso-breve button { color: var(--patina-oscura); } }

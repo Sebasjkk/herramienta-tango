@@ -128,13 +128,18 @@
 
   async function cargar(forzar) {
     $("estado").textContent = "Consultando Tango…";
-    try {
-      const d = await pedir("/api/pedidos", forzar);
+    let previo = null;
+    const usar = d => {
       peds = d.datos.sort((a, b) => (b.fecha || "").localeCompare(a.fecha || "") || b.numero.localeCompare(a.numero));
-      $("estado").textContent = "Datos de Tango de las " + HT.hora(new Date(d.actualizado)) + " h";
-      if (forzar) detalles.clear();
+      $("estado").textContent = HT.textoDatos(d);
       render();
+    };
+    try {
+      const d = await pedir("/api/pedidos", forzar, { previo: g => { previo = g; usar(g); } });
+      if (forzar) detalles.clear();
+      usar(d);
     } catch (e) {
+      if (previo) { $("estado").textContent = HT.textoDatos(previo).replace("actualizando…", "sin conexión con Tango"); return; }
       $("estado").textContent = "Sin datos";
       $("col-lista").replaceChildren(cajaError(e, () => cargar(true)));
     }
@@ -200,7 +205,7 @@
     const t = el("article", "tarjeta ficha");
     const volver = el("button", "boton volver", "‹ Pedidos"); volver.type = "button"; volver.addEventListener("click", () => history.back());
     t.append(volver, el("span", "etiqueta-estado e-" + clase(p), ESTADOS[p.estado] || p.estado),
-             el("h2", "", "Pedido " + corto(p.numero)), el("div", "cli", p.cliente || p.codigo_cliente));
+             el("h2", "", "Pedido " + corto(p.numero)), HT.linkCliente(p.codigo_cliente, p.cliente));
     cargarDetalle(p.id);
     const d = detalles.get(p.id);
     const datos = el("div", "datos-cot");

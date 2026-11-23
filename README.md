@@ -9,7 +9,8 @@ Hoy es **solo lectura**: no carga ni modifica nada en Tango.
 | Módulo | Estado | Dónde |
 |---|---|---|
 | Inicio | Listo | Resumen: cotizaciones por vencer, pedidos pendientes, stock negativo o bajo punto de pedido, mezclas sin subir, últimos cambios de precios |
-| Buscar artículo | Listo | Buscar (`/buscar`): catálogo completo con filtros y orden; ficha con stock por lote, precios y cotizaciones |
+| Buscar artículo | Listo | Buscar (`/buscar`): catálogo completo con filtros y orden, vistos hace poco; ficha con stock por lote, movimientos (base), precios y cotizaciones |
+| Clientes | Listo | Clientes (`/clientes`): lista de precios, precios especiales, pedidos, cotizaciones y direcciones de entrega |
 | Stock por partida | Listo | Stock |
 | Listas de precios | Ver y modificar | Precios |
 | Cotizaciones | Ver, por estado, y reimprimir el PDF de Tango | Cotizaciones |
@@ -17,7 +18,9 @@ Hoy es **solo lectura**: no carga ni modifica nada en Tango.
 
 Las páginas para los usuarios comparten `comun.css` y `comun.js` (navegación: barra lateral en la PC, pestañas abajo en el celular con "Más" para los módulos que no entran; esqueletos de carga, errores que dicen si falló la red, Tango o la Herramienta, colores de estado comunes).
 
-Cada pantalla se puede abrir directo con un link: `/buscar?art=<código>`, `/buscar?q=zinc&f=neg`, `/pedidos?ver=<id>`, `/cotizaciones?ver=<id>`. Los links viejos `/?q=` redirigen a `/buscar`. Un módulo nuevo se agrega en `MODULOS` de `comun.js`. El panel del servidor (`panel.html`) es aparte.
+Las pantallas muestran al instante lo último que se vio en ese equipo (guardado en el navegador, con su hora) mientras piden lo nuevo a Tango. Lo que se ve se puede exportar a Excel (`POST /api/exportar`, el .xlsx lo arma `xlsx.py` sin librerías). Precios: después de cambiar o quitar un precio queda unos segundos un botón Deshacer. Mezclas: Repetir copia una mezcla anterior y se sugiere la última partida usada de cada polvo.
+
+Cada pantalla se puede abrir directo con un link: `/clientes?ver=<código>`, `/buscar?art=<código>`, `/buscar?q=zinc&f=neg`, `/pedidos?ver=<id>`, `/cotizaciones?ver=<id>`. Los links viejos `/?q=` redirigen a `/buscar`. Un módulo nuevo se agrega en `MODULOS` de `comun.js`. El panel del servidor (`panel.html`) es aparte.
 
 ## Cómo está armado
 
@@ -67,6 +70,7 @@ Todas responden `{"ok": true, "actualizado": "...", "datos": [...]}`. Con `?refr
 | `/api/estado` | Versión del programa |
 | `/api/stock/partidas` | Saldo por partida (artículo, depósito, lote, despacho, vencimiento, saldo) |
 | `/api/articulos` | Artículos (código, descripción, código de barras, NCM, usa partidas, punto de pedido...) |
+| `/api/articulos/<código>/movimientos` | Últimos 60 movimientos de stock del artículo (base SQL, solo lectura; desde otras PCs se le pide al servidor) |
 | `/api/articulos/<código>/cotizaciones` | Cotizaciones donde aparece un artículo, con cantidad y precio (las más nuevas primero) |
 | `/api/depositos` | Depósitos |
 | `/api/clientes` | Clientes (código, razón social, CUIT, lista de precios) |

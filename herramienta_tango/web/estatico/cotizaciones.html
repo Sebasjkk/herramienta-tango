@@ -120,13 +120,18 @@
   async function cargar(forzar) {
     $("contenido").classList.add("cargando");
     $("estado").textContent = "Consultando Tango…";
-    try {
-      const d = await pedir("/api/cotizaciones", forzar);
+    let previo = null;
+    const usar = d => {
       cots = d.datos.sort((a, b) => (b.fecha || "").localeCompare(a.fecha || "") || b.numero.localeCompare(a.numero));
-      $("estado").textContent = "Datos de Tango de las " + HT.hora(new Date(d.actualizado)) + " h";
-      if (forzar) renglones.clear();
+      $("estado").textContent = HT.textoDatos(d);
       render();
+    };
+    try {
+      const d = await pedir("/api/cotizaciones", forzar, { previo: g => { previo = g; usar(g); } });
+      if (forzar) renglones.clear();
+      usar(d);
     } catch (e) {
+      if (previo) { $("estado").textContent = HT.textoDatos(previo).replace("actualizando…", "sin conexión con Tango"); return; }
       $("estado").textContent = "Sin datos";
       $("col-lista").replaceChildren(cajaError(e, () => cargar(true)));
     } finally { $("contenido").classList.remove("cargando"); }
@@ -207,7 +212,7 @@
     t.append(volver);
     t.append(el("span", "etiqueta-estado e-" + claseEstado(c), textoEstado(c)));
     t.append(el("h2", "", "Cotización " + c.numero_corto));
-    t.append(el("div", "cli", c.cliente));
+    t.append(HT.linkCliente(c.codigo_cliente, c.cliente));
     const datos = el("div", "datos-cot");
     const d = (et, v) => { const x = el("div"); x.append(el("span", "", et), v || "—"); datos.append(x); };
     d("Fecha", fecha(c.fecha)); d("Vigencia", fecha(c.vigencia)); d("Vendedor", c.vendedor);

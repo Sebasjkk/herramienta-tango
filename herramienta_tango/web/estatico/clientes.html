@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0B6E69">
+<title>Clientes | Herramienta Tango</title>
+<link rel="icon" href="/icono-192.png">
+<link rel="apple-touch-icon" href="/icono-192.png">
+<link rel="manifest" href="/manifest.json">
+<link rel="stylesheet" href="/comun.css">
+<script>try{var t=localStorage.getItem("ht_tema");if(t==="claro"||t==="oscuro")document.documentElement.dataset.tema=t}catch(e){}</script>
+<style>
+  .barra .filtros { margin-top: 10px; }
+  .lista-cli { list-style: none; margin: 0; padding: 0; }
+  .cli { width: 100%; display: grid; grid-template-columns: 1fr auto; gap: 1px 14px; text-align: left; font: inherit; color: inherit;
+    background: var(--papel); border: 1px solid var(--linea); border-radius: var(--radio); padding: 11px 14px; margin-bottom: 8px; cursor: pointer; }
+  .cli:hover { border-color: var(--patina); }
+  .cli[aria-pressed="true"] { border-color: var(--patina); box-shadow: inset 3px 0 0 var(--patina); background: var(--seleccion); }
+  .cli .nom { font-weight: 700; overflow-wrap: anywhere; }
+  .cli .cod { font-size: .8rem; color: var(--plomo); font-variant-numeric: tabular-nums; }
+  .cli .der { grid-column: 2; grid-row: 1 / span 2; text-align: right; font-size: .8rem; color: var(--plomo); line-height: 1.5; }
+
+  .ficha { padding: 18px; }
+  .ficha h2 { font-size: 1.35rem; margin: 2px 0 2px; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+  .ficha-cod { font-size: .85rem; color: var(--plomo); font-variant-numeric: tabular-nums; }
+  .datos-cli { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px 16px; margin: 14px 0 4px; font-size: .9rem; }
+  .datos-cli span { display: block; color: var(--plomo); font-size: .78rem; }
+  .datos-cli a { color: var(--patina); font-weight: 600; }
+  .ficha-acciones { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 2px; }
+  .seccion { border-top: 1px solid var(--linea); margin: 16px -18px 0; padding: 14px 18px 6px; }
+  .seccion-cab { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 6px; flex-wrap: wrap; }
+  .seccion h3 { font-size: .95rem; margin: 0; }
+  .seccion-cab a, .seccion-cab .boton-texto { font-size: .85rem; }
+  .seccion-cab a { color: var(--patina); font-weight: 600; }
+  .nota { font-size: .88rem; color: var(--plomo); margin: 4px 0 8px; }
+  .lista-mini { list-style: none; margin: 0; padding: 0; }
+  .lista-mini li { border-top: 1px solid var(--linea-suave); }
+  .lista-mini li:first-child { border-top: 0; }
+  .lista-mini a { display: grid; grid-template-columns: 1fr auto; gap: 1px 12px; align-items: center; padding: 8px 0; color: inherit; text-decoration: none; }
+  .lista-mini a:hover .tit { color: var(--patina); text-decoration: underline; }
+  .lista-mini .tit { font-weight: 600; overflow-wrap: anywhere; }
+  .lista-mini small { grid-column: 1; color: var(--plomo); font-size: .8rem; }
+  .lista-mini .der { grid-column: 2; grid-row: 1 / span 2; text-align: right; font-size: .85rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .direccion { padding: 8px 0; border-top: 1px solid var(--linea-suave); font-size: .92rem; }
+  .direccion:first-of-type { border-top: 0; }
+  .direccion small { display: block; color: var(--plomo); font-size: .8rem; }
+  .tabla-envoltura { overflow-x: auto; margin: 0 -18px; padding: 0 6px; }
+  .tabla a { color: inherit; }
+  .volver { display: none; }
+
+  @media (min-width: 960px) {
+    .contenido-cli { display: grid; grid-template-columns: minmax(300px, 400px) 1fr; gap: 20px; align-items: start; }
+    .detalle { position: sticky; top: 130px; max-height: calc(100vh - 146px); overflow-y: auto; }
+  }
+  @media (max-width: 959px) {
+    .contenido-cli.viendo .col-lista { display: none; }
+    .contenido-cli:not(.viendo) .detalle { display: none; }
+    body:has(.contenido-cli.viendo) .barra .filtros { display: none; }
+    .volver { display: inline-flex; margin-bottom: 10px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="app-nav" id="app-nav"></nav>
+  <div class="app-principal">
+    <div class="pagina">
+      <header class="cabecera">
+        <div class="cabecera-sup">
+          <h1>Clientes</h1>
+          <div class="datos"><span id="estado">Consultando Tango…</span><button type="button" class="boton-texto" id="actualizar">Actualizar</button></div>
+        </div>
+      </header>
+      <div class="barra">
+        <div class="buscador">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>
+          <label for="q" style="position:absolute;left:-9999px">Buscar cliente</label>
+          <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="Razón social, código o CUIT" enterkeyhint="search">
+          <button type="button" class="limpiar" id="limpiar" aria-label="Borrar búsqueda" hidden>×</button>
+        </div>
+        <div class="filtros" id="filtros" role="group" aria-label="Filtros"></div>
+      </div>
+      <div class="contenido-cli" id="contenido">
+        <div class="col-lista" id="col-lista" aria-live="polite"></div>
+        <section class="detalle" id="detalle" aria-live="polite"></section>
+      </div>
+      <p class="pie">Esta pantalla solo consulta: junta lo que Tango tiene de cada cliente (lista de precios, precios especiales, pedidos, cotizaciones y direcciones de entrega). Para asignarle otra lista, usá Listas de precios.</p>
+    </div>
+  </div>
+</div>
+
+<script src="/comun.js"></script>
+<script>
+(() => {
+  "use strict";
+  const { $, el, norm, tokens, fmt, fmtPrecio, num, fecha, pedir, textoError, cajaError } = HT;
+  HT.iniciar("clientes");
+
+  const MAX_LISTA = 80;
+  const hoy = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const ESTADOS_PED = { 1: "Ingresado", 2: "Aprobado", 3: "Cumplido", 4: "Cerrado", 5: "Anulado", 6: "Desaprobado" };
+  const clasePed = p => p.estado <= 2 ? "pendiente" : p.estado === 3 ? "cumplido" : p.estado === 4 ? "cerrado" : "anulada";
+  const cortoPed = n => (n || "").trim().slice(-8).replace(/^0+/, "") || "0";
+  const claseCot = c => c.estado === 2 ? (c.vigencia && c.vigencia < hoy ? "vencida" : "autorizada") : ({ 4: "procesada", 5: "anulada" })[c.estado] || "";
+  const textoCot = c => claseCot(c) === "vencida" ? "Vencida" : c.estado_texto;
+  const enCurso = c => c.estado === 2 && !(c.vigencia && c.vigencia < hoy);
+
+  let clientes = [];
+  const pedidosDe = new Map(), cotizDe = new Map(), preciosDe = new Map();   // codigo de cliente -> [...]
+  let filtro = "todos";
+  const params = new URLSearchParams(location.search);
+  let elegido = params.get("ver") || null;          // codigo del cliente
+  let abiertoInicial = false;
+  const envios = new Map();                          // id -> datos | "cargando" | Error
+
+  const FILTROS = [
+    { id: "todos", titulo: "Todos", f: () => true },
+    { id: "pedidos", titulo: "Con pedidos pendientes", f: c => (pedidosDe.get(c.codigo) || []).some(p => p.estado <= 2) },
+    { id: "cotiz", titulo: "Con cotizaciones en curso", f: c => (cotizDe.get(c.codigo) || []).some(enCurso) },
+    { id: "precios", titulo: "Con precios especiales", f: c => (preciosDe.get(c.codigo) || []).length > 0 },
+  ];
+
+  // ---------------------------------------------------------------- datos
+  const agrupar = (mapa, filas, clave) => { mapa.clear(); for (const x of filas) { const k = (x[clave] || "").trim(); if (!k) continue; if (!mapa.has(k)) mapa.set(k, []); mapa.get(k).push(x); } };
+
+  async function cargar(forzar) {
+    $("estado").textContent = "Consultando Tango…";
+    const usarClientes = d => {
+      clientes = d.datos.map(c => ({ ...c, _t: norm([c.codigo, c.razon_social, c.cuit, c.lista_precios].join(" ")) }))
+        .sort((a, b) => a.razon_social.localeCompare(b.razon_social, "es"));
+      $("estado").textContent = HT.textoDatos(d);
+      render();
+    };
+    // Pedidos, cotizaciones y precios suman informacion; si alguno falla, la ficha lo dice en su seccion
+    const extra = (ruta, mapa) => pedir(ruta, forzar, { previo: g => { agrupar(mapa, g.datos, "codigo_cliente"); render(); } })
+      .then(d => { agrupar(mapa, d.datos, "codigo_cliente"); mapa.error = null; render(); }, e => { mapa.error = e; render(); });
+    extra("/api/pedidos", pedidosDe);
+    extra("/api/cotizaciones", cotizDe);
+    extra("/api/precios", preciosDe);
+    let previo = null;
+    try {
+      usarClientes(await pedir("/api/clientes", forzar, { previo: g => { previo = g; usarClientes(g); } }));
+    } catch (e) {
+      if (previo) { $("estado").textContent = HT.textoDatos(previo).replace("actualizando…", "sin conexión con Tango"); return; }
+      $("estado").textContent = "Sin datos";
+      $("col-lista").replaceChildren(cajaError(e, () => cargar(true)));
+    }
+  }
+
+  // ---------------------------------------------------------------- lista
+  function render() {
+    if (!clientes.length) { if (!$("col-lista").querySelector(".error")) $("col-lista").replaceChildren(HT.esqueleto(8)); return; }
+    const ts = tokens($("q").value);
+    const base = clientes.filter(c => ts.every(t => c._t.includes(t)));
+    const fs = $("filtros"); fs.replaceChildren();
+    for (const f of FILTROS) {
+      const n = base.filter(f.f).length;
+      if (f.id !== "todos" && f.id !== filtro && !n) continue;
+      const b = el("button", "filtro", f.titulo); b.type = "button";
+      b.setAttribute("aria-pressed", String(f.id === filtro)); b.append(el("b", "", fmt.format(n)));
+      b.addEventListener("click", () => { filtro = f.id; render(); });
+      fs.append(b);
+    }
+    const lista = base.filter(FILTROS.find(f => f.id === filtro).f);
+    const col = $("col-lista");
+    if (!lista.length) { col.replaceChildren(el("p", "aviso", "Ningún cliente coincide.")); if (!elegido) $("detalle").replaceChildren(); return; }
+    if (!elegido) elegido = window.matchMedia("(min-width: 960px)").matches ? lista[0].codigo : null;
+    const frag = document.createDocumentFragment();
+    frag.append(el("p", "resumen", lista.length === 1 ? "1 cliente" : lista.length > MAX_LISTA
+      ? `${fmt.format(lista.length)} clientes · se ven ${MAX_LISTA}: escribí para encontrar uno` : `${fmt.format(lista.length)} clientes`));
+    const ul = el("ul", "lista-cli");
+    for (const c of lista.slice(0, MAX_LISTA)) {
+      const b = el("button", "cli"); b.type = "button"; b.setAttribute("aria-pressed", String(c.codigo === elegido));
+      const pend = (pedidosDe.get(c.codigo) || []).filter(p => p.estado <= 2).length;
+      const cots = (cotizDe.get(c.codigo) || []).filter(enCurso).length;
+      const der = el("span", "der");
+      if (pend) der.append(el("span", "etiqueta-estado e-pendiente", pend === 1 ? "1 pedido" : `${pend} pedidos`));
+      if (cots) { if (pend) der.append(el("br")); der.append(el("span", "etiqueta-estado e-autorizada", cots === 1 ? "1 cotiz." : `${cots} cotiz.`)); }
+      if (!c.habilitado) { if (der.childNodes.length) der.append(el("br")); der.append(el("span", "etiqueta-estado e-anulada", "Inhabilitado")); }
+      b.append(el("span", "nom", c.razon_social || c.codigo), el("span", "cod", [c.codigo, c.lista_precios].filter(Boolean).join(" · ")), der);
+      b.addEventListener("click", () => {
+        elegido = c.codigo;
+        history.replaceState(history.state, "", "/clientes?ver=" + encodeURIComponent(c.codigo) + location.hash);
+        if (!window.matchMedia("(min-width: 960px)").matches) { history.pushState({}, "", "#cli"); $("contenido").classList.add("viendo"); window.scrollTo(0, 0); }
+        render();
+      });
+      const li = el("li"); li.append(b); ul.append(li);
+    }
+    frag.append(ul);
+    col.replaceChildren(frag);
+    dibujarFicha();
+  }
+
+  // ---------------------------------------------------------------- ficha
+  function seccion(titulo, link) {
+    const s = el("section", "seccion");
+    const cab = el("div", "seccion-cab"); cab.append(el("h3", "", titulo));
+    if (link) cab.append(link);
+    s.append(cab);
+    return s;
+  }
+  function filaLink(href, tit, sub, der) {
+    const li = el("li"); const a = el("a"); a.href = href;
+    a.append(el("span", "tit", tit), el("small", "", sub || ""));
+    const d = el("span", "der"); if (der instanceof Node) d.append(der); else d.textContent = der || "";
+    a.append(d); li.append(a); return li;
+  }
+  const errorDe = mapa => mapa.error ? el("p", "nota", textoError(mapa.error)) : null;
+
+  function dibujarFicha() {
+    const cont = $("detalle");
+    const c = clientes.find(x => x.codigo === elegido);
+    if (!c) { cont.replaceChildren(elegido && clientes.length ? el("p", "aviso", "No se encontró ese cliente en Tango.") : ""); return; }
+    const t = el("article", "tarjeta ficha");
+    const volver = el("button", "boton volver", "‹ Clientes"); volver.type = "button"; volver.addEventListener("click", () => history.back());
+    t.append(volver, el("div", "ficha-cod", c.codigo), el("h2", "", c.razon_social || c.codigo));
+    if (!c.habilitado) t.append(el("span", "etiqueta-estado e-anulada", "Inhabilitado en Tango"));
+    const datos = el("div", "datos-cli");
+    const dato = (et, v) => { const x = el("div"); x.append(el("span", "", et)); if (v instanceof Node) x.append(v); else x.append(v || "—"); datos.append(x); };
+    dato("CUIT", c.cuit);
+    let lista = null;
+    if (c.lista_precios) { lista = el("a", "", c.lista_precios); lista.href = "/precios?q=" + encodeURIComponent(c.lista_precios); }
+    dato("Lista de precios", lista || "Sin lista asignada");
+    t.append(datos);
+    const acc = el("div", "ficha-acciones");
+    const link = el("button", "boton chico", "Copiar link"); link.type = "button";
+    link.addEventListener("click", () => HT.copiarLink("/clientes?ver=" + encodeURIComponent(c.codigo)));
+    acc.append(link);
+    t.append(acc);
+
+    // Pedidos: pendientes primero
+    const peds = (pedidosDe.get(c.codigo) || []).slice().sort((a, b) => (a.estado <= 2 ? 0 : 1) - (b.estado <= 2 ? 0 : 1) || (b.fecha || "").localeCompare(a.fecha || ""));
+    const sp = seccion("Pedidos");
+    if (errorDe(pedidosDe)) sp.append(errorDe(pedidosDe));
+    else if (!peds.length) sp.append(el("p", "nota", "No tiene pedidos en Tango."));
+    else {
+      const ul = el("ul", "lista-mini");
+      for (const p of peds.slice(0, 8)) ul.append(filaLink("/pedidos?ver=" + p.id, "Pedido " + cortoPed(p.numero),
+        [fecha(p.fecha), p.orden_compra_cliente && "OC " + p.orden_compra_cliente].filter(Boolean).join(" · "),
+        el("span", "etiqueta-estado e-" + clasePed(p), ESTADOS_PED[p.estado] || p.estado)));
+      sp.append(ul);
+      if (peds.length > 8) sp.append(el("p", "nota", `y ${peds.length - 8} más.`));
+    }
+    t.append(sp);
+
+    // Cotizaciones: en curso primero
+    const cots = (cotizDe.get(c.codigo) || []).slice().sort((a, b) => (enCurso(a) ? 0 : 1) - (enCurso(b) ? 0 : 1) || (b.fecha || "").localeCompare(a.fecha || ""));
+    const sc = seccion("Cotizaciones");
+    if (errorDe(cotizDe)) sc.append(errorDe(cotizDe));
+    else if (!cots.length) sc.append(el("p", "nota", "No tiene cotizaciones en Tango."));
+    else {
+      const ul = el("ul", "lista-mini");
+      for (const q of cots.slice(0, 8)) ul.append(filaLink("/cotizaciones?ver=" + q.id, q.numero_corto,
+        `${fecha(q.fecha)}${q.vigencia ? " · vigencia " + fecha(q.vigencia) : ""}`, el("span", "etiqueta-estado e-" + claseCot(q), textoCot(q))));
+      sc.append(ul);
+      if (cots.length > 8) sc.append(el("p", "nota", `y ${cots.length - 8} más.`));
+    }
+    t.append(sc);
+
+    // Precios especiales (los de su lista con precio propio)
+    const ps = (preciosDe.get(c.codigo) || []).filter(p => p.precio > 0).sort((a, b) => a.descripcion.localeCompare(b.descripcion, "es"));
+    const exp = ps.length ? HT.botonExportar(() => HT.exportar(`Precios ${c.razon_social || c.codigo}`,
+      [["Código"], ["Artículo"], ["Lista"], ["Moneda"], ["Precio", "numero"], ["Modificado"]],
+      ps.map(p => [p.codigo_articulo, p.descripcion, p.lista, p.moneda, p.precio, fecha(p.modificado)])), "Exportar") : null;
+    if (exp) { exp.classList.remove("boton", "chico"); exp.classList.add("boton-texto"); }
+    const spr = seccion("Precios especiales", exp);
+    if (errorDe(preciosDe)) spr.append(errorDe(preciosDe));
+    else if (!ps.length) spr.append(el("p", "nota", c.lista_precios ? "No tiene precios propios: paga los de su lista." : "No tiene precios propios."));
+    else {
+      const tabla = el("table", "tabla"); const th = el("tr");
+      for (const [x, cl] of [["Artículo", ""], ["Lista", ""], ["Precio", "der"]]) th.append(el("th", cl, x));
+      const thead = el("thead"); thead.append(th); const tb = el("tbody");
+      for (const p of ps.slice(0, 30)) {
+        const tr = el("tr"); const art = el("td"); const a = el("a", "", p.descripcion || p.codigo_articulo);
+        a.href = "/buscar?art=" + encodeURIComponent(p.codigo_articulo); art.append(a);
+        const pr = el("td", "der"); pr.append(el("span", "moneda", p.moneda), fmtPrecio.format(p.precio));
+        tr.append(art, el("td", "", p.lista), pr); tb.append(tr);
+      }
+      tabla.append(thead, tb);
+      const env = el("div", "tabla-envoltura"); env.append(tabla); spr.append(env);
+      if (ps.length > 30) spr.append(el("p", "nota", `Se ven 30 de ${ps.length}. Exportalos para verlos todos.`));
+    }
+    t.append(spr);
+
+    // Direcciones de entrega (se piden al abrir la ficha)
+    const sd = seccion("Direcciones de entrega");
+    if (c.id != null && !envios.has(c.id)) {
+      envios.set(c.id, "cargando");
+      pedir("/api/clientes/" + c.id + "/envio").then(d => envios.set(c.id, d.datos), e => envios.set(c.id, e))
+        .then(() => { if (elegido === c.codigo) dibujarFicha(); });
+    }
+    const en = envios.get(c.id);
+    if (en === "cargando") sd.append(HT.esqueleto(2, "plano"));
+    else if (en instanceof Error) sd.append(el("p", "nota", textoError(en)));
+    else if (en) {
+      if (!en.direcciones.length) sd.append(el("p", "nota", "No tiene direcciones cargadas."));
+      for (const x of en.direcciones) {
+        const d = el("div", "direccion");
+        d.append(x.direccion, x.habitual ? " " : "", x.habitual ? el("span", "etiqueta-estado e-autorizada", "Habitual") : "",
+                 el("small", "", [x.localidad, x.provincia, x.codigo_postal && "CP " + x.codigo_postal, x.telefono && "Tel. " + x.telefono].filter(Boolean).join(" · ")));
+        sd.append(d);
+      }
+      if (en.contacto) sd.append(el("p", "nota", "Contacto: " + en.contacto));
+    }
+    t.append(sd);
+    cont.replaceChildren(t);
+    // Entrando con /clientes?ver=<codigo> en el celular: se abre la ficha una sola vez
+    if (!abiertoInicial && !window.matchMedia("(min-width: 960px)").matches && params.get("ver") === c.codigo) {
+      abiertoInicial = true; history.pushState({}, "", "#cli"); $("contenido").classList.add("viendo");
+    }
+  }
+
+  HT.conectarBuscador($("q"), $("limpiar"), () => { elegido = null; $("contenido").classList.remove("viendo"); render(); });
+  $("actualizar").addEventListener("click", () => { envios.clear(); cargar(true); });
+  window.addEventListener("popstate", () => { if (location.hash !== "#cli") $("contenido").classList.remove("viendo"); });
+  if (location.hash === "#cli") history.replaceState(null, "", location.pathname + location.search);
+  render();
+  cargar(false);
+})();
+</script>
+</body>
+</html>

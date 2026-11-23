@@ -471,12 +471,20 @@
     cab.append(el("p", "", asignados.length
       ? `La usa${asignados.length > 1 ? "n" : ""} en Tango: ${asignados.length > 3 ? asignados.slice(0, 3).join(", ") + ` y ${asignados.length - 3} más` : asignados.join(", ")}`.replace(/\.?$/, ".")
       : "Ningún cliente la tiene asignada en Tango."));
+    const acc = el("div", "acciones");
+    // Exportar: un renglon por precio (el de lista y cada precio especial de cliente)
+    acc.append(HT.botonExportar(() => HT.exportar(`Lista ${l.numero} ${l.nombre}`,
+      [["Código"], ["Descripción"], ["Cliente"], ["Moneda"], ["Precio", "numero"], ["Modificado"]],
+      actual.renglones.flatMap(r => [
+        ...(r.precio > 0 || !(r.especiales || []).length ? [[r.codigo_articulo, r.descripcion, "Todos", l.moneda, r.precio, HT.fecha(r.modificado)]] : []),
+        ...(r.especiales || []).map(e => [r.codigo_articulo, r.descripcion, e.razon_social || e.codigo_cliente, l.moneda, e.precio, HT.fecha(r.modificado)]),
+      ]))));
     if (HT.esAdmin() && puedeEditar()) {
-      const acc = el("div", "acciones");
       const asig = el("button", "boton chico", "Asignar a un cliente"); asig.type = "button"; asig.addEventListener("click", asignarLista);
       const b = el("button", "boton chico peligro", "Eliminar lista"); b.type = "button"; b.addEventListener("click", eliminarLista);
-      acc.append(asig, b); cab.append(acc);
+      acc.append(asig, b);
     }
+    cab.append(acc);
     d.append(cab);
     d.append(seccionUsos(l));
     if (puedeEditar()) d.append(formAgregar());
@@ -521,13 +529,51 @@
           if (Date.now() > hasta) { hasta = Date.now() + 4000; quitar.classList.add("confirmar"); quitar.textContent = "¿Quitar de la lista? Tocá de nuevo";
             setTimeout(() => { quitar.classList.remove("confirmar"); quitar.textContent = "Quitar"; }, 4000); return; }
           quitar.disabled = true; quitar.textContent = "Quitando…";
-          try { await escribir("/api/precios/quitar", { renglon: r.id }); await abrirLista(actual.lista.id, true); }
+          try {
+            await escribir("/api/precios/quitar", { renglon: r.id });
+            await abrirLista(actual.lista.id, true);
+            ofrecerDeshacerQuitar(r, m);
+          }
           catch (e) { alertar(li, e.message); quitar.disabled = false; quitar.textContent = "Quitar"; }
         });
         b.append(cambiar, quitar); li.append(b);
       }
     }
     return li;
+  }
+
+  // ---------------------------------------------------------------- deshacer
+  // Despues de cambiar o quitar un precio queda unos segundos un aviso con "Deshacer".
+  // Deshacer es otro cambio normal (queda en el registro con quien lo hizo).
+  function ofrecerDeshacerCambio(r, m, nuevo) {
+    const idLista = actual.lista.id;
+    HT.avisar(`${r.codigo_articulo}: ${fmtPrecio.format(m.precio)} → ${fmtPrecio.format(nuevo)}`, { texto: "Deshacer", alTocar: async () => {
+      try {
+        await escribir("/api/precios/cambiar", { renglon: r.id, precio: m.precio, cliente: m.cliente });
+        if (actual && actual.lista.id === idLista) await abrirLista(idLista, true);
+        HT.avisar(`${r.codigo_articulo} volvió a ${fmtPrecio.format(m.precio)}`);
+      } catch (e) { alert("No se pudo deshacer: " + e.message); }
+    } });
+  }
+
+  // Quitar se deshace volviendo a agregar el articulo con el precio que tenia. Si tenia precios
+  // especiales de otros clientes no se ofrece: se perderian, y conviene que lo resuelva una persona.
+  function ofrecerDeshacerQuitar(r, m) {
+    const otros = (r.especiales || []).filter(e => e.id_cliente !== m.cliente);
+    if (otros.length) {
+      HT.avisar(`Se quitó ${r.codigo_articulo}. Tenía ${otros.length} precio${otros.length > 1 ? "s" : ""} especial${otros.length > 1 ? "es" : ""} más: si fue un error, cargalos de nuevo.`, null, 8);
+      return;
+    }
+    const idLista = actual.lista.id;
+    const cli = m.cliente ? (r.especiales || []).find(e => e.id_cliente === m.cliente) : null;
+    HT.avisar(`Se quitó ${r.codigo_articulo} de la lista`, { texto: "Deshacer", alTocar: async () => {
+      try {
+        await escribir("/api/precios/agregar", { lista: idLista, articulo: r.codigo_articulo, precio: m.precio,
+                                                 cliente: m.cliente, codigo_cliente: cli ? cli.codigo_cliente : "" });
+        if (actual && actual.lista.id === idLista) await abrirLista(idLista, true);
+        HT.avisar(`${r.codigo_articulo} volvió a la lista`);
+      } catch (e) { alert("No se pudo deshacer: " + e.message); }
+    } });
   }
 
   function alertar(contenedor, texto) {
@@ -563,8 +609,10 @@
     guardar.addEventListener("click", async () => {
       guardar.disabled = true; guardar.textContent = "Guardando…";
       try {
-        await escribir("/api/precios/cambiar", { renglon: r.id, precio: leerPrecio(campo.value), cliente: m.cliente });
+        const nuevo = leerPrecio(campo.value);
+        await escribir("/api/precios/cambiar", { renglon: r.id, precio: nuevo, cliente: m.cliente });
         editando = null; await abrirLista(actual.lista.id, true);
+        ofrecerDeshacerCambio(r, m, nuevo);
       } catch (e) { alertar(caja, e.message); guardar.disabled = false; guardar.textContent = "Guardar"; }
     });
     caja.append(campo, cambio, guardar, cancelar);

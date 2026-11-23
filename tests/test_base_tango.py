@@ -71,6 +71,25 @@ class TestBaseTango(unittest.TestCase):
         self.assertIn("T_COMP = 'FAC' AND r.N_COMP = 'A000100001234'", run.call_args[0][0][-1])
 
 
+    def test_movimientos(self):
+        js = ('{"consulta":1,"filas":[{"C_T_COMP":"REM","C_N_COMP":"R000800000110","C_FECHA":"2026-11-14","C_CLIENTE":"METALIZA S.A.",'
+              '"TIPO_MOV":"S","CANTIDAD":25,"COD_DEPOSI":" 1","N_PARTIDA":"HIST-PO0001"},'
+              '{"C_T_COMP":"AJU","C_N_COMP":" 000100000012","C_FECHA":"2026-11-10","TIPO_MOV":"E","CANTIDAD":55.5}]}')
+        with mock.patch.object(base_tango.subprocess, "run", return_value=salida(js)) as run:
+            ms = base_tango.movimientos_articulo(" 01029071 ")
+        script = run.call_args[0][0][-1]
+        self.assertIn("r.COD_ARTICU = '01029071'", script)
+        self.assertNotIn("UPDATE", script.upper())
+        self.assertEqual((ms[0]["tipo"], ms[0]["cantidad"], ms[0]["tercero"], ms[0]["partida"], ms[0]["deposito"]),
+                         ("Remito", -25, "METALIZA S.A.", "HIST-PO0001", "1"))
+        self.assertEqual((ms[1]["tipo"], ms[1]["cantidad"], ms[1]["entrada"]), ("Ajuste", 55.5, True))
+
+    def test_movimientos_codigo_invalido(self):
+        for malo in ("X'; DROP TABLE STA11 --", "", "A" * 30, "$(calc)"):
+            with self.assertRaises(ValueError):
+                base_tango.movimientos_articulo(malo)
+
+
 class TestDesdeOtraPC(unittest.TestCase):
     def setUp(self):
         base_tango._cache.clear()

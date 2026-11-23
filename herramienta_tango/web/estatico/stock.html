@@ -80,6 +80,7 @@
           </select>
           <label class="chip"><input type="checkbox" id="vacios"> Mostrar lotes vacíos</label>
           <button type="button" class="chip chip-neg" id="negativos" aria-pressed="false">Ver negativos <span class="cant" id="cantNeg"></span></button>
+          <button type="button" class="chip" id="exportar">Exportar a Excel</button>
         </div>
       </div>
 
@@ -125,11 +126,9 @@
   async function cargar(forzar) {
     ui.resultados.classList.add("cargando");
     ui.estado.textContent = "Consultando Tango…";
-    try {
-      const r = await fetch("/api/stock/partidas" + (forzar ? "?refrescar=1" : ""), { cache: "no-store" });
-      const d = await r.json();
-      if (!d.ok) throw new Error(d.error || "Error al consultar Tango.");
-      // La API de la herramienta usa nombres claros; aca se pasan a nombres cortos de trabajo
+    let previo = null;
+    // La API de la herramienta usa nombres claros; aca se pasan a nombres cortos de trabajo
+    const usar = d => {
       filas = d.datos.map(x => {
         const f = { id: x.id_partida, art: x.codigo_articulo, desc: x.descripcion, dep: x.deposito,
                     part: x.partida, desp: x.despacho, venc: x.vencimiento, um: x.unidad, s: x.saldo };
@@ -137,9 +136,13 @@
         f._art = sinCeros(norm(f.art));
         return f;
       });
-      ui.estado.textContent = "Datos de Tango de las " + fmtHora(new Date(d.actualizado)) + " h";
+      ui.estado.textContent = HT.textoDatos(d);
       render();
+    };
+    try {
+      usar(await HT.pedir("/api/stock/partidas", forzar, { previo: g => { previo = g; usar(g); } }));
     } catch (e) {
+      if (previo) { ui.estado.textContent = HT.textoDatos(previo).replace("actualizando…", "sin conexión con Tango"); return; }
       ui.estado.textContent = "Sin datos";
       ui.resultados.replaceChildren(mensajeError(e.message === "Failed to fetch"
         ? HT.textoError(e)
@@ -204,6 +207,16 @@
   }
 
   // ---------------------------------------------------------------- dibujo
+  // Exportar: los lotes que corresponden a lo que se esta viendo (busqueda, deposito, negativos)
+  let visibles = [];
+  $("exportar").addEventListener("click", () => {
+    if (!visibles.length) { HT.avisar("No hay lotes para exportar con esta búsqueda."); return; }
+    const titulo = d => d ? d.charAt(0) + d.slice(1).toLowerCase() : "";
+    HT.exportar("Stock por partida" + (modoNegativos ? " - negativos" : ui.q.value.trim() ? " - " + ui.q.value.trim() : ""),
+      [["Código"], ["Descripción"], ["Depósito"], ["Partida"], ["Despacho"], ["Vencimiento"], ["Unidad"], ["Saldo", "numero"]],
+      visibles.map(f => [f.art, f.desc, titulo(f.dep), f.part, f.desp, HT.fecha(f.venc), HT.unidad(f.um), f.s]));
+  });
+
   function render() {
     const texto = ui.q.value;
     ui.limpiar.hidden = !texto;
@@ -212,6 +225,7 @@
     ui.negativos.hidden = !negs && !modoNegativos;
     ui.negativos.setAttribute("aria-pressed", String(modoNegativos));
     if (!filas.length) return;
+    visibles = [];
 
     const nombreDep = ui.deposito.value ? "Central" : "todos los depósitos";
     let grupos;
@@ -223,6 +237,7 @@
         `${negs} lotes en negativo en ${grupos.length} artículos (${nombreDep}). Un lote negativo quiere decir que salió más de lo que entró en ese lote.`));
     } else if (!norm(texto)) {
       const conSaldo = filasDelDeposito().filter(f => Math.abs(f.s) > EPS);
+      visibles = conSaldo;
       const arts = new Set(conSaldo.map(f => f.art)).size;
       const a = el("div", "aviso");
       const p = el("p");
@@ -246,6 +261,7 @@
       frag.append(el("p", "resumen", grupos.length === 1 ? "1 artículo" : `${grupos.length} artículos`));
     }
 
+    visibles = grupos.flatMap(g => modoNegativos ? g.negativos : g.lotes);
     const grilla = el("div", "grilla-art");
     for (const g of grupos.slice(0, MAX_ARTICULOS)) grilla.append(tarjeta(g));
     frag.append(grilla);

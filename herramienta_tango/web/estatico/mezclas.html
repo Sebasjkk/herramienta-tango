@@ -47,6 +47,7 @@
   .mz ul { list-style: none; margin: 6px 0; padding: 0; font-size: .88rem; }
   .mz ul li { padding: 2px 0; overflow-wrap: anywhere; }
   .estado { font-size: .75rem; font-weight: 700; padding: 2px 8px; border-radius: 99px; white-space: nowrap; }
+  .sugerida { font-size: .8rem; color: var(--ambar); margin: 4px 0 0; }
   .estado.pendiente { background: var(--ambar-suave); color: var(--ambar); }
   .estado.subida { background: var(--patina-suave); color: var(--patina-oscura); }
   .mz .acciones { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
@@ -90,7 +91,47 @@
   let productos = [nuevoProducto(), nuevoProducto()];
   let recienGuardada = null;
 
-  function nuevoProducto() { return { art: null, partida: "", cantidad: "" }; }
+  function nuevoProducto() { return { art: null, partida: "", cantidad: "", sugerida: false }; }
+
+  // Ultima partida que se uso de un polvo en las mezclas cargadas, si todavia tiene stock.
+  // Es solo una sugerencia: el que carga confirma mirando la etiqueta del tambor.
+  function ultimaPartida(codigo) {
+    const ps = partidasDe.get(codigo) || [];
+    for (const m of [...mezclas].sort((a, b) => b.id - a.id)) {
+      const r = m.renglones.find(x => x.codigo === codigo && x.partida);
+      if (r) return ps.some(x => x.partida === r.partida) ? r.partida : "";
+    }
+    return "";
+  }
+  function elegirArticulo(p, a) {
+    p.art = a;
+    const ps = partidasDe.get(a.codigo) || [];
+    const ultima = ps.length > 1 ? ultimaPartida(a.codigo) : "";
+    p.partida = ps.length === 1 ? ps[0].partida : ultima;
+    p.sugerida = !!ultima;
+  }
+
+  // Repetir: copia los polvos y kilos de una mezcla anterior; el remito se escribe de nuevo
+  function repetir(m) {
+    if (!articulos.length) { HT.avisar("Esperá a que terminen de cargar los artículos de Tango"); return; }
+    const faltan = [];
+    productos = m.renglones.map(x => {
+      const a = articulos.find(y => y.codigo === x.codigo);
+      if (!a) { faltan.push(x.codigo); return null; }
+      const p = nuevoProducto();
+      p.art = a;
+      const ps = partidasDe.get(a.codigo) || [];
+      if (x.partida && ps.some(y => y.partida === x.partida)) { p.partida = x.partida; p.sugerida = ps.length > 1; }
+      else if (ps.length === 1) p.partida = ps[0].partida;
+      p.cantidad = String(x.cantidad).replace(".", ",");
+      return p;
+    }).filter(Boolean);
+    if (!productos.length) productos = [nuevoProducto()];
+    referencia = ""; recienGuardada = null;
+    dibujarNueva();
+    $("nueva").scrollIntoView({ behavior: "smooth", block: "start" });
+    HT.avisar(faltan.length ? `Copiada. No se encontró en Tango: ${faltan.join(", ")}` : `Mezcla ${m.id} copiada: revisá partidas y kilos`);
+  }
   const leerNumero = t => { t = String(t || "").trim(); if (!t) return NaN; return Number(t.includes(",") ? t.replace(/\./g, "").replace(",", ".") : t); };
   const fechaHora = iso => iso ? new Date(iso).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" }) : "";
   const titulo = d => d ? d.charAt(0) + d.slice(1).toLowerCase() : "";
@@ -201,14 +242,14 @@
         .filter(a => ts.every(x => a._t.includes(x) || sinCeros(norm(a.codigo)).includes(sinCeros(x))))
         .sort((x, y) => (partidasDe.has(y.codigo) ? 1 : 0) - (partidasDe.has(x.codigo) ? 1 : 0))
         .map(a => ({ chico: a.codigo, texto: a.descripcion + (a.usa_partidas && !partidasDe.has(a.codigo) ? " (sin stock)" : ""), valor: a })),
-        a => { p.art = a; const ps = partidasDe.get(a.codigo) || []; p.partida = ps.length === 1 ? ps[0].partida : ""; dibujarNueva(); });
+        a => { elegirArticulo(p, a); dibujarNueva(); });
       c.append(b.caja);
       return c;
     }
     const a = p.art;
     const eleg = el("div", "elegido"); eleg.append(a.descripcion, el("small", "", a.codigo));
     const cambiar = el("button", "boton-texto", "Cambiar"); cambiar.type = "button";
-    cambiar.addEventListener("click", () => { p.art = null; p.partida = ""; dibujarNueva(); });
+    cambiar.addEventListener("click", () => { p.art = null; p.partida = ""; p.sugerida = false; dibujarNueva(); });
     eleg.append(cambiar);
     c.append(eleg);
 
@@ -221,8 +262,9 @@
       sel.append(new Option(ps.length ? "Elegí la partida" : "No tiene partidas con stock", ""));
       for (const x of ps) sel.append(new Option(`${x.partida} — ${num(x.saldo)} ${unidad(x.unidad)} · ${titulo(x.deposito)}`, x.partida));
       sel.value = p.partida;
-      sel.addEventListener("change", () => { p.partida = sel.value; actualizarTotal(); });
+      sel.addEventListener("change", () => { p.partida = sel.value; p.sugerida = false; dibujarNueva(); });
       cajaP.append(l, sel);
+      if (p.sugerida && p.partida) cajaP.append(el("p", "nota sugerida", "Es la última partida que se usó de este polvo. Fijate que coincida con la etiqueta del tambor."));
     } else {
       cajaP.append(el("p", "nota", "No lleva partidas."));
     }
@@ -336,8 +378,12 @@
         r.append(el("li", "", `${num(x.cantidad)} ${unidad(x.unidad)} de ${x.codigo} ${x.descripcion}${x.partida ? " · partida " + x.partida : ""}`));
       }
       li.append(r);
+      const rep = el("button", "boton chico", "Repetir"); rep.type = "button";
+      rep.title = "Cargar una mezcla nueva con los mismos polvos y kilos";
+      rep.addEventListener("click", () => repetir(m));
       if (m.estado === "subida") {
         li.append(el("small", "", `Subida por ${m.subida_por} el ${fechaHora(m.subida_fecha)}`));
+        const acc = el("div", "acciones"); acc.append(rep); li.append(acc);
       } else {
         const acc = el("div", "acciones");
         acc.append(botonPlanilla([m.id], "Planilla"));
@@ -349,7 +395,7 @@
           try { await HT.escribir("/api/mezclas/borrar", { id: m.id }); if (recienGuardada && recienGuardada.id === m.id) { recienGuardada = null; dibujarNueva(); } cargarMezclas(); }
           catch (e) { alert(e.message); }
         });
-        acc.append(ok, b);
+        acc.append(rep, ok, b);
         li.append(acc);
       }
       ul.append(li);

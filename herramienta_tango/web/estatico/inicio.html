@@ -183,8 +183,7 @@
 
   // ---------------------------------------------------------------- cotizaciones
   async function cotizaciones(forzar) {
-    try {
-      const d = await pedir("/api/cotizaciones", forzar);
+    const pintar = d => {
       const hoy = hoyIso(), limite = sumarDias(hoy, DIAS_AVISO);
       const vigentes = d.datos.filter(c => c.estado === 2 && c.vigencia && c.vigencia >= hoy);
       const pronto = vigentes.filter(c => c.vigencia <= limite).sort((a, b) => a.vigencia.localeCompare(b.vigencia));
@@ -197,6 +196,10 @@
                  estado: dias <= 3 ? ["vencida", dias === 0 ? "Vence hoy" : dias === 1 ? "Mañana" : `En ${dias} días`] : null,
                  der: dias > 3 ? `en ${dias} días` : "" };
       }), `No hay cotizaciones que venzan en los próximos ${DIAS_AVISO} días.` + (vencidas ? ` Hay ${vencidas} vencidas sin procesar.` : "")));
+    };
+    try {
+      const d = await pedir("/api/cotizaciones", forzar, { previo: d => { pintar(d); anotarGuardado(d); } });
+      pintar(d);
       return d;
     } catch (e) {
       cifraError("cot", e); panelError("cot", e, () => cotizaciones(true));
@@ -205,8 +208,7 @@
 
   // ---------------------------------------------------------------- pedidos
   async function pedidos(forzar) {
-    try {
-      const d = await pedir("/api/pedidos", forzar);
+    const pintar = d => {
       const hoy = hoyIso();
       const pend = d.datos.filter(p => p.estado === 1 || p.estado === 2)
         .sort((a, b) => (a.fecha_entrega || "9").localeCompare(b.fecha_entrega || "9"));
@@ -219,6 +221,10 @@
                  sub: [p.fecha_entrega && "Entrega " + fecha(p.fecha_entrega), p.orden_compra_cliente && "OC " + p.orden_compra_cliente].filter(Boolean).join(" · "),
                  estado: atrasado ? ["atrasado", "Atrasado"] : null, der: atrasado ? "" : fecha(p.fecha) };
       }), "No hay pedidos pendientes."));
+    };
+    try {
+      const d = await pedir("/api/pedidos", forzar, { previo: d => { pintar(d); anotarGuardado(d); } });
+      pintar(d);
       return d;
     } catch (e) {
       cifraError("ped", e); panelError("ped", e, () => pedidos(true));
@@ -229,9 +235,8 @@
   // Negativos: articulos cuyo saldo (sumando lotes o depositos) da menos de cero, o con algun lote negativo.
   // Bajo punto de pedido: articulos con punto de pedido cargado en Tango y saldo por debajo.
   async function stock(forzar) {
-    try {
-      const [part, porArt, arts] = await Promise.all([pedir("/api/stock/partidas", forzar), pedir("/api/stock/articulos", forzar),
-                                                      pedir("/api/articulos", forzar)]);
+    const RUTAS = ["/api/stock/partidas", "/api/stock/articulos", "/api/articulos"];
+    const pintar = ([part, porArt, arts]) => {
       const info = new Map();
       for (const a of arts.datos) info.set(a.codigo, { cod: a.codigo, desc: a.descripcion, um: a.unidad, usa: a.usa_partidas, pp: a.punto_pedido, total: 0, lotesNeg: 0 });
       const dato = (cod, desc, um) => { if (!info.has(cod)) info.set(cod, { cod, desc, um, usa: true, pp: 0, total: 0, lotesNeg: 0 }); return info.get(cod); };
@@ -256,7 +261,15 @@
                             der: `${num(x.total)} ${unidad(x.um)}`, derClase: x.total < -EPS ? "neg" : "" })),
       ];
       panel("stock", lista(filas, "No hay artículos en negativo ni debajo del punto de pedido."));
-      return part;
+    };
+    // Lo guardado se usa solo si estan las tres consultas
+    let llego = false;
+    if (!forzar) Promise.all(RUTAS.map(HT.guardado)).then(g => { if (!llego && g.every(Boolean)) { pintar(g); anotarGuardado(g[0]); } });
+    try {
+      const r = await Promise.all(RUTAS.map(x => pedir(x, forzar, { previo: () => {} })));
+      llego = true;
+      pintar(r);
+      return r[0];
     } catch (e) {
       cifraError("neg", e); panelError("stock", e, () => stock(true));
     }
@@ -293,12 +306,20 @@
   }
 
   // ---------------------------------------------------------------- carga
+  let guardadoMasViejo = null;
+  function anotarGuardado(d) {
+    if (!guardadoMasViejo || d.actualizado < guardadoMasViejo.actualizado) guardadoMasViejo = d;
+    if (!cargando) return;
+    $("datos").textContent = HT.textoDatos(guardadoMasViejo);
+  }
+  let cargando = false;
   async function cargar(forzar) {
     $("datos").textContent = "Consultando Tango…";
+    cargando = true; guardadoMasViejo = null;
     const r = (await Promise.all([cotizaciones(forzar), pedidos(forzar), stock(forzar), mezclas(), precios()])).filter(Boolean);
-    $("datos").textContent = r.length
-      ? "Datos de Tango de las " + HT.hora(r.map(d => new Date(d.actualizado)).sort((a, b) => a - b)[0]) + " h"
-      : "Sin datos de Tango";
+    cargando = false;
+    $("datos").textContent = r.length ? HT.textoDatos(r.sort((a, b) => a.actualizado.localeCompare(b.actualizado))[0])
+      : guardadoMasViejo ? HT.textoDatos(guardadoMasViejo).replace("actualizando…", "sin conexión con Tango") : "Sin datos de Tango";
   }
 
   $("actualizar").addEventListener("click", () => { armar(); cargar(true); });

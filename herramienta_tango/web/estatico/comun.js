@@ -27,6 +27,7 @@ window.HT = (() => {
   const MODULOS = [
     { id: "inicio", titulo: "Inicio", corto: "Inicio", href: "/", icono: "inicio", movil: true },
     { id: "buscar", titulo: "Buscar artículo", corto: "Buscar", href: "/buscar", icono: "buscar", movil: true },
+    { id: "clientes", grupo: "Ventas", titulo: "Clientes", corto: "Clientes", href: "/clientes", icono: "usuarios" },
     { id: "pedidos", grupo: "Ventas", titulo: "Pedidos", corto: "Pedidos", href: "/pedidos", icono: "pedidos" },
     { id: "cotizaciones", grupo: "Ventas", titulo: "Cotizaciones", corto: "Cotiz.", href: "/cotizaciones", icono: "cotizaciones" },
     { id: "precios", grupo: "Ventas", titulo: "Listas de precios", corto: "Precios", href: "/precios", icono: "precios" },
@@ -85,10 +86,63 @@ window.HT = (() => {
   const fecha = iso => iso ? new Date(iso + "T00:00:00").toLocaleDateString("es-AR") : "";
   const unidad = um => ({ KG: "kg", KGR: "kg", UNI: "u.", "C/U": "u.", UN: "u." })[(um || "").toUpperCase()] || (um || "").toLowerCase();
 
+  // ---------------------------------------------------------------- datos guardados en el equipo
+  // La ultima respuesta de cada consulta queda guardada (IndexedDB: entra mucho mas que en
+  // localStorage). Al abrir una pantalla se muestra enseguida lo guardado, con su hora, y se
+  // pide lo nuevo por detras. Si algo falla aca, simplemente no hay datos guardados.
+  const GUARDADO_MAX_HORAS = 48;     // mas viejo que esto no se muestra
+  let _db = null;
+  function base() {
+    if (_db) return _db;
+    _db = new Promise(resolver => {
+      try {
+        const r = indexedDB.open("herramienta-tango", 1);
+        r.onupgradeneeded = () => r.result.createObjectStore("respuestas");
+        r.onsuccess = () => resolver(r.result);
+        r.onerror = r.onblocked = () => resolver(null);
+      } catch { resolver(null); }
+    });
+    return _db;
+  }
+  async function guardado(ruta) {
+    const db = await base();
+    if (!db) return null;
+    return new Promise(resolver => {
+      try {
+        const r = db.transaction("respuestas").objectStore("respuestas").get(ruta);
+        r.onsuccess = () => {
+          const d = r.result;
+          resolver(d && Date.now() - new Date(d.actualizado) < GUARDADO_MAX_HORAS * 3600e3 ? { ...d, guardado: true } : null);
+        };
+        r.onerror = () => resolver(null);
+      } catch { resolver(null); }
+    });
+  }
+  async function guardar(ruta, d) {
+    const db = await base();
+    if (!db) return;
+    try { db.transaction("respuestas", "readwrite").objectStore("respuestas").put(d, ruta); } catch {}
+  }
+
   // Los errores llevan "origen", para decir de quien es la falla:
   //   red: no se llega al programa del servidor · tango: Tango no respondio o rechazo el pedido
   //   config: falta configurar · dato: el pedido estaba mal · programa: error interno
-  async function pedir(ruta, forzar) {
+  // opciones.previo(d): se llama enseguida con lo guardado en el equipo (d.guardado = true),
+  // antes de que llegue la respuesta nueva. Sin "previo" no se usa lo guardado.
+  async function pedir(ruta, forzar, opciones) {
+    const previo = opciones && opciones.previo;
+    if (previo && !forzar) {
+      guardado(ruta).then(d => { if (d && !pedir._llego.has(ruta)) { try { previo(d); } catch (e) { console.error(e); } } });
+    }
+    pedir._llego.delete(ruta);
+    const d = await pedirRed(ruta, forzar);
+    pedir._llego.add(ruta);
+    if (previo) guardar(ruta, { ok: d.ok, actualizado: d.actualizado, datos: d.datos });
+    return d;
+  }
+  pedir._llego = new Set();
+
+  async function pedirRed(ruta, forzar) {
     let r;
     try {
       r = await fetch(ruta + (forzar ? (ruta.includes("?") ? "&" : "?") + "refrescar=1" : ""), { cache: "no-store" });
@@ -232,14 +286,61 @@ window.HT = (() => {
     return d;
   }
 
-  // Mensaje breve abajo de la pantalla
-  function avisar(texto) {
+  // Mensaje breve abajo de la pantalla. accion: { texto, alTocar } agrega un boton (por ejemplo "Deshacer")
+  function avisar(texto, accion, segundos) {
     let t = $("ht-aviso-breve");
     if (!t) { t = el("div", "aviso-breve"); t.id = "ht-aviso-breve"; t.setAttribute("role", "status"); document.body.append(t); }
-    t.textContent = texto;
+    t.replaceChildren(el("span", "", texto));
+    if (accion) {
+      const b = el("button", "", accion.texto); b.type = "button";
+      b.addEventListener("click", () => { t.classList.remove("visible"); accion.alTocar(); });
+      t.append(b);
+    }
+    t.classList.toggle("con-accion", !!accion);
     t.classList.add("visible");
     clearTimeout(avisar.t);
-    avisar.t = setTimeout(() => t.classList.remove("visible"), 2600);
+    avisar.t = setTimeout(() => t.classList.remove("visible"), (segundos || (accion ? 10 : 2.6)) * 1000);
+  }
+
+  // Texto de la cabecera: "Datos de Tango de las 16:40 h" (con "actualizando…" si es lo guardado)
+  function textoDatos(d) {
+    if (!d) return "Sin datos";
+    const t = "Datos de Tango de las " + hora(new Date(d.actualizado)) + " h";
+    const dia = new Date(d.actualizado).toDateString() !== new Date().toDateString() ? " del " + new Date(d.actualizado).toLocaleDateString("es-AR") : "";
+    return d.guardado ? t.replace(" h", " h" + dia) + " · actualizando…" : t;
+  }
+
+  // ---------------------------------------------------------------- exportar a Excel
+  // columnas: [["Titulo", "texto" | "numero"], ...]; filas: arrays con los valores en ese orden.
+  // El servidor arma el .xlsx (la Herramienta no usa librerias).
+  async function exportar(nombre, columnas, filas) {
+    avisar("Armando el Excel…");
+    try {
+      const r = await fetch("/api/exportar", { method: "POST", cache: "no-store", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nombre, columnas: columnas.map(c => ({ titulo: c[0], tipo: c[1] || "texto" })), filas }) });
+      if (!r.ok) { let m = "No se pudo armar el Excel."; try { m = (await r.json()).error || m; } catch {} throw new Error(m); }
+      const blob = await r.blob();
+      const a = el("a"); a.href = URL.createObjectURL(blob);
+      a.download = nombre.replace(/[\\/:*?"<>|]+/g, " ").trim() + ".xlsx";
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      avisar("Excel descargado");
+    } catch (e) { avisar(e.message || "No se pudo armar el Excel."); }
+  }
+  // Nombre del cliente que lleva a su ficha
+  function linkCliente(codigo, nombre) {
+    const d = el("div", "cli");
+    if (!codigo) { d.textContent = nombre || ""; return d; }
+    const a = el("a", "", nombre || codigo); a.href = "/clientes?ver=" + encodeURIComponent(codigo.trim());
+    a.style.color = "inherit";
+    d.append(a);
+    return d;
+  }
+
+  function botonExportar(alTocar, texto) {
+    const b = el("button", "boton chico", texto || "Exportar a Excel"); b.type = "button";
+    b.addEventListener("click", alTocar);
+    return b;
   }
 
   // Copia el link a algo puntual (un articulo, un pedido) para mandarlo por WhatsApp o mail
@@ -412,7 +513,7 @@ window.HT = (() => {
   }
 
   return { MODULOS, $, el, norm, sinCeros, tokens, fmt, fmtPrecio, num, hora, fecha, unidad, pedir, textoError,
-           cajaError, esCelular, instalada, iniciar, conectarBuscador, svg, esqueleto, avisar, copiarLink,
+           cajaError, esCelular, instalada, iniciar, conectarBuscador, svg, esqueleto, avisar, copiarLink, textoDatos, exportar, botonExportar, guardado, linkCliente,
            // quien modifica
            nombre: leerNombre, pedirNombre: () => pedirNombre(false), alCambiarNombre: f => oyentes.push(f),
            escribir, ventana, campo, botones };

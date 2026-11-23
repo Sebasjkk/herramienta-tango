@@ -285,6 +285,34 @@ class TestServidor(unittest.TestCase):
             self.assertEqual(estado, 200, archivo)
             self.assertIn(texto, cuerpo)
 
+    def test_exportar_a_excel(self):
+        from herramienta_tango import xlsx
+        pedido = urllib.request.Request(self.base + "/api/exportar", method="POST", headers={"Content-Type": "application/json"},
+            data=json.dumps({"nombre": "Stock ñandú", "columnas": [{"titulo": "Código"}, {"titulo": "Saldo", "tipo": "numero"}],
+                             "filas": [["001", 2474.5], ["002", -41], ["003", None]]}).encode())
+        with urllib.request.urlopen(pedido) as r:
+            self.assertIn("spreadsheetml", r.headers["Content-Type"])
+            self.assertIn("filename*=UTF-8''Stock%20%C3%B1and%C3%BA.xlsx", r.headers["Content-Disposition"])
+            hojas = xlsx.leer(r.read())
+        filas = list(hojas.values())[0]
+        self.assertEqual(filas[:3], [["Código", "Saldo"], ["001", 2474.5], ["002", -41.0]])
+        estado, datos = self._post("/api/exportar", {"columnas": "nada", "filas": []})
+        self.assertEqual(estado, 400)
+        self.assertFalse(datos["ok"])
+
+    def test_movimientos_sin_base(self):
+        # Fuera del servidor de Tango (o sin Windows) se explica por que no hay datos, sin romper
+        estado, cuerpo = self._get("/api/articulos/01029071/movimientos")
+        self.assertEqual(estado, 400)
+        self.assertFalse(json.loads(cuerpo)["ok"])
+
+    def test_pagina_clientes(self):
+        estado, cuerpo = self._get("/clientes")
+        self.assertEqual(estado, 200)
+        self.assertIn(b"<h1>Clientes</h1>", cuerpo)
+        _, js = self._get("/comun.js")
+        self.assertIn(b'href: "/clientes"', js)
+
     def test_cotizaciones_de_un_articulo(self):
         from herramienta_tango.tango.modelos import Cotizacion, RenglonCotizacion
         from herramienta_tango.web.servidor import cotizaciones_de_articulo
