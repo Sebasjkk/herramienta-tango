@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0B6E69">
-<title>Importaciones | Herramienta Tango</title>
+<title>Importaciones | Herramienta Sianco</title>
 <link rel="icon" href="/icono-192.png">
 <link rel="apple-touch-icon" href="/icono-192.png">
 <link rel="manifest" href="/manifest.json">
@@ -113,7 +113,7 @@
   const params = new URLSearchParams(location.search);
   const vista = params.get("vista") === "camino" ? "camino" : "carpetas";
   HT.iniciar(vista === "camino" ? "en-camino" : "carpetas");
-  document.title = (vista === "camino" ? "En camino" : "Carpetas de importación") + " | Herramienta Tango";
+  document.title = (vista === "camino" ? "En camino" : "Carpetas de importación") + " | Herramienta Sianco";
   $("titulo").textContent = vista === "camino" ? "En camino" : "Carpetas de importación";
   if (vista === "camino") $("q").placeholder = "Artículo, carpeta o proveedor";
 

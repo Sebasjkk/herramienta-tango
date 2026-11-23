@@ -170,7 +170,7 @@ class Contexto:
         if self.como_servicio:
             self._cambio("desactivado", "Modo servidor desactivado.")
             threading.Timer(2.0, self.al_cerrar).start()
-            return True, "Desactivado. Para seguir usándolo, abrí Herramienta Tango desde el escritorio."
+            return True, "Desactivado. Para seguir usándolo, abrí Herramienta Sianco desde el escritorio."
         return True, "Desactivado."
 
     def info(self) -> dict:

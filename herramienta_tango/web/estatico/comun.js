@@ -212,8 +212,8 @@ window.HT = (() => {
     nav.setAttribute("aria-label", "Secciones");
     const marca = el("a", "marca");
     marca.href = "/";
-    marca.setAttribute("aria-label", "Sianco · Herramienta Tango (inicio)");
-    marca.title = "Herramienta Tango";
+    marca.setAttribute("aria-label", "Herramienta Sianco (inicio)");
+    marca.title = "Herramienta Sianco";
     // Logo de Sianco: «sianco» y el ovalo de circulos, dibujado para que se vea bien en claro y en oscuro
     marca.innerHTML = '<span class="logo-sianco">sianco' +
       '<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke-linecap="round">' +

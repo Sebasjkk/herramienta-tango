@@ -20,7 +20,8 @@ from . import config
 
 CLAVE_INICIO = r"Software\Microsoft\Windows\CurrentVersion\Run"
 NOMBRE_INICIO = "HerramientaTango"
-NOMBRE_ACCESO = "Herramienta Tango"
+NOMBRE_ACCESO = "Herramienta Sianco"
+NOMBRES_VIEJOS_ACCESO = ("Herramienta Tango",)   # se renombran solos al actualizar
 NOMBRE_TAREA = "Herramienta Tango"      # tarea programada y regla del firewall del modo servidor
 SIN_VENTANA = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
@@ -163,7 +164,7 @@ def ejecutar_powershell(script: str, como_admin: bool) -> None:
 
 # ------------------------------------------------------------ accesos directos
 def crear_accesos_directos() -> list[str]:
-    """Crea 'Herramienta Tango' en el escritorio y en el menu Inicio. Devuelve donde los creo."""
+    """Crea 'Herramienta Sianco' en el escritorio y en el menu Inicio. Devuelve donde los creo."""
     inst = instalacion()
     if not es_windows() or not inst:
         return []
@@ -181,7 +182,7 @@ foreach ($d in $destinos) {{
   $s.Arguments = '"{ps(str(inst.script))}"'
   $s.WorkingDirectory = '{ps(str(inst.raiz))}'
   $s.IconLocation = '{ps(str(inst.icono))}'
-  $s.Description = 'Herramienta Tango: panel y consultas sobre Tango'
+  $s.Description = 'Herramienta Sianco: panel y consultas sobre Tango'
   $s.Save()
   Write-Output $d
 }}
@@ -190,6 +191,46 @@ foreach ($d in $destinos) {{
                        capture_output=True, text=True, timeout=60, creationflags=SIN_VENTANA)
     if r.returncode != 0:
         raise OSError(r.stderr.strip() or "No se pudieron crear los accesos directos")
+    return [l for l in r.stdout.splitlines() if l.strip()]
+
+
+def renombrar_accesos_viejos() -> list[str]:
+    """Donde haya un acceso directo con el nombre viejo, pone uno nuevo (nombre e icono actuales)
+    y saca el viejo. Donde no habia acceso no crea nada. Devuelve donde lo cambio."""
+    inst = instalacion()
+    if not es_windows() or not inst:
+        return []
+
+    def ps(texto: str) -> str:
+        return texto.replace("'", "''")
+
+    viejos = ", ".join(f"'{ps(n)}.lnk'" for n in NOMBRES_VIEJOS_ACCESO)
+    script = f"""
+$ws = New-Object -ComObject WScript.Shell
+$cambio = $false
+foreach ($d in @([Environment]::GetFolderPath('Desktop'), [Environment]::GetFolderPath('Programs'))) {{
+  if (-not $d) {{ continue }}
+  foreach ($v in @({viejos})) {{
+    $ruta = Join-Path $d $v
+    if (-not (Test-Path -LiteralPath $ruta)) {{ continue }}
+    $s = $ws.CreateShortcut((Join-Path $d '{ps(NOMBRE_ACCESO)}.lnk'))
+    $s.TargetPath = '{ps(str(inst.pythonw))}'
+    $s.Arguments = '"{ps(str(inst.script))}"'
+    $s.WorkingDirectory = '{ps(str(inst.raiz))}'
+    $s.IconLocation = '{ps(str(inst.icono))}'
+    $s.Description = 'Herramienta Sianco: panel y consultas sobre Tango'
+    $s.Save()
+    Remove-Item -LiteralPath $ruta -Force
+    $cambio = $true
+    Write-Output $d
+  }}
+}}
+if ($cambio) {{ try {{ Start-Process -FilePath 'ie4uinit.exe' -ArgumentList '-show' -WindowStyle Hidden }} catch {{}} }}
+"""
+    r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
+                       capture_output=True, text=True, timeout=60, creationflags=SIN_VENTANA)
+    if r.returncode != 0:
+        raise OSError(r.stderr.strip() or "No se pudieron renombrar los accesos directos")
     return [l for l in r.stdout.splitlines() if l.strip()]
 
 

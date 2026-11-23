@@ -103,6 +103,16 @@ def _abrir_panel(puerto: int) -> None:
     webbrowser.open(f"http://127.0.0.1:{puerto}/panel")
 
 
+def _renombrar_accesos() -> None:
+    """Accesos directos con el nombre viejo (Herramienta Tango) pasan a Herramienta Sianco, con el icono nuevo."""
+    try:
+        lugares = sistema.renombrar_accesos_viejos()
+        if lugares:
+            log.info(f"Accesos directos renombrados en: {', '.join(lugares)}")
+    except Exception as e:
+        log.warning(f"No se pudieron renombrar los accesos directos: {e}")
+
+
 def main(argv: list[str] | None = None) -> int:
     _configurar_salida()
     parser = argparse.ArgumentParser(prog="HerramientaTango", description=f"{NOMBRE} v{VERSION}")
@@ -140,6 +150,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if _instancia_activa(cfg.puerto):
         log.info("Ya hay una copia corriendo: se abre su panel.")
+        if inst and not como_servicio:
+            _renombrar_accesos()     # en el servidor el programa corre como tarea: el usuario lo abre por aca
         if not args.no_abrir:
             _abrir_panel(cfg.puerto)
         return 0
@@ -176,6 +188,9 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as e:
             log.warning(f"No se pudieron crear los accesos directos: {e}")
 
+    if inst and not como_servicio and not primera_vez:
+        threading.Thread(target=_renombrar_accesos, name="accesos", daemon=True).start()
+
     configurado = contexto.cargar_guardado()
     if configurado:
         # La conexion con Tango se prueba en segundo plano para que el panel abra enseguida
@@ -209,6 +224,6 @@ def main(argv: list[str] | None = None) -> int:
         except OSError as e:
             log.error(f"No se pudo abrir la versión nueva: {e}")
             sistema.aviso(NOMBRE, "Se instaló una versión nueva pero no se pudo abrir sola.\n"
-                                  "Abrí Herramienta Tango desde el acceso directo del escritorio.")
+                                  "Abrí Herramienta Sianco desde el acceso directo del escritorio.")
     log.info("Programa cerrado.")
     return 0

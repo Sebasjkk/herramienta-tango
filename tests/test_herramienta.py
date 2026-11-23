@@ -426,6 +426,23 @@ class TestModoServidor(unittest.TestCase):
         self.assertIn("'192.168.0.0/16'", script)
         self.assertIn("-ExecutionTimeLimit ([TimeSpan]::Zero)", script)
 
+    def test_renombra_accesos_viejos(self):
+        import subprocess
+        from herramienta_tango import sistema
+        inst = sistema.Instalacion(Path("C:/Herramienta Tango"), Path("C:/Herramienta Tango/python/pythonw.exe"),
+                                   Path("C:/Herramienta Tango/app/HerramientaTango.pyw"), Path("C:/Herramienta Tango/app/recursos/icono.ico"))
+        with mock.patch.object(sistema, "es_windows", return_value=True), \
+             mock.patch.object(sistema, "instalacion", return_value=inst), \
+             mock.patch.object(sistema, "SIN_VENTANA", 0, create=True), \
+             mock.patch.object(sistema.subprocess, "run",
+                               return_value=subprocess.CompletedProcess([], 0, "C:\\Users\\x\\Desktop\n", "")) as run:
+            self.assertEqual(sistema.renombrar_accesos_viejos(), ["C:\\Users\\x\\Desktop"])
+        script = run.call_args[0][0][-1]
+        self.assertIn("'Herramienta Tango.lnk'", script)
+        self.assertIn("'Herramienta Sianco.lnk'", script)
+        self.assertIn("Test-Path -LiteralPath $ruta", script)       # solo donde ya habia un acceso
+        self.assertIn("Remove-Item -LiteralPath $ruta", script)     # y lo que se borra es el viejo
+
     def test_vigilante_reabre_y_se_detiene(self):
         from herramienta_tango import app
         codigos = iter([app.SALIDA_REINICIAR, 1, app.SALIDA_DETENER])

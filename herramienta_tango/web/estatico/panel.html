@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0B6E69">
-<title>Herramienta Tango</title>
+<title>Herramienta Sianco</title>
 <link rel="icon" href="/icono-192.png">
 <style>
   :root {
@@ -251,7 +251,7 @@
 
   <section id="vista-cerrado" class="cerrado" hidden>
     <h2 id="cerrado-titulo">El programa está cerrado</h2>
-    <p class="chico" id="cerrado-detalle">Para volver a abrirlo, usá el acceso directo <strong>Herramienta Tango</strong> del escritorio.</p>
+    <p class="chico" id="cerrado-detalle">Para volver a abrirlo, usá el acceso directo <strong>Herramienta Sianco</strong> del escritorio.</p>
   </section>
 </div>
 
@@ -432,7 +432,7 @@
         ? "Arrancando en modo servidor… la página vuelve sola en unos segundos."
         : instalando
         ? "Reiniciando con la versión nueva… la página vuelve sola."
-        : "El programa no responde. Si lo cerraste, abrilo desde el acceso directo Herramienta Tango del escritorio.");
+        : "El programa no responde. Si lo cerraste, abrilo desde el acceso directo Herramienta Sianco del escritorio.");
     }
   }
 
@@ -534,7 +534,7 @@
     if (!activar && ms.como_servicio) {
       cerrado = true; mostrar("cerrado"); $("aviso-global").hidden = true;
       $("cerrado-titulo").textContent = "Modo servidor desactivado";
-      $("cerrado-detalle").innerHTML = "El programa se cerró. Para seguir usándolo en esta PC, abrí <strong>Herramienta Tango</strong> desde el escritorio.";
+      $("cerrado-detalle").innerHTML = "El programa se cerró. Para seguir usándolo en esta PC, abrí <strong>Herramienta Sianco</strong> desde el escritorio.";
       return;
     }
     sis = d.sistema; dibujar();

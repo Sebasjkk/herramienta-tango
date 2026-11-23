@@ -388,7 +388,7 @@ def crear_manejador(contexto):
             base = f"http://{sistema.nombre_equipo()}:{contexto.cfg.puerto}"
             texto = f"[InternetShortcut]\r\nURL={base}/\r\nIconFile={base}/icono.ico\r\nIconIndex=0\r\n"
             self._responder(200, "application/octet-stream", texto.encode("ascii", "replace"),
-                            {"Content-Disposition": 'attachment; filename="Herramienta Tango.url"'})
+                            {"Content-Disposition": 'attachment; filename="Herramienta Sianco.url"'})
 
         # --------------------------------------------------------- GET
         def do_GET(self):
@@ -582,7 +582,7 @@ def crear_manejador(contexto):
             except (KeyError, TypeError):
                 self._json(400, {"ok": False, "error": "Datos inválidos para exportar."})
                 return
-            nombre = " ".join(str(datos.get("nombre") or "Herramienta Tango").split())[:80]
+            nombre = " ".join(str(datos.get("nombre") or "Herramienta Sianco").split())[:80]
             ascii_ = nombre.encode("ascii", "replace").decode().replace('"', "").replace("?", "_")
             self._responder(200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", contenido,
                             {"Content-Disposition": f'attachment; filename="{ascii_}.xlsx"; filename*=UTF-8\'\'{urllib.parse.quote(nombre)}.xlsx'})
