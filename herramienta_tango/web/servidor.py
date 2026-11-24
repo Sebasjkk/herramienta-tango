@@ -131,7 +131,8 @@ RUTAS_APP = {"/api/precios/cambiar", "/api/precios/agregar", "/api/precios/quita
              "/api/listas/crear", "/api/listas/eliminar", "/api/listas/asignar",
              "/api/mezclas/crear", "/api/mezclas/subidas", "/api/mezclas/borrar",
              "/api/listas/importar/analizar", "/api/listas/importar/aplicar", "/api/listas/restaurar",
-             "/api/pedidos/eliminar", "/api/opciones"}
+             "/api/pedidos/eliminar", "/api/opciones",
+             "/api/precios/ajuste/vista-previa", "/api/precios/ajuste", "/api/precios/ajuste/revertir"}
 
 
 def _a_json(valor) -> object:
@@ -225,6 +226,7 @@ def crear_rutas(contexto) -> dict[str, Callable[[dict, bool], tuple]]:
         "/api/mezclas": lambda qs, f: (s().mezclas.registro.todas(), time.time()),
         "/api/listas/importar/estado": lambda qs, f: (s().importador.estado(), time.time()),
         "/api/listas/restaurar/estado": lambda qs, f: (s().editor.estado_restauracion(), time.time()),
+        "/api/precios/ajuste/estado": lambda qs, f: (s().editor.estado_ajuste(), time.time()),
         "/api/opciones": lambda qs, f: (opciones.leer(), time.time()),
         "/api/importaciones": importaciones,
         "/api/valorizacion": valorizacion,
@@ -567,6 +569,12 @@ def crear_manejador(contexto):
                     log.info(f"Opciones: {quien} cambió {texto('clave')} a {datos.get('valor')}")
                 elif ruta == "/api/listas/restaurar":
                     r = editor.restaurar_lista(texto("fecha"), texto("lista"), quien)
+                elif ruta == "/api/precios/ajuste/vista-previa":
+                    r = editor.vista_previa_ajuste(datos.get("porcentaje"), entero("lista"), datos.get("articulos"))
+                elif ruta == "/api/precios/ajuste":
+                    r = editor.ajustar_precios(datos.get("porcentaje"), quien, entero("lista"), datos.get("articulos"))
+                elif ruta == "/api/precios/ajuste/revertir":
+                    r = editor.revertir_ajuste(texto("fecha"), quien)
                 elif ruta == "/api/listas/importar/analizar":
                     try:
                         contenido = base64.b64decode(texto("archivo"), validate=True)

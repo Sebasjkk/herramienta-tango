@@ -61,6 +61,20 @@
     .contenido-cot:not(.viendo) .detalle { display: none; }
     .volver { display: inline-flex; margin-bottom: 10px; }
   }
+  #seguimiento { display: grid; gap: 14px; }
+  #seguimiento[hidden] { display: none; }
+  .seg { padding: 14px 16px; }
+  .seg h3 { font-size: 1rem; margin: 0 0 8px; }
+  .seg-lista { list-style: none; margin: 0; padding: 0; }
+  .seg-cot { width: 100%; display: grid; grid-template-columns: auto 1fr auto; gap: 1px 12px; text-align: left; font: inherit; color: inherit;
+    background: none; border: 0; border-top: 1px solid var(--linea-suave); padding: 9px 2px; cursor: pointer; }
+  .seg-lista li:first-child .seg-cot { border-top: 0; }
+  .seg-cot:hover .cli { color: var(--patina); text-decoration: underline; }
+  .seg-cot .num { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .seg-cot .cli { overflow-wrap: anywhere; }
+  .seg-cot .der { text-align: right; font-size: .85rem; color: var(--plomo); white-space: nowrap; }
+  .seg-cot .meta { grid-column: 2 / span 2; font-size: .8rem; color: var(--plomo); }
+  .seg .tabla-envoltura { overflow-x: auto; }
 </style>
 </head>
 <body>
@@ -88,6 +102,7 @@
         <div class="col-lista" id="col-lista" aria-live="polite"></div>
         <section class="detalle" id="detalle" aria-live="polite"></section>
       </div>
+      <div id="seguimiento" hidden></div>
       <p class="pie">Solo lectura. Las cotizaciones se cargan, anulan y modifican en Tango. «Vencida» es una cotización autorizada cuya vigencia ya pasó.</p>
     </div>
   </div>
@@ -102,7 +117,11 @@
   const hoy = new Date().toISOString().slice(0, 10);
 
   // Grupos que se muestran: los estados de Tango, mas "Vencida" (autorizada con vigencia pasada)
+  const enDias = n => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
+  const prontas = c => c.estado === 2 && c.vigencia && c.vigencia >= hoy && c.vigencia <= enDias(7);
   const GRUPOS = [
+    { id: "seguimiento", titulo: "Seguimiento", f: prontas, especial: true,
+      ayuda: "Seguimiento: las que vencen esta semana (para llamar al cliente a tiempo), las que vencieron sin respuesta y cuántas terminan en pedido por cliente." },
     { id: "autorizada", titulo: "En curso", f: c => c.estado === 2 && !(c.vigencia && c.vigencia < hoy),
       ayuda: "En curso: cotizaciones emitidas, todavía vigentes, que no se pasaron a pedido. Son las que hay que seguir con el cliente." },
     { id: "vencida", titulo: "Vencidas", f: c => c.estado === 2 && c.vigencia && c.vigencia < hoy,
@@ -148,11 +167,77 @@
     return cots.filter(c => g.f(c) && ts.every(t => norm([c.numero_corto, c.numero, c.cliente, c.codigo_cliente, c.vendedor].join(" ")).includes(t)));
   }
 
+  // ---- Seguimiento: que vence, que vencio sin respuesta y cuanto se convierte por cliente
+  function abrirCot(c) {
+    const g = GRUPOS.find(x => !x.especial && x.f(c)); grupo = g ? g.id : "todas"; elegida = c.id;
+    if (!window.matchMedia("(min-width: 960px)").matches) { history.pushState({}, "", "#cot=" + c.id); $("contenido").classList.add("viendo"); }
+    render(); window.scrollTo(0, 0);
+  }
+  function listaCots(lista, texto) {
+    if (!lista.length) return el("p", "nota", texto);
+    const ul = el("ul", "seg-lista");
+    for (const c of lista) {
+      const b = el("button", "seg-cot"); b.type = "button";
+      const dias = Math.round((new Date(c.vigencia + "T00:00:00") - new Date(hoy + "T00:00:00")) / 864e5);
+      const cuando = dias === 0 ? "vence hoy" : dias > 0 ? `vence en ${dias} día${dias === 1 ? "" : "s"}` : `venció hace ${-dias} día${dias === -1 ? "" : "s"}`;
+      b.append(el("span", "num", c.numero_corto), el("span", "cli", c.cliente || c.codigo_cliente),
+               el("span", "der", `${cuando} · ${fecha(c.vigencia)}`), el("span", "meta", `${c.vendedor || "Sin vendedor"} · emitida ${fecha(c.fecha)}`));
+      b.addEventListener("click", () => abrirCot(c));
+      const li = el("li"); li.append(b); ul.append(li);
+    }
+    return ul;
+  }
+  function dibujarSeguimiento() {
+    const ts = tokens($("q").value);
+    const coincide = c => ts.every(t => norm([c.numero_corto, c.numero, c.cliente, c.codigo_cliente, c.vendedor].join(" ")).includes(t));
+    const vis = cots.filter(coincide);
+    const frag = document.createDocumentFragment();
+    const prox = vis.filter(prontas).sort((a, b) => a.vigencia.localeCompare(b.vigencia));
+    const venc = vis.filter(c => c.estado === 2 && c.vigencia && c.vigencia < hoy && c.vigencia >= enDias(-60)).sort((a, b) => b.vigencia.localeCompare(a.vigencia));
+    const s1 = el("section", "tarjeta seg"); s1.append(el("h3", "", `Vencen en los próximos 7 días: ${prox.length}`), listaCots(prox, "Ninguna vence esta semana."));
+    const s2 = el("section", "tarjeta seg"); s2.append(el("h3", "", `Vencieron sin respuesta en los últimos 60 días: ${venc.length}`),
+      el("p", "nota", "Siguen emitidas en Tango pero ya no están vigentes: o se rehace la cotización, o se anula si el cliente no sigue."), listaCots(venc, "Ninguna."));
+    // Por cliente
+    const por = new Map();
+    for (const c of vis) {
+      const k = c.codigo_cliente || c.cliente;
+      const x = por.get(k) || { cliente: c.cliente || c.codigo_cliente, total: 0, procesadas: 0, anuladas: 0, vencidas: 0, curso: 0, ultima: "" };
+      x.total++;
+      if (c.estado === 4) x.procesadas++;
+      else if (c.estado === 5) x.anuladas++;
+      else if (c.estado === 2) (c.vigencia && c.vigencia < hoy ? x.vencidas++ : x.curso++);
+      if ((c.fecha || "") > x.ultima) x.ultima = c.fecha || "";
+      por.set(k, x);
+    }
+    const filas = [...por.values()].sort((a, b) => b.total - a.total || a.cliente.localeCompare(b.cliente));
+    const s3 = el("section", "tarjeta seg");
+    s3.append(el("h3", "", "Por cliente"),
+      el("p", "nota", "«Terminan en pedido» cuenta las procesadas sobre las que ya se definieron (procesadas, vencidas y anuladas); las que siguen en curso no cuentan todavía. Una anulada puede ser un error de carga y no un rechazo del cliente."));
+    const t = el("table", "tabla"); const th = el("tr");
+    [["Cliente", ""], ["Cotizadas", "der"], ["Procesadas", "der"], ["Vencidas", "der"], ["Anuladas", "der"], ["En curso", "der"], ["Terminan en pedido", "der"], ["Última", "der"]]
+      .forEach(([x, cl]) => th.append(el("th", cl, x)));
+    const thead = el("thead"); thead.append(th); const tb = el("tbody");
+    for (const x of filas) {
+      const definidas = x.procesadas + x.vencidas + x.anuladas;
+      const tr = el("tr");
+      tr.append(el("td", "", x.cliente), el("td", "der", fmt.format(x.total)), el("td", "der", fmt.format(x.procesadas)),
+                el("td", "der", fmt.format(x.vencidas)), el("td", "der", fmt.format(x.anuladas)), el("td", "der", fmt.format(x.curso)),
+                el("td", "der", definidas ? `${Math.round(x.procesadas / definidas * 100)} %` : "—"), el("td", "der", fecha(x.ultima)));
+      tb.append(tr);
+    }
+    t.append(thead, tb);
+    const env = el("div", "tabla-envoltura"); env.append(t);
+    s3.append(filas.length ? env : el("p", "nota", "No hay cotizaciones."));
+    frag.append(s1, s2, s3);
+    $("seguimiento").replaceChildren(frag);
+  }
+
   let verPendiente = null;
   function render() {
     if (verPendiente && cots.length) {          // abrir la cotizacion pedida en la pestana que la contenga
       const c = cots.find(x => x.id === verPendiente);
-      if (c && !GRUPOS.find(g => g.id === grupo).f(c)) { const g = GRUPOS.find(g => g.f(c)); if (g) grupo = g.id; }
+      const actualG = GRUPOS.find(g => g.id === grupo);
+      if (c && (actualG.especial || !actualG.f(c))) { const g = GRUPOS.find(g => !g.especial && g.f(c)); if (g) grupo = g.id; }
       if (c) elegida = c.id;
       verPendiente = null;
     }
@@ -169,6 +254,9 @@
     }
     const g = GRUPOS.find(x => x.id === grupo);
     $("explica").textContent = (g && g.ayuda) || "Todas: las cotizaciones de cualquier estado.";
+    $("contenido").style.display = g && g.especial ? "none" : "";
+    $("seguimiento").hidden = !(g && g.especial);
+    if (g && g.especial) { dibujarSeguimiento(); return; }
     const lista = filtradas();
     const col = $("col-lista");
     if (!lista.length) {

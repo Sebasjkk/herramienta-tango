@@ -418,3 +418,60 @@ class TestServidorPrecios(unittest.TestCase):
         self.assertEqual(estado, 400)
         estado, _ = self._pedir("/api/sesion")
         self.assertEqual(estado, 404)                        # ya no hay perfiles
+
+
+class TestAjusteEnBloque(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.tango = TangoFalso()
+        self.registro = RegistroCambios(Path(self.tmp.name) / "cambios.jsonl")
+        self.editor = EditorPrecios(self.tango, ServicioFalso([cliente("SCIPIO", "SCIPIO")]), self.registro)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def esperar(self):
+        for _ in range(200):
+            if not self.editor.estado_ajuste()["corriendo"]:
+                return self.editor.estado_ajuste()
+            time.sleep(0.01)
+        self.fail("el ajuste no terminó")
+
+    def test_vista_previa(self):
+        v = self.editor.vista_previa_ajuste("10", 6)
+        self.assertEqual(v["renglones"], 2)
+        self.assertEqual(v["listas"], [{"lista": "SCIPIO", "articulos": 2}])
+        v = self.editor.vista_previa_ajuste(-5, None, ["0039812", "noexiste"])
+        self.assertEqual(v["renglones"], 1)
+        self.assertEqual(v["no_encontrados"], ["NOEXISTE"])
+
+    def test_porcentaje_invalido(self):
+        for p in ("0", "abc", "-95", "500"):
+            with self.assertRaises(PedidoInvalido):
+                self.editor.vista_previa_ajuste(p, 6)
+        with self.assertRaises(PedidoInvalido):
+            self.editor.vista_previa_ajuste(10, None, [])
+
+    def test_ajusta_especiales_y_se_puede_revertir(self):
+        self.editor.ajustar_precios("10", "Sebastián", 6)
+        e = self.esperar()
+        self.assertEqual((e["cambiados"], e["errores"]), (2, []))
+        r = self.tango.renglones[1351]
+        self.assertEqual(r["PRECIO"], 0)                        # el precio de lista en 0 queda en 0
+        self.assertEqual(r["GVA13"][0]["PRECIO"], 265.96)       # 241,78 + 10 %
+        self.assertEqual(self.tango.renglones[10]["PRECIO"], 3.82)   # otra lista: no se toca
+        entrada = self.registro.ultimos(1)[0]
+        self.assertEqual(entrada["accion"], "ajuste de precios")
+        self.assertEqual(entrada["cambios"][0]["lista"], "SCIPIO")
+        self.editor.revertir_ajuste(entrada["fecha"], "Sebastián")
+        e = self.esperar()
+        self.assertEqual(e["cambiados"], 2)
+        self.assertEqual(self.tango.renglones[1351]["GVA13"][0]["PRECIO"], 241.78)
+        with self.assertRaises(PedidoInvalido):
+            self.editor.revertir_ajuste(entrada["fecha"], "Sebastián")      # dos veces no
+
+    def test_articulos_en_todas_las_listas(self):
+        self.editor.ajustar_precios("-50", "Seba", None, ["1PAR00001"])
+        self.esperar()
+        self.assertEqual(self.tango.renglones[10]["PRECIO"], 1.91)
+        self.assertEqual(self.tango.renglones[1351]["GVA13"][0]["PRECIO"], 241.78)
