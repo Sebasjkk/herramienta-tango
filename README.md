@@ -60,6 +60,8 @@ scripts/armar_paquete.ps1      arma el paquete para Windows (lo usa el workflow)
 tests/                         pruebas (sin Tango real)
 ```
 
+Referencia de la API de Tango (endpoints, números de proceso, formato de respuestas, API de Pedidos): [`docs/api-tango.md`](docs/api-tango.md).
+
 Para agregar algo nuevo: el dato se pide a `ServicioTango`, nunca directo a la API de Tango. Si Tango no lo trae todavía, se agrega primero el proceso en `procesos.py`, el modelo en `modelos.py` y el método en `servicio.py`. Cada módulo nuevo se suma a la lista `MODULOS` de `web/estatico/comun.js`.
 
 ## API propia (red local)

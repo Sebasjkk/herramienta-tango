@@ -1,0 +1,1276 @@
+# Texto extraido de "API Pedidos - TangoSoftware.pdf" (Axoft, version 1.11, 27/10/2026)
+# Fuente: https://github.com/TangoSoftware/TangoDeltaApi/tree/main/src/Implementations/PedidosApiConsole
+# Copia para consulta interna; el original es el PDF de Axoft.
+
+Documentación API Pedidos
+Contenido
+         Consideraciones generales                                                     2
+         Consideraciones aplicables a cualquier propiedad del JSON                     2
+         ENCABEZADO                                                                    3
+         RENGLON_DTO                                                                   9
+         PLAN_DE_ENTREGA_DTO (No requerido)                                           12
+         DESCRIPCION_ADICIONAL_DTO (No requerido)                                     13
+         CLIENTE_OCASIONAL_DTO (No requerido)                                         13
+         CLIENTE_OCASIONAL_PERCEPCIONES_DEFINIBLES_DTO (No requerido)                 17
+         NOTA_PEDIDO_DTO (No requerido)                                               18
+         CERRAR (No requerido)                                                        18
+         ANULAR (No requerido)                                                        19
+         Historial de cambios                                                         20
+
+
+
+
+API Pedidos                              Versión 1.11                Página 1 de 20
+Consideraciones generales
+       A partir de Delta 4 podés registrar pedidos de clientes ocasionales.
+       No podés ingresar pedidos en referencia a otros comprobantes (Cotizaciones).
+       Tené en cuenta que los importes totales del pedido son calculados automáticamente por
+        la API en función a las propiedades de JSON; por tal motivo no forman parte de su
+        estructura.
+       Los pedidos registrados mediante apertura (API o Excel) quedarán con origen
+        “Externo” (GVA21.ORIGEN = 'E').
+       A partir de Delta 5 se permiten editar pedidos mediante 'Apertura'.
+        Los campos que se podrán editar respetarán los permisos del perfil utilizado y seguirán la
+        lógica de pedidos cloud.
+        Importante: el ESTADO del pedido no es posible editarlo, sino que será calculado por el
+        sistema en base a la información recibida. Tampoco podrán editarse pedidos que tengan
+        asociados facturas y/o remitos.
+        Al editar los pedidos, se deben enviar todos los campos y registros (como se hace en el
+        ALTA) y no solo los editados.
+                   o   Por ejemplo, si el pedido tiene 3 renglones y se edita solo uno de ellos, se
+                       deben enviar los 3 renglones nuevamente. El editado y los otros dos, ya que si
+                       no se envían (los dos no editados) se considerarán eliminados del pedido.
+
+
+Consideraciones aplicables a cualquier propiedad del JSON
+       Toda propiedad de tipo bool es nulleable y su valor por defecto es false.
+       Toda propiedad de tipo datetime considera únicamente la parte correspondiente a la
+        fecha descartando la información de la hora (Salvo que se indique específicamente lo
+        contrario).
+       Toda propiedad que comience con “ID_XXXXXX” hace referencia al identificador de
+        esa propiedad en la tabla “XXXXXX”; por ejemplo la propiedad ID_MONEDA hace
+        referencia al identificador de la tabla MONEDA.
+       Los siguientes valores de las propiedades deben informarse en minúscula:
+              o null,
+              o false,
+              o true.
+       Si ingresás un valor negativo no debés dejar espacios entre el signo y el importe; por
+        ejemplo
+        -5000.
+       Tené en cuenta que si ingresás valores con decimales (ya sea en cantidades, importes o
+        cotizaciones) debés respetar lo definido en el proceso Configuración de decimales dentro
+        del módulo Administrador. Si excedés esa cantidad de decimales lo redondearemos a lo
+        configurador en Tango. Por ejemplo, si tenés configurado que trabajás con 4 decimales
+        para las cotizaciones e ingresás "COTIZACION": 1020.7654789 el sistema lo redondeará al
+        siguiente valor 1020.7655.
+
+
+
+
+API Pedidos                                  Versión 1.11                               Página 2 de 20
+ENCABEZADO
+                                                   Tipo       Consideraciones, valores
+ Campo           Requerido   Descripción
+                                                   de         posibles y ejemplos
+                                                   dato
+                                                              Validamos que corresponda a un
+                             Identificación del               talonario de pedidos. ID de la
+ ID_GVA43_TALON_
+                 Si          talonario de          int        tabla GVA43 donde
+ PED
+                             pedidos                          GVA43.COMPROB = “PED”
+
+
+                                                              Si lo ingresás verificamos que
+                                                              sea correlativo al último (si no
+                                                              tenés habilitada la edición del
+                                                              número de talonario).
+ NRO_PEDIDO      No          Número del pedido     string
+                                                              Si no lo ingresás, lo asignaremos
+                                                              automáticamente.
+
+                                                              Tiene una longitud de 14 dígitos.
+
+
+
+                                                              Valores posibles:
+                                                                   1: Ingresado
+                                                                   2: Aprobado
+
+                                                              Si no lo ingresás, lo asigna
+                                                              automáticamente en función a lo
+                                                              establecido en Parámetros de
+                                                              Ventas (Aprueba pedidos)
+
+                                                              Ejemplos:
+                                                                  Si no lo ingresás, y
+ ESTADO          No          Estado del pedido     int               “No aprueba pedidos”
+                                                                      ESTADO = 2
+                                                                  Si no lo ingresás,
+                                                                     y “Aprueba
+                                                                     pedidos”
+                                                                     ESTADO = 1
+                                                                  Si ingresás 2 y
+                                                                     “Aprueba pedidos” 
+                                                                     ESTADO = 2
+                                                                  Si ingresás 1 y “No
+                                                                     aprueba pedidos”,
+                                                                     rechazamos el
+                                                                     registro.
+
+                                                              No es un campo que se pueda
+                                                              modificar.
+                                                              Si no lo indicás asumimos la
+ FECHA_PEDIDO    No          Fecha del pedido      datetime
+                                                              fecha del día.
+
+                                                              Es requerido cuando la propiedad
+                                                              ES_CLIENTE_HABITUAL es
+                             Identificación del
+ ID_GVA14        No                                int        true.
+                             cliente habitual
+                                                              Si esa propiedad es false no lo
+                                                              debés informar.
+ ES_CLIENTE_HABI             Indica si el pedido              Valores posibles:
+                 Si                                bool
+ T UAL                       corresponde a un                      true: cliente habitual
+
+API Pedidos                                  Versión 1.11                                    Página 3 de 20
+                      cliente habitual o                      false: cliente ocasional
+                      uno ocasional
+                                                       En caso de que quieras registrar
+                                                       un pedido correspondiente a un
+                                                       cliente ocasional debés completar
+                                                       las siguientes secciones del
+                                                       JSON:
+                                                             CLIENTE_OCASIONAL_
+                                                                DT O
+                                                             CLIENTE_OCASIONAL_
+                                                                PE
+                                                                RCEPCIONES_DEFINIBL
+                                                                ES
+                                                                _DTO
+                      Identificación de la
+ ID_GVA01       Si                           int
+                      condición de venta
+
+                      Identificación del
+ ID_GVA23       Si                           int
+                      vendedor
+
+                      Identificación del
+ ID_STA22       Si                           int
+                      depósito de
+                      stock
+                      Identificación del
+ ID_GVA24       Si                           int
+                      transportista
+
+                                                       El ID debe corresponder a una
+                                                       moneda donde
+                      Identificación de la
+                                                       MONEDA.TIPO_MONEDA =
+ ID_MONEDA      Si    moneda del             int
+                                                       “Corriente” o “Extranjera contable”
+                      comprobante
+                                                       (lo que habitualmente representa
+                                                       pesos o dólares).
+
+                                                       Si no lo ingresás, lo
+                                                       completaremos con la cotización
+                                                       establecida en Parámetros de
+                                                       Ventas (no es un campo visible
+                      Cotización de la
+                                                       por el usuario. Se alimenta desde
+ COTIZACION     No    moneda extranjera      decimal
+                                                       el proceso de Cotizaciones del
+                      contable
+                                                       módulo Procesos Generales y de
+                                                       las cotizaciones ingresadas por
+                                                       los usuarios en los comprobantes
+                                                       de Ventas).
+
+
+                      Identificación de la
+ ID_GVA10       Si                           int
+                      lista de precios
+
+                                                       Si no lo ingresás, asumimos que
+                                                       el pedido se debe enviar a la
+                                                       dirección habitual de entrega del
+                                                       cliente.
+                      Identificación de la
+ ID_DIRECCION_EN                                       Si lo ingresás validamos que exista,
+                 No   dirección de           int
+ TREGA                                                 que corresponda al cliente
+                      entrega del cliente
+                                                       informado y que esté habilitada.
+
+                                                       No debés completar esta
+                                                       propiedad si
+                                                       ES_CLIENTE_HABITUAL =
+                                                       false
+
+API Pedidos                           Versión 1.11                                   Página 4 de 20
+                                                        Solo los podés informar si usa
+                                                        planes de entrega (Parámetros de
+                                                        Venta\Comprobantes\Pedidos)
+ FECHA_ENTREGA   No   Fecha de entrega       datetime
+                                                        Si no lo ingresás, asumimos la
+                                                        FECHA_PEDIDO + la cantidad
+                                                        habitual de días de entrega
+                                                        definida en Parámetros de
+                                                        Venta.
+                      Identificación del
+                      modelo de
+                      asiento que se                    Si lo ingresás verificamos que
+ ID_ASIENTO_MOD
+                No    debe aplicar a las     int        corresponda a un modelo de
+ E LO_GV
+                      facturas                          asiento habilitado para facturas.
+                      relacionadas con
+                      el pedido
+
+                                                        Tené en cuenta que esta
+                                                        propiedad es obligatoria si exigís
+                                                        la clasificación de comprobantes
+                                                        “Siempre” (Parámetros de
+                                                        Venta\Clasificación de
+                                                        comprobantes\Clasifica
+                                                        comprobantes)
+
+                                                        Si no la informás, la completamos
+                      Identificación de la              con la clasificación habitual para
+ ID_GVA81        No   clasificación de       int        pedidos definida en Parámetros
+                      comprobantes                      de Ventas. (solo para el caso en
+                                                        que sea obligatorio su ingreso de
+                                                        acuerdo con lo explicado más
+                                                        arriba, de lo contrario quedará sin
+                                                        clasificar)
+
+                                                        Controlamos que se encuentre
+                                                        vigente, que esté habilitada para
+                                                        el módulo de “Ventas” y para
+                                                        “Pedidos”.
+
+
+                      Identificación del                Si lo ingresás verificamos que
+ ID_GVA43_TALONA      talonario con el                  corresponda a un talonario de
+                 No                          int
+ RIO_FACTURA          que se debería                    factura (GVA43.COMPROB =
+                      facturar                          “FAC”)
+
+                      Número de
+ NRO_ORDEN_CO
+                 No   orden de               string
+ M PRA
+                      compra del
+                      cliente
+                      Fecha de la
+ FECHA_ORDEN_C                                          Esta propiedad es obligatoria si
+               No     orden de compra        datetime
+ OMPRA                                                  completás
+                      del cliente
+                                                        NRO_ORDEN_COMPRA
+                                                        Completá esta propiedad si el
+                      Identificación de la              pedido debe continuar circuito en
+ ID_SUCURSAL_DE       sucursal a la que                 otra sucursal, ya sea para
+                No                           int
+ S TINO               debe enviarse en                  facturarse como para remitirse.
+                      pedido.
+                                                        Si la completás, verificamos que
+
+
+
+API Pedidos                           Versión 1.11                                     Página 5 de 20
+                                                      exista y que sea distinta a la
+                                                      asignada en el proceso Empresa.
+
+                                                      Valores posibles:
+                                                           true: compromete stock
+                                                           false: no
+ COMPROMETE_           Indica si el pedido
+                  No                         bool            compromete stock
+ ST OCK                compromete stock
+                                                      Si no lo informás, asumimos
+                                                      el valor “true”
+
+                                                      Valores posibles: (debés
+                                                      informar el ID correspondiente al
+                                                      código)
+                                                            10: Educación pública
+                                                              de gestión privada
+                       Código de
+                                                            11: Locación de
+                       actividad de la
+                       empresa que                            inmuebles rurales
+ ID_ACTIVIDAD_E
+                  No   debe aplicar al       int            12: Locación de
+ MP RESA_AFIP                                                 inmuebles turísticos
+                       facturar según lo
+                       especificado por la
+                       RG 3749                        Solo debés completar esta
+                                                      información (opcionalmente) si la
+                                                      empresa está obligada a cumplir
+                                                      con la RG 3749 (régimen de
+                                                      información adicional de factura
+                                                      electrónica). Este dato se traslada
+                                                      luego a la factura.
+
+                                                      Valores posibles:
+                                                           “C”: comprendida
+                       Código de                           “N”: no comprendida
+                       actividad de la
+                       transacción que                Solo debés completar esta
+ ACTIVIDAD_CO
+                  No   debe aplicar al       string   información (opcionalmente) si la
+ MP
+                       facturar según lo              empresa está obligada a cumplir
+ ROBANTE_AFIP
+                       especificado por la            con la RG 3749 (régimen de
+                       RG 3749                        información adicional de factura
+                                                      electrónica). Este dato se traslada
+                                                      luego a la factura.
+
+                                                      Solo debés completar esta
+                       Tipo de                        información (opcionalmente) si la
+                       documento de la                empresa está obligada a cumplir
+ ID_TIPO_DOCUME        persona                        con la RG 3749 (régimen de
+                No                           string
+ NTO_GV                responsable del                información adicional de factura
+                       pago según lo                  electrónica). Este dato se traslada
+                       especificado por la            luego a la factura.
+                       RG 3749
+
+                                                      Solo debés completar esta
+                       Número de
+                                                      información (opcionalmente) si la
+                       documento de la
+                                                      empresa está obligada a cumplir
+                       persona
+ NUMERO_DOCUM                                         con la RG 3749 (régimen de
+              No       responsable del       string
+ ENTO_PAGADOR                                         información adicional de factura
+                       pago según lo
+                                                      electrónica). Este dato se traslada
+                       especificado por la
+                                                      luego a la factura.
+                       RG 3749
+
+
+
+
+API Pedidos                           Versión 1.11                                  Página 6 de 20
+                                                     En las facturas correspondientes
+                                                     a colegios
+                                                     (ACTIVIDAD_COMPROBANTE_A
+                                                     FIP
+                                                     = 10) habitualmente es uno de los
+                                                     progenitores.
+                      Leyenda 1
+ LEYENDA_1       No                        string
+                      del pedido
+
+                      Leyenda 2
+ LEYENDA_2       No                        string
+                      del pedido
+
+                      Leyenda 3
+ LEYENDA_3       No                        string
+                      del pedido
+
+                      Leyenda 4
+ LEYENDA_4       No                        string
+                      del pedido
+
+                      Leyenda 5
+ LEYENDA_5       No                        string
+                      del pedido
+
+                                                     Valores posibles: entre 0 y 100.
+
+                                                     Solo lo podés informar si
+                                                     IMPORTE_DESCUENTO_GENE
+                      Porcentaje de                  RAL
+ PORCENTAJE_DE
+               No     descuento            decimal   es null.
+ S
+                      del pedido
+ CUENTO_GENERA
+ L                                                   Tené en cuenta que este valor se
+                                                     suma al descuento del cliente si
+                                                     informás que
+                                                     APLICA_DESCUENTO_CLIENTE
+                                                     =
+                                                     true.
+                                                     Valores posibles: mayor o igual a
+                                                     0
+
+                                                     Solo lo podés informar si
+                      Importe de                     PORCENTAJE_DESCUENTO_G
+ IMPORTE_DESCU
+                 No   descuento del        decimal   ENE
+ E NTO_GENERAL
+                      pedido                         RAL es null.
+
+                                                     Tené en cuenta que este valor se
+                                                     suma al descuento del cliente si
+                                                     informás que
+                                                     APLICA_DESCUENTO_CLIENTE
+                                                     =
+                                                     true
+                                                     Valores posibles: entre 0 y 100.
+ PORCENTAJE_R         Porcentaje de
+                 No                        decimal   Solo lo podés informar si
+ EC                   recargo del
+                                                     IMPORTE_RECARGO_GENERA
+ ARGO_GENERA          pedido
+                                                     L es
+ L
+                                                     null.
+                                                     Valores posibles: mayor o igual
+                                                     a 0.
+ IMPORTE_RECA         Importe de
+                 No                        decimal
+ RG O_GENERAL         recargo del                    Solo lo podés informar si
+                      pedido                         PORCENTAJE_RECARGO_GEN
+                                                     ERA
+                                                     L es null.
+API Pedidos                           Versión 1.11                               Página 7 de 20
+                                                       Valores posibles:
+                        Indica si se debe                   true: aplica el descuento
+ APLICA_DESCUEN         aplicar el                            asignado en el proceso
+                No                             bool           de Clientes.
+ T O_CLIENTE            descuento habitual
+                        del cliente                         false: no aplica el
+                                                              descuento asignado en
+                                                              el proceso de Clientes.
+
+                                                       Valores posibles:
+                                                            true: aplica
+                                                              automáticamente las
+                                                              promociones definidas
+                                                              en el sistema.
+                        Indica si se deben                  false: no se aplican las
+                        aplicar                               promociones comerciales
+ CALCULA_PROM           promociones en el                     para el pedido (como si
+                   No                          bool           no existieran o no
+ O CIONES               pedido o se debe
+                        genera sin                            estuvieran vigentes).
+                        tenerlas en
+                        cuenta                         Tené en cuenta que en caso de
+                                                       existir promociones del tipo “A+B”
+                                                       debés informar por tu cuenta los
+                                                       artículos que se entregan como
+                                                       “regalo” en este pedido para que
+                                                       se aplique la promoción.
+
+
+                                                       Valores posibles:
+                                                            true: control estricto de
+                                                              límite de crédito.
+                                                            false: no controla límite
+                                                              de crédito.
+
+                        Indica si se debe              En caso de que actives esta
+ VALIDA_LIMITE_C        validar el límite de           opción y el pedido superase el
+                   No                          bool    límite de crédito no podrás grabar
+ R EDITO                crédito del cliente
+                        al grabar el                   el comprobante.
+                        pedido.
+                                                       Tené en cuenta que, si el cliente
+                                                       pertenece a un grupo empresario,
+                                                       validaremos el límite de crédito de
+                                                       acuerdo con lo especificado en la
+                                                       configuración del grupo
+                                                       empresario.
+
+
+                        Identificación de la
+                        cuenta de
+                        Tesorería que                  Tené en cuenta que
+                        representa la                  trasladaremos la intención de
+ ID_SBA01          No                          int
+                        intención de pago              pago a la factura en forma
+                        del cliente (Se                automática y por el importe total
+                        traslada luego a               del pedido.
+                        factura)
+
+                        Identificador de la
+ ID_PROMOCION_T                                        Este valor se trasladará a la
+                No      promoción de           int
+ ARJETA                                                factura.
+                        tarjeta
+
+ ID_PLAN_TARJETA No     Identificador del      int     Este valor se trasladará a la
+
+
+
+API Pedidos                             Versión 1.11                                   Página 8 de 20
+                                plan de tarjeta                          factura.
+
+                                Cantidad de
+                                                                         Este valor se trasladará a la
+ CUOTA             No           cuotas                 int
+                                                                         factura.
+                                seleccionadas
+
+                                Observaciones          string
+ OBSERVACIONES     No
+                                del pedido
+
+                                                       bool              Valores posibles:
+                                                                              true: control estricto de
+                                                                                validación de stock.
+                                                                              false: no controla la
+                                Indica si debe                                  disponibilidad de stock.
+                                validar la
+ VALIDA_STOCK      No           existencia de                            Si activás esta validación y no hay
+                                stock de los                             stock disponible para la cantidad
+                                artículos que                            pedida en alguno de los artículos,
+                                llevan stock.                            entonces el pedido no será
+                                                                         ingresado.
+                                                                         El valor por defecto es false.
+
+
+
+
+RENGLON_DTO
+Tené en cuenta que esta sección es de tipo array por lo que deberás repetirla para registrar los
+distintos renglones del pedido.
+
+                                                                Tipo        Consideraciones, valores posibles y
+ Campo                   Req.    Descripción
+                                                                de          ejemplos
+                                                                dato
+                                                                            Artículos tipo Kit: solo se puede informar el
+                                                                            artículo “Padre”. Si es un kit ‘fijo’ se
+                                 Identificación del
+ ID_STA11                Si                                     int         agregarán automáticamente los
+                                 artículo pedido
+                                                                            componentes definidos. Si es un kit
+                                                                            ‘variable’ se registrará sin componentes.
+
+                                 Descripción del                            Solo lo debés informar si necesitás alterar
+ DESCRIPCION_ARTICUL     No                                     string
+                                 artículo                                   la descripción habitual del artículo.
+ O
+                                                                            Solo lo debés informar si necesitás alterar
+ DESCRIPCION_ADICIONA            Descripción adicional
+                      No                                        string      la descripción adicional habitual del
+ L_ARTICULO                      del artículo
+                                                                            artículo.
+
+                                 Identificación del                         Si no lo informás, asignaremos el valor
+ ID_STA22                No                                     int
+                                 depósito del renglón                       definido en la sección ENCABEZADO.
+
+                                                                            Valores posibles:
+                                 Unidad de medida en la                          “GV”: presentación de ventas
+ MODULO_UNIDAD_MEDI
+                         No      que está expresa la    string                   “ST”: unidad de medida de stock
+ DA
+                                 CANTIDAD_PEDIDA
+                                                                            En caso de no informar un valor
+                                                                            asumiremos “GV”.
+
+
+
+API Pedidos                                       Versión 1.11                                           Página 9 de 20
+                                                              Valores posibles: distinto de 0.
+
+                                                              Puede ser un valor negativo siempre y
+                          Cantidad solicitada por
+ CANTIDAD_PEDIDA     SI                             decimal   cuando la propiedad PRECIO tenga un
+                          el cliente
+                                                              valor positivo o null. Podés utilizar un
+                                                              valor negativo para reflejar una
+                                                              devolución del producto.
+
+                                                              Valores posibles: menor o igual que
+                                                              CANTIDAD_PEDIDA
+                          Cantidad habilitada
+ CANTIDAD_A_FACTURAR No                             decimal
+                          para facturar                       Si no lo informás, o lo dejás en null,
+                                                              asignaremos la misma cantidad que
+                                                              CANTIDAD_PEDIDA.
+
+                                                              Valores posibles: menor o igual que
+                                                              CANTIDAD_PEDIDA.
+ CANTIDAD_A_DESCAR        Cantidad habilitada
+                     No                             decimal
+ GA R                     para remitir                        Si no lo informás, o lo dejás en null,
+                                                              asignaremos la misma cantidad que
+                                                              CANTIDAD_PEDIDA.
+
+                                                              Valores posibles:
+                                                              Consideraciones por configuración
+                                                              del perfil:
+                                                              Muestra -> No es editable, en el alta no se
+                                                              envía y en la edición se debe dejar como la
+                                                              original.
+                                                              Pendiente -> No es editable, en el alta no se
+                                                              envía y en la edición se debe dejar como la
+                                                              original.
+ CANTIDAD_PENDIENTE_ No   Cantidad pendiente de     decimal
+                                                              Edita -> Tiene 2 comportamientos
+ A                        facturar
+                                                              diferentes para alta y edición:
+ _FACTURAR
+                                                              En alta se permiten 2 valores posibles,
+                                                              igual a la cantidad pedida o 0.
+                                                              En edición se debe dejar igual como la
+                                                              original o 0.
+                                                              Si querés dejar
+                                                              CANTIDAD_PENDIENTE_A_FACTURAR
+                                                              en 0
+                                                              entonces la CANTIDAD_A_FACTURAR
+                                                              debe ser 0.
+
+                                                              Valores posibles: importes negativos,
+                                                              cero o positivos.
+
+                                                              Tené en cuenta que el valor puede ser
+                                                              negativo siempre y cuando la propiedad
+                                                              CANTIDAD_PEDIDA tenga un valor
+                                                              positivo. Un valor negativo se puede usar,
+                                                              por ejemplo, para representar un
+ PRECIO              No   Precio de venta           decimal
+                                                              descuento en la factura por ese artículo.
+
+                                                              Si ingresás un valor negativo no debés
+                                                              dejar espacios entre el signo y el importe;
+                                                              por ejemplo -5000.
+
+                                                              Tené en cuenta que el valor ingresado debe
+                                                              estar expresado en la moneda de la lista de
+
+
+
+
+API Pedidos                             Versión 1.11                                     Página 10 de 20
+                                                              precios (ID_GVA10) informada en la
+                                                              sección ENCABEZADO.
+
+                                                              Si no lo ingresás, asignaremos el precio
+                                                              de la lista informada en la sección
+                                                              ENCABEZADO. En caso de que no
+                                                              exista precio para el artículo
+                                                              rechazaremos el pedido.
+
+                                                              Valores posibles: entre 0 y 100.
+                           Porcentaje de
+ PORCENTAJE_BONIFICA
+                     No    bonificación del        decimal    Si no lo ingresás, asignaremos la
+ CI ON
+                           renglón                            bonificación configurada en el artículo, o
+                                                              la bonificación según el cliente.
+
+                                                              Si no lo ingresás, asignaremos la
+                                                              clasificación indicada en la sección
+                           Identificación de la
+                                                              ENCABEZADO.
+                           clasificación de
+ ID_GVA81            No                            int
+                           comprobantes a nivel
+                                                              Controlamos que se encuentre vigente,
+                           renglón
+                                                              que esté habilitada para el módulo de
+                                                              “Ventas” y para “Pedidos”.
+
+                                                             Si no lo ingresás, asignaremos el orden en
+                                                             que se informan los artículos.
+NRO_ORDEN           No    Orden de aparición de    int       Si lo ingresas para uno, debés informar el
+                          los artículos en el                orden para todos los registros.
+                          comprobante
+                                                             Controlamos que no haya repetidos ni
+                                                             huecos o saltos.
+
+                                                              Recomendamos utilizar esta nueva
+                                                              propiedad en lugar de completar la sección
+                                                              DESCRIPCION_ADICIONAL_DTO pero si
+                           Observaciones
+ OBSERVACIONES       No                            string     utilizabas las descripciones adicionales
+                           asignadas al
+                                                              para agregar información adicional del
+                           renglón
+                                                              artículo pedido podés continuar haciéndolo
+                                                              o incluso combinar ambas opciones.
+
+
+
+
+API Pedidos                              Versión 1.11                                    Página 11 de 20
+PLAN_DE_ENTREGA_DTO (No requerido)
+Solo podés informar esta sección si tenés tildada la opción “Usa planes de entrega” en Parámetros
+de Venta\Comprobantes\Pedidos (GVA16.USA_PLAN).
+
+Tené en cuenta que esta sección es de tipo array por lo que deberás repetirla para registrar las
+distintas fechas de entrega pactadas con tu cliente para cada RENGLON_DTO.
+
+                                                     Tipo       Consideraciones, valores posibles
+ Campo                 Req.   Descripción
+                                                     de         y ejemplos
+                                                     dato
+                                                                La suma de todas las cantidades del array
+                                                                de PLAN_DE_ENTREGA debe coincidir
+                                                                con lo informado en la propiedad
+                              Cantidad que debes                CANTIDAD_PEDIDA de la sección
+                              entregar en la fecha              RENGLON_DTO.
+ CANTIDAD              No     FECHA_DE_ENTREG        decimal
+                              A                                 Tené en cuenta que si completaste la
+                              para el renglón del               propiedad CANTIDAD_PEDIDA con un
+                              pedido                            valor negativo las cantidades de esta
+                                                                sección también deben tener valores
+                                                                menores a cero.
+
+
+ FECHA_DE_ENTREGA      No     Fecha de entrega       datetime   Es requerido si se ingresa una cantidad.
+
+
+
+
+API Pedidos                                 Versión 1.11                                 Página 12 de 20
+DESCRIPCION_ADICIONAL_DTO (No requerido)
+Recomendamos utilizar la nueva propiedad OBSERVACIONES de la sección RENGLON_DTO
+(en lugar de esta sección) para que ingreses texto adicional al renglón del pedido de una forma
+más sencilla y con mayor capacidad de caracteres. De todas formas si tu implementación
+requiere el uso de esta sección la podés completar sin inconvenientes. También podés combinar
+ambas opciones.
+
+Tené en cuenta que esta sección es de tipo array por lo que deberás repetirla para registrar las
+distintas descripciones adicionales asociadas a cada RENGLON_DTO.
+
+                                                         Tipo     Consideraciones, valores posibles
+ Campo                 Req.   Descripción
+                                                         de       y ejemplos
+                                                         dato
+                              Texto suplementario
+                              que se agrega en un
+ DESCRIPCION           No                                string
+                              renglón posterior a la
+                              descripción del artículo
+
+                              Texto suplementario
+                              que se agrega en un
+ DESCRIPCION_ADICIO
+                       No     renglón posterior a        string
+ N AL
+                              la descripción
+                              adicional del artículo
+
+
+
+CLIENTE_OCASIONAL_DTO (No requerido)
+Esta sección solo debe completarse, aunque es de forma opcional, si la propiedad (de la sección
+ENCABEZADO) ES_CLIENTE_HABITUAL es false.
+
+                                                         Tipo     Consideraciones, valores posibles
+ Campo                 Req.   Descripción
+                                                         de       y ejemplos
+                                                         dato
+ ID_TIPO_DOCUMENTO            Tipo de documento del
+                       Si                                int
+ _ GV                         cliente ocasional
+
+                              Número de documento
+ NRO_DOCUMENTO         No                                string
+                              del cliente ocasional
+
+                              Razón social del cliente
+ RAZON_SOCIAL          No                                string
+                              ocasional
+
+                              Domicilio del cliente
+ DOMICILIO             No                                string
+                              ocasional
+
+                              Localidad del cliente
+ LOCALIDAD             No                                string
+                              ocasional
+
+                              Código postal del
+ CODIGO_POSTAL         No                                string
+                              cliente ocasional
+
+                              Identificación de la
+ ID_GVA18_PROVINCIA    Si                                int
+                              provincia del cliente
+
+
+API Pedidos                                    Versión 1.11                           Página 13 de 20
+                            ocasional
+
+                            Actividad comercial del
+ ACTIVIDAD             No                               string
+                            cliente ocasional
+
+                            Identificación tributaria
+                            para trasladar a la                    Tené en cuenta solo deberías completar
+                            factura en caso de                     este campo si el pedido se va a facturar
+ IDENTIFICACION_TRIB
+                       No   tratarse de un              string     con un comprobante de exportación y no
+ U TARIA
+                            comprobante                            completaste la propiedad
+                            electrónico de                         NRO_DOCUMENTO.
+                            exportación
+
+                                                                   Valores posibles:
+                            Régimen de                                  null: No liquida (graba en blanco)
+ REGIMEN_INGRESOS_
+ B RUTOS
+                   No       ingresos brutos del         string          “L”: Local
+                            cliente ocasional                           “M”: Multilateral
+                                                                        “S”: Régimen simplificado
+
+                            Número de inscripción
+ NRO_INGRESOS_BRU
+                       No   del cliente ocasional en    string
+ TO S
+                            ingresos brutos
+
+                            Correo electrónico
+ E_MAIL                No                               string
+                            del cliente ocasional
+
+                            Página web del cliente
+ WEB_CLIENTE           No                               string
+                            ocasional
+
+                            Número               de
+ NUMERO_INSCRIPCIO
+                       No   constancia           de     string
+ N
+                            condición     tributaria
+ _RG1817
+                            (RG1817)
+                                                                   Tené en cuenta que no validamos en
+                            Fecha de
+                                                                   forma estricta que la fecha informada sea
+ FECHA_VENCIMIENTO_         vencimiento de la
+                     No                                 datetime   mayor o igual a la actual debido a que no
+ I NSCRIPCION_RG1817        constancia de
+                                                                   es posible definir un control estricto de
+                            condición tributaria
+                                                                   este valor desde Parámetros generales de
+                            (RG1817)
+                                                                   Ventas.
+                            Identificación de la
+ ID_CATEGORIA_IVA      Si   categoría de IVA            int
+                            del           cliente
+                            ocasional
+                            Identificación de la
+                            alícuota de IVA a aplicar
+                                                                   Valores posibles: ID correspondiente a la
+ ID_GVA41_ALICUOTA          cuando se trate de un
+                       No                             int          tabla GVA41 cuyo código esté comprendido
+ _N                         cliente con categoría
+                                                                   entre el 11 y el 20.
+ O_CATEGORIZADA             “Sujeto no
+                            categorizado”
+
+                                                                   Valores posibles:
+                            Indica si se debe                           true: calcula percepción de IVA
+ CALCULA_PERCEPCIO          calcular percepciones                       false: no calcula percepción de IVA
+                   No                                   bool
+ N                          de IVA al cliente
+ _IVA                       ocasional                              En caso de no informar un valor
+                                                                   consideraremos “false” y por lo tanto no
+                                                                   calcularemos percepciones de IVA.
+
+
+
+API Pedidos                                  Versión 1.11                                    Página 14 de 20
+                           Porcentaje de
+ PORCENTAJE_EXCLU
+                      No   exclusión a considerar      decimal   Valores posibles: entre 0 y 100
+ SIO N
+                           sobre la percepción de
+                           IVA
+                                                                 Valores posibles:
+                                                                      true: liquida impuestos internos
+                           Indica si se debe                          false: no liquida
+ LIQUIDA_IMPUESTOS_I       liquidar impuestos                           impuestos internos
+                     No                                bool
+ N TERNOS                  internos al cliente
+                           ocasional                             En caso de no informar un valor
+                                                                 consideraremos “false” y por lo tanto no
+                                                                 calcularemos impuestos internos.
+
+                                                                 Valores posibles:
+                                                                      true: discrimina
+                           Indica si se debe                            impuestos internos
+ DISCRIMINA_IMPUEST
+                           discriminar en el                          false: no discrimina
+                      No   comprobante los             bool             impuestos internos
+ O S_INTERNOS
+                           impuestos internos
+                           calculados                            En caso de no informar un valor
+                                                                 consideraremos “false” y por lo tanto no
+                                                                 discriminaremos impuestos internos.
+
+                                                                 Valores posibles:
+                                                                      true: calcula percepción
+                                                                        de impuestos internos
+                           Indica si se debe                          false: no calcula percepción
+ CALCULA_PERCEPCIO         liquidar percepción                          de impuestos internos
+                   No                                  bool
+ N                         de impuestos
+ _IMPUESTOS_INTERN         internos al cliente                   En caso de no informar un valor
+ OS                        ocasional                             consideraremos “false” y por lo tanto no
+                                                                 calcularemos percepciones de impuestos
+                                                                 internos.
+
+                                                                 Valores posibles: ID correspondiente a la
+                                                                 tabla GVA41 cuyo código esté comprendido
+ ID_GVA41_ALICUOTA_        Identificación de la                  entre el 51 y el 80.
+ FIJ                  No   alícuota fija de Ingresos   int
+ A_PERCEPCION_IIBB         brutos                                Solo lo podés informar si
+                                                                 LIQUIDA_PERCEPCION_INGRESOS_BRU
+                                                                 TO
+                                                                 S = true.
+                                                                 Valores posibles:
+                                                                      true: liquida percepción de IIBB
+                           Indica si se debe                          false: no liquida percepción de IIBB
+ LIQUIDA_PERCEPCION
+                    No     liquidar ingresos           bool
+ _ INGRESOS_BRUTOS                                               En caso de no informar un valor
+                           brutos al cliente
+                           ocasional                             consideraremos “false” y por lo tanto
+                                                                 no calcularemos percepciones de
+                                                                 ingresos brutos.
+
+                                                                 Valores posibles:
+                           Indica si se debe
+                           considerar el importe                      true: considera en IVA dentro de
+ CONSIDERA_IVA_BASE                                                     la base de cálculo
+                    No     de IVA dentro de la         bool
+ _ CALCULO_IIBB
+                           base de cálculo de la                      false: no lo considera
+                           alícuota fija de
+                           ingresos brutos                       En caso de no informar un valor
+
+
+
+API Pedidos                                Versión 1.11                                    Página 15 de 20
+                                                             consideraremos “false” y por lo tanto no
+                                                             consideraremos el IVA dentro de la base
+                                                             de cálculo.
+
+                                                             Solo lo podés informar si
+                                                             LIQUIDA_PERCEPCION_INGRESOS_BRU
+                                                             TO
+                                                             S = true .
+                                                             Valores posibles: ID correspondiente a la
+                                                             tabla GVA41 cuyo código esté comprendido
+ ID_GVA41_ALICUOTA         Identificación de la              entre el 51 y el 80.
+ _A                   No   alícuota adicional de      int
+ DICIONAL_PERCEPCI         Ingresos brutos                   Solo lo podés informar si
+ O N_IIBB                                                    LIQUIDA_PERCEPCION_INGRESOS_BRU
+                                                             TO
+                                                             S = true.
+                                                             Valores posibles:
+                                                                  true: considera en IVA dentro de
+                                                                    la base de cálculo
+                           Indica si se debe                      false: no lo considera
+                           considerar el importe de
+ CONSIDERA_IVA_BASE        IVA dentro de la base de          En caso de no informar un valor
+                     No                             bool     consideraremos “false” y por lo tanto no
+ _ CALCULO_IIBB_ADIC       cálculo de la alícuota
+                           adicional de ingresos             consideraremos el IVA dentro de la base
+                           brutos                            de cálculo.
+
+                                                             Solo lo podés informar si
+                                                             LIQUIDA_PERCEPCION_INGRESOS_BRU
+                                                             TO
+                                                             S = true.
+                           Indica si se debe
+                           liquidar ingresos brutos          Valores posibles:
+                           de acuerdo con la RG                   true: liquida percepción de
+                           58/59 al cliente                         IIBB 59/98
+ LIQUIDA_PERCEPCIO         ocasional. Esta RG                     false: no liquida percepción de
+ N_                   No   está relacionada con       bool          IIBB 59/98
+ INGRESOS_BRUTOS_          industrias elaboradoras
+ 59_ 98                    de cervezas y agentes             En caso de no informar un valor
+                           de comercialización               consideraremos “false” y por lo tanto no
+                           mayorista de dichos               liquidaremos la percepción de IIBB 59/98.
+                           bienes
+
+
+ ID_GVA41_ALICUOTA_        Identificación de la              Valores posibles: ID correspondiente a la
+ FIJ                  No   alícuota de                int    tabla GVA41 cuyo código esté comprendido
+ A_PERCEPCION_IIBB_        Ingresos brutos                   entre el 51 y el 80.
+ 59                        (RG 58/59)
+ _98
+                                                             Valores posibles:
+                           Indica si se deben                     true: incluye impuestos internos
+                           considerar los                         false: no incluye
+ INCLUYE_IMPUESTOS_                                                 impuestos internos
+                    No     impuestos internos         bool
+ I NTERNOS
+                           en el cálculo de
+                           ingresos brutos (RG               En caso de no informar un valor
+                           58/59)                            consideraremos “false” y por lo tanto no
+                                                             incluiremos los impuestos internos.
+
+                           Identificación del rubro
+ ID_GVA151            No   comercial del cliente      int
+                           ocasional
+
+API Pedidos                                Versión 1.11                                Página 16 de 20
+                              Identificación de la
+                              clasificación impositiva
+ ID_GVA150             No     del cliente para la         int
+                              aplicación de
+                              percepciones definibles
+
+                              Dirección de entrega del
+ DIRECCION_ENTREGA     No                              string
+                              cliente ocasional
+
+                              Localidad de la
+ LOCALIDAD_ENTREGA No         dirección de entrega        string
+                              del cliente ocasional
+
+                              Código postal de la
+ CODIGO_POSTAL_ENT
+                   No         dirección de entrega del    string
+ R EGA
+                              cliente ocasional
+
+                              Identificación de la
+ ID_GVA18_PROVINCIA_          provincia de la dirección            Podés obtener el ID a informar desde la
+                     Si                                   int
+ E NTREGA                     de entrega del cliente               tabla GVA18.
+                              ocasional
+
+                              Teléfono 1 de la
+ TELEFONO1_ENTREGA No         dirección de entrega        string
+                              del cliente ocasional
+
+                              Teléfono 2 de la
+ TELEFONO2_ENTREGA No         dirección de entrega        string
+                              del cliente ocasional
+
+
+
+CLIENTE_OCASIONAL_PERCEPCIONES_DEFINIBLES_DTO (No requerido)
+Esta sección solo debe completarse, aunque es de forma opcional, si la propiedad (de la sección
+ENCABEZADO) ES_CLIENTE_HABITUAL es false.
+Tené en cuenta que esta sección es de tipo array por lo que deberás repetirla para registrar las
+distintas precepciones definibles que se deben aplicar al CLIENTE_OCASIONAL.
+
+                                                          Tipo     Consideraciones, valores posibles
+ Campo                 Req.   Descripción
+                                                          de       y ejemplos
+                                                          dato
+                              Identificación de la
+                                                                   Tené en cuenta que la información para
+ ID_PERCEPCION_VEN            percepción definible
+                       Si                                 int      completar esta propiedad surge de la tabla
+ TA S                         que se debe aplicar al
+                                                                   GVA141 (Percepciones).
+                              cliente ocasional
+
+                              Identificación de la
+                              alícuota asociada a la               Tené en cuenta que la información para
+ ID_PERCEPCION_VENT
+                    Si        percepción definible        Int      completar esta propiedad surge de la tabla
+ A S_ALICUOTA
+                              que se debe aplicar al               GVA141 (Alícuotas de percepciones).
+                              cliente ocasional
+
+ LEYENDA               No     Leyenda libre               string
+
+
+
+
+API Pedidos                                   Versión 1.11                                  Página 17 de 20
+NOTA_PEDIDO_DTO (No requerido)
+Tené en cuenta que esta sección es de tipo array por lo que deberás repetirla para registrar los
+distintos mensajes que quieras dejar asociados al pedido.
+Si vas a completar esta sección es obligatorio que informes la propiedad MENSAJE.
+
+                                                         Tipo     Consideraciones, valores posibles
+ Campo                 Req.   Descripción
+                                                         de       y ejemplos
+                                                         dato
+                              Comentario que se
+                              quiera incluir como nota
+                              adjunta en el pedido                Además del mensaje registraremos la fecha
+ MENSAJE               No                                string
+                              dentro de la solapa de              del día y con el tipo de nota “Manual”.
+                              “Información adicional”
+                              del pedido.
+
+
+
+
+CERRAR (No requerido)
+
+                                                         Tipo     Consideraciones, valores posibles
+ Campo                 Req.   Descripción
+                                                         de       y ejemplos
+                                                         dato
+                              Identificación del
+ ID_GVA21              Si                                int
+                              pedido a cerrar
+                                                                  Si lo informa, se valida que exista en la
+                              Código del motivo de
+ CODIGOMOTIVO          No                                string   tabla de motivos para cierre y anulación de
+                              cierre según tabla
+                                                                  pedidos (GVA121)
+                              GVA121
+                              Proceso desde el cual               Recomendamos informar: API
+ PROCESO               No                                string
+                              se realiza el cierre del            Si no se informa, se completa con: Cierre
+                              pedido
+
+
+
+
+API Pedidos                                    Versión 1.11                                Página 18 de 20
+ANULAR (No requerido)
+
+                                                      Tipo     Consideraciones, valores posibles
+ Campo             Req.   Descripción
+                                                      de       y ejemplos
+                                                      dato
+                          Identificación del
+ID_GVA21           Si                                 int
+                          pedido a anular
+
+                                                               Si lo informa, se valida que exista en la
+                          Código del motivo de
+CODIGOMOTIVO       No                                 string   tabla de motivos para cierre y anulación de
+                          anulación según tabla
+                                                               pedidos (GVA121)
+                          GVA121
+                          Proceso desde el cual                Recomendamos informar: API
+PROCESO            No                                 string
+                          se realiza la anulación              Si no se informa, se completa con:
+                          del pedido                           Anulacion
+                          Indica si reconstruye
+RECONSTRUIRCOTIZAC No                                 bool     En caso de no informarse, toma el valor
+                          las cantidades de la
+IONES                                                          false
+                          cotización asociada
+                          Indica si reconstruye
+RECONSTRUIRNEXOTIE No                                 bool     En caso de no informarse, toma el valor
+                          las cantidades de la
+NDAS                                                           false
+                          orden de tiendas
+                          Indica si anula el
+ANULARPEDIDOEXPOR No                                  bool     En caso de no informarse, toma el valor
+                          pedido, aunque haya
+TADOCENTRAL                                                    false
+                          sido exportado a
+                          central
+                          Indica si anula pedidos
+ANULARPEDIDONEXOTI
+                          que corresponden a
+ENDASDEOTRASUCUR No                                   bool     En caso de no informarse, toma el valor
+                          ordenes Tango
+SAL                                                            false
+                          Tiendas de otra
+                          sucursal
+                                                               En caso de no informarse, toma el valor
+                          Indica si anula el
+                                                               false
+                          pedido sea cual fuere
+ANULARPEDIDORELACI
+                          su situación (pendiente
+ONADOCONFACTURAR No                                   bool     Si está activo el parámetro general
+                          o con comprobantes
+EMITO                                                          Mantiene pedidos facturados y entregados,
+                          asociados de manera
+                                                               sólo podrán anularse aquellos pedidos que
+                          parcial)
+                                                               no tengan comprobantes asociados
+                                                               (facturas o remitos)
+                          indique si desea anular
+                          los pedidos que se
+ANULARPEDIDORELACI No                                 bool     En caso de no informarse, toma el valor
+                          encuentran
+ONADOCONCOTIZACIO                                              false
+                          relacionados a
+N
+                          cotizaciones.
+                                                               En caso de no informarse, toma el valor
+                                                               false
+VALIDACOMPROBANTE         Indique si valida o no la
+SRELACIONADOSDESD No      existencia de               bool        Si es false, anula el pedido
+ETIENDAS                  comprobantes                            Si informa true y hay comprobantes
+                          asociados al procesar                    asociados, no anula el pedido
+                                                                  Si informa true y no hay comprobantes
+                                                                   asociados, anula el pedido
+
+
+
+
+API Pedidos                                Versión 1.11                                 Página 19 de 20
+Historial de cambios
+
+
+         Fecha /
+ Versión Build              Sección           Propiedad                  Cambio
+         mínimo
+
+ 1.00    25/06/2024         Todas             Todas                      Documento original
+         (24.01.000.0000)
+
+
+ 1.01    16/07/2024         RENGLON_DTO       DESCRIPCION_ARTICULO Eliminamos esta aclaración:
+         (24.01.000.0000)                     DESCRIPCION_ADICIONA
+                                              L                    “Tené en cuenta que lo podrás ingresar
+                                              _ARTICULO            únicamente si está activo el parámetro
+                                                                   “Permite agregar líneas y editar las del
+                                                                   artículo” (Parámetros de
+                                                                   Venta\Comprobantes\General\
+                                                                   Descripciones adicionales en créditos,
+                                                                   débitos y pedidos).”
+
+                                                                         Al utilizar API no es requerido que esté
+                                                                         habilitado ese parámetro para poder
+                                                                         modificar ese valor. API siempre lo
+                                                                         permite.
+
+ 1.02    17/07/2024         RENGLON_DTO       ID_STA11                   Se agregó esta aclaración:
+         (24.01.000.0000)
+
+                                                                         Artículos tipo Kit: solo se puede informar
+                                                                         el artículo “Padre”. Si es un kit ‘fijo’ se
+                                                                         agregarán automáticamente los
+                                                                         componentes definidos. Si es un kit
+                                                                         ‘variable’ se registrará sin componentes.
+ 1.03    29/08/2024         RENGLON_DTO       PORCENTAJE_BONIFICA        Se agregó esta aclaración:
+         (24.01.000.0000)                     CI ON
+                                                                  Si no lo ingresás, asignaremos la
+                                                                  bonificación configurada en el artículo.
+ 1.04    23/05/2025         ENCABEZADO                            Se agregó esta propiedad por nuevas
+                                              ID_PROMOCION_TARJET
+                                                                  funcionalidades.
+                                              A
+ 1.04    23/05/2025         ENCABEZADO                            Se agregó esta propiedad por nuevas
+                                              ID_PLAN_TARJETA
+                                                                  funcionalidades.
+ 1.04    23/05/2025         ENCABEZADO                            Se agregó esta propiedad por nuevas
+                                              CUOTA
+                                                                  funcionalidades.
+ 1.05    27/06/2025         Consideraciones                       Se agrega información sobre la edición
+                            generales                             de pedidos mediante ‘Apertura’.
+ 1.06    17/10/2025         ENCABEZADO        VALIDA_STOCK        Se agregó esta propiedad para permitir
+                                                                  validaciones.
+ 1.07    28/10/2025                                               Compatibilidad PDF
+ 1.08    11/11/2025         RENGLONES         CANTIDAD_PENDIENTE_        Aclaración para editar
+                                              A_ FACTURAR                CANTIDAD_PENDIENTE_A_FACTURAR
+ 1.09    6/2/2026           RENGLONES         CANTIDAD_PENDIENTE_        Nuevas definiciones del
+                                              A_                         comportamiento.
+                                              FACTURAR
+ 1.10    21/10/2026         RENGLONES         NRO_ORDEN                  Se agregó esta propiedad por nuevas
+                                                                         funcionalidades.
+ 1.11    27/10/2026         ANULAR y          Todas las propiedades de   Se agregan propiedades para permitir la
+                            CERRAR            estas 2 nuevas opciones    anulación y cierre de pedidos por API
+
+API Pedidos                                      Versión 1.11                                   Página 20 de 20
+
