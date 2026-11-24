@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import socket
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -57,6 +58,63 @@ class SinConexion(TangoError):
     pass
 
 
+# Ultima IP con la que se llego a cada nombre de servidor. Windows a veces deja de
+# resolver el nombre de la PC de Tango ("[Errno 11001] getaddrinfo failed") aunque
+# Tango siga andando: con esto se sigue usando la IP que ya funciono.
+_RUTA_IPS = None          # Path del archivo donde se recuerdan (lo pone _ruta_ips)
+_ips_conocidas: dict[str, str] = {}
+
+
+def _ruta_ips():
+    global _RUTA_IPS
+    if _RUTA_IPS is None:
+        try:
+            from .. import config
+            _RUTA_IPS = config.CARPETA / "ip_tango.json"
+        except Exception:
+            _RUTA_IPS = False
+    return _RUTA_IPS or None
+
+
+def _ip_recordada(host: str) -> str | None:
+    if host not in _ips_conocidas:
+        ruta = _ruta_ips()
+        try:
+            _ips_conocidas.update(json.loads(ruta.read_text(encoding="utf-8")))
+        except Exception:
+            pass
+    return _ips_conocidas.get(host)
+
+
+def _recordar_ip(host: str, ip: str) -> None:
+    if _ips_conocidas.get(host) == ip:
+        return
+    _ips_conocidas[host] = ip
+    ruta = _ruta_ips()
+    if ruta:
+        try:
+            ruta.write_text(json.dumps(_ips_conocidas), encoding="utf-8")
+        except OSError:
+            pass
+
+
+def _es_esta_pc(host: str) -> bool:
+    nombre = socket.gethostname().lower().split(".")[0]
+    return host.lower().split(".")[0] == nombre
+
+
+def _es_ip(host: str) -> bool:
+    try:
+        socket.inet_pton(socket.AF_INET6 if ":" in host else socket.AF_INET, host)
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def _falla_de_nombre(e: urllib.error.URLError) -> bool:
+    return isinstance(e.reason, socket.gaierror)
+
+
 class ClienteTango:
     TAM_PAGINA = 500
 
@@ -65,20 +123,62 @@ class ClienteTango:
         self.company = str(company)
         self._token = token
         self.timeout = timeout
+        self._ip_anotada = False
+        self._alternativo: tuple[float, str] | None = None   # (hasta cuando, servidor por IP)
 
     # ------------------------------------------------------------------ base
+    def _abrir(self, metodo: str, ruta: str, parametros: dict, datos_cuerpo: bytes | None,
+               encabezados: dict, servidor: str):
+        url = f"{servidor}/{ruta}?{urllib.parse.urlencode(parametros)}"
+        pedido = urllib.request.Request(url, data=datos_cuerpo, method=metodo, headers=encabezados)
+        with urllib.request.urlopen(pedido, timeout=self.timeout) as resp:
+            return resp.read().decode("utf-8-sig")
+
+    def _otra_direccion(self, host: str) -> str | None:
+        """Si el nombre del servidor no se resuelve: la IP que ya anduvo, o esta misma PC."""
+        if _es_ip(host):
+            return None
+        if _es_esta_pc(host):
+            return "127.0.0.1"
+        return _ip_recordada(host)
+
     def _pedir(self, metodo: str, ruta: str, parametros: dict, cuerpo: dict | None = None) -> dict:
-        url = f"{self.servidor}/{ruta}?{urllib.parse.urlencode(parametros)}"
         encabezados = {"ApiAuthorization": self._token, "Company": self.company, "Accept": "application/json"}
         datos_cuerpo = None
         if cuerpo is not None:
             datos_cuerpo = json.dumps(cuerpo).encode("utf-8")
             encabezados["Content-Type"] = "application/json"
-        pedido = urllib.request.Request(url, data=datos_cuerpo, method=metodo, headers=encabezados)
+        partes = urllib.parse.urlsplit(self.servidor)
+        host = partes.hostname or ""
+        alternativo = self._alternativo
         try:
-            with urllib.request.urlopen(pedido, timeout=self.timeout) as resp:
-                texto = resp.read().decode("utf-8-sig")
-                datos = json.loads(texto) if texto.strip() else {}
+            try:
+                if alternativo and alternativo[0] > time.monotonic():
+                    # el nombre no se resolvia hace un rato: no esperar otra vez a que falle
+                    texto = self._abrir(metodo, ruta, parametros, datos_cuerpo, encabezados, alternativo[1])
+                else:
+                    texto = self._abrir(metodo, ruta, parametros, datos_cuerpo, encabezados, self.servidor)
+                    self._alternativo = None
+                    if host and not _es_ip(host) and not self._ip_anotada:
+                        self._ip_anotada = True
+                        try:
+                            _recordar_ip(host, socket.gethostbyname(host))
+                        except OSError:
+                            pass
+            except urllib.error.URLError as e:
+                if isinstance(e, urllib.error.HTTPError) or not _falla_de_nombre(e):
+                    raise
+                ip = self._otra_direccion(host)
+                if not ip:
+                    raise SinConexion(
+                        f"No se pudo conectar con Tango en {self.servidor}: esta PC no encuentra la "
+                        f"computadora «{host}» en la red. Revisá que esté prendida, o cargá su IP "
+                        f"en lugar del nombre en Ajustes > Servidor y token "
+                        f"(por ejemplo http://192.168.0.10:{partes.port or 17000}).") from None
+                otro = f"{partes.scheme}://{ip}" + (f":{partes.port}" if partes.port else "")
+                texto = self._abrir(metodo, ruta, parametros, datos_cuerpo, encabezados, otro)
+                self._alternativo = (time.monotonic() + 300, otro)
+            datos = json.loads(texto) if texto.strip() else {}
         except urllib.error.HTTPError as e:
             if e.code == 401:
                 raise TokenInvalido(

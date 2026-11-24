@@ -140,6 +140,7 @@ Ojo: cualquiera con permiso de escritura en este repositorio puede publicar una 
 |---|---|
 | El panel dice "Tango rechazó el token" | Generá un token nuevo en Tango (Desarrollador > Generar > Aceptar) y cargalo en Ajustes > Servidor y token. |
 | El panel dice "Sin conexión con Tango" | Revisá que el servidor de Tango esté prendido y la dirección en Ajustes > Servidor y token. |
+| "Esta PC no encuentra la computadora …" o `getaddrinfo failed` | Windows no resuelve el nombre del servidor de Tango. La Herramienta reintenta sola con la última IP que anduvo (o con `127.0.0.1` si Tango está en la misma PC). Si nunca llegó a conectarse, cargá la IP en lugar del nombre en Ajustes > Servidor y token (por ejemplo `http://192.168.0.10:17000`) y reservale esa IP fija en el router. |
 | El celular no abre la página | El celular tiene que estar en el Wi-Fi de la oficina. Revisá el permiso del firewall. Si el panel muestra otras direcciones, probá con esas. |
 | Aviso "el puerto 8085 está ocupado" | Otro programa usa ese puerto: cambiá `puerto` en `config.ini`. |
 | El antivirus bloquea algo | Agregá `C:\HerramientaTango` como excepción en el antivirus. |
