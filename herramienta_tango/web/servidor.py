@@ -27,6 +27,7 @@ Listas de precios (leidas de las tablas de Tango, no de la consulta 12742):
     GET /api/articulos/<codigo>/precios   en que listas esta un articulo
     GET /api/articulos/<codigo>/cotizaciones   cotizaciones donde aparece (con cantidad y precio)
     GET /api/valorizacion            stock de Central valorizado en USD, renglon por renglon (base, solo lectura)
+    GET /api/valorizacion/aduana?carpeta=N  diagnostico: comprobantes de Aduana de una carpeta y sus cuentas
     GET /valorizacion.xlsx           lo mismo en Excel
     GET /api/importaciones           carpetas de importacion y, por articulo, en camino y precio de compra (base, solo lectura)
     GET /api/articulos/<codigo>/movimientos    ultimos movimientos de stock (base, solo lectura)
@@ -175,6 +176,18 @@ def crear_rutas(contexto) -> dict[str, Callable[[dict, bool], tuple]]:
         except base_tango.BaseNoDisponible as e:
             raise PedidoInvalido(str(e)) from None
 
+    def aduana(qs: dict, forzar: bool):
+        from .. import base_tango
+        carpeta = (qs.get("carpeta") or [""])[0].strip()
+        if not carpeta.isdigit():
+            raise PedidoInvalido("Falta el número de carpeta.")
+        try:
+            return base_tango.aduana_carpeta(int(carpeta)), time.time()
+        except ValueError as e:
+            raise PedidoInvalido(str(e)) from None
+        except base_tango.BaseNoDisponible as e:
+            raise PedidoInvalido(str(e)) from None
+
     return {
         "/api/stock/partidas": lambda qs, f: s().saldos_por_partida(f),
         "/api/stock/articulos": lambda qs, f: s().saldos_por_articulo(f),
@@ -196,6 +209,7 @@ def crear_rutas(contexto) -> dict[str, Callable[[dict, bool], tuple]]:
         "/api/opciones": lambda qs, f: (opciones.leer(), time.time()),
         "/api/importaciones": importaciones,
         "/api/valorizacion": valorizacion,
+        "/api/valorizacion/aduana": aduana,
     }
 
 

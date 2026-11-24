@@ -70,6 +70,15 @@
     .det-tabla tr.verificar { box-shadow: inset 3px 0 0 var(--ambar-fuerte); }
     .m-resumen { display: block; font-size: .84rem; color: var(--grafito); margin-top: 3px; font-weight: 400; }
   }
+  .aduana { margin-top: 12px; }
+  .aduana summary { cursor: pointer; font-weight: 600; }
+  .aduana-form { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; margin: 8px 0; }
+  .aduana-form input { width: 8em; }
+  .aduana h4 { margin: 14px 0 4px; font-size: .95rem; }
+  .aduana .tabla-envoltura { overflow-x: auto; max-width: 100%; }
+  table.cruda { border-collapse: collapse; font-size: .8rem; }
+  table.cruda th, table.cruda td { padding: 3px 6px; border-bottom: 1px solid var(--borde, #ddd); white-space: nowrap; text-align: left; }
+  table.cruda td.der { text-align: right; }
 </style>
 </head>
 <body>
@@ -107,6 +116,15 @@
           <li><strong>No incluye</strong> derechos de importación ni gastos que no estén cargados en Tango, así que el costo real puesto en el depósito es algo mayor.</li>
           <li>«Para verificar»: renglones con costo unitario de USD <span id="v-costo">2.000</span> o más, o que valen USD <span id="v-valor">10.000</span> o más. Conviene ver que existan antes de dar el número por bueno, sobre todo las partidas de 2016 a 2018.</li>
         </ul>
+      </details>
+      <details class="tarjeta aduana" id="aduana">
+        <summary>Impuestos de Aduana de una carpeta (prueba)</summary>
+        <p class="explica">Muestra los comprobantes de proveedor atados a una carpeta y los de Aduana cercanos a la fecha del despacho, con las cuentas contables en que quedaron. Sirve para comparar con el Excel de Estela y decidir qué cuentas son costo (derechos, tasa de estadística) y cuáles no (IVA, percepciones). Solo lectura.</p>
+        <form id="aduana-form" class="aduana-form">
+          <label>Carpeta <input id="aduana-nro" inputmode="numeric" pattern="[0-9]*" placeholder="979" required></label>
+          <button type="submit" class="boton">Consultar</button>
+        </form>
+        <div id="aduana-res"></div>
       </details>
       <p class="pie">Esta pantalla solo consulta la base de Tango y calcula; no graba nada en Tango.</p>
     </div>
@@ -286,6 +304,45 @@
     }
     col.replaceChildren(frag);
   }
+
+  // ---- Diagnostico: comprobantes de Aduana de una carpeta (tablas tal cual las devuelve Tango)
+  function tablaCruda(filas) {
+    if (!filas || !filas.length) return el("p", "nota", "Nada.");
+    const cols = [...new Set(filas.flatMap(f => Object.keys(f)))];
+    const t = el("table", "cruda"); const h = el("tr");
+    for (const c of cols) h.append(el("th", "", c));
+    const th = el("thead"); th.append(h); const tb = el("tbody");
+    for (const f of filas) {
+      const tr = el("tr");
+      for (const c of cols) { const v = f[c]; tr.append(el("td", typeof v === "number" ? "der" : "", v == null ? "" : typeof v === "number" ? fmtPrecio.format(v) : String(v))); }
+      tb.append(tr);
+    }
+    t.append(th, tb);
+    const env = el("div", "tabla-envoltura"); env.append(t); return env;
+  }
+  $("aduana-form").addEventListener("submit", async ev => {
+    ev.preventDefault();
+    const nro = $("aduana-nro").value.trim(), res = $("aduana-res");
+    if (!/^\d+$/.test(nro)) return;
+    res.replaceChildren(el("p", "nota", "Consultando la base de Tango…"));
+    try {
+      const d = (await pedir(`/api/valorizacion/aduana?carpeta=${nro}`, true)).datos;
+      const frag = document.createDocumentFragment();
+      if (d.error) { res.replaceChildren(el("p", "mensaje-error", d.error)); return; }
+      const sec = (titulo, nodo, nota) => { frag.append(el("h4", "", titulo)); if (nota) frag.append(el("p", "nota", nota)); frag.append(nodo); };
+      sec("Despachos de la carpeta", tablaCruda(d.despachos));
+      sec("Proveedores que parecen Aduana", tablaCruda(d.proveedores_aduana));
+      sec("Comprobantes atados a la carpeta (CPA77)", tablaCruda(d.cpa77), d.cpa77_error || "");
+      sec("Comprobantes de proveedor encontrados (CPA04)", tablaCruda(d.comprobantes),
+          (d.comprobantes_error ? d.comprobantes_error + " " : "") + "Los de CPA77 más los de Aduana hasta 60 días antes o después del despacho. Estela puede reconocer el suyo por el número.");
+      const tablas = Object.keys(d.imputaciones || {});
+      if (!tablas.length) frag.append(el("p", "nota", "No se encontraron renglones con cuenta contable para estos comprobantes."));
+      for (const t of tablas) sec(`Renglones con cuenta contable: ${t}`, tablaCruda(d.imputaciones[t]));
+      const det = el("details"); det.append(el("summary", "", "Tablas de Compras con columnas de cuenta"), tablaCruda(d.tablas_con_cuenta));
+      frag.append(det);
+      res.replaceChildren(frag);
+    } catch (e) { res.replaceChildren(el("p", "mensaje-error", HT.textoError(e))); }
+  });
 
   HT.conectarBuscador($("q"), $("limpiar"), () => { mostrar = PAGINA; if (datos) renderLista(); });
   $("actualizar").addEventListener("click", () => cargar(true));

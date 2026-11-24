@@ -399,6 +399,101 @@ def valorizacion_datos(forzar: bool = False) -> dict:
     return _remoto("valorizacion", {"refrescar": "1"} if forzar else {}, tiempo=200)
 
 
+# ------------------------------------------------------------------ aduana de una carpeta
+# Diagnostico (solo lectura): que comprobantes de proveedor estan atados a una carpeta
+# (CPA77) o son de Aduana cerca de la fecha del despacho, y en que cuentas contables
+# quedaron. No se sabe de antemano en que tabla guarda Tango las imputaciones de
+# Compras: se buscan las tablas CPA con columnas de cuenta y de comprobante, y se
+# muestra lo que tengan para esos comprobantes. Sirve para que Estela diga que cuentas
+# son costo (derechos, tasa de estadistica) y cuales no (IVA, percepciones).
+_ADUANA = r"""
+$out = [ordered]@{}
+function E($v) { ([string]$v).Replace("'", "''") }
+$out.carpetas = Q "SELECT * FROM CPA65 WHERE RIGHT(RTRIM(ID_CARPETA), 8) = '__CARPETA8__'"
+$ids = @($out.carpetas | ForEach-Object { "'" + (E $_.ID_CARPETA) + "'" })
+if (-not $ids.Count) { $out.error = 'No encontré esa carpeta.'; $out | ConvertTo-Json -Depth 5 -Compress; exit }
+$lista = $ids -join ','
+$out.despachos = Q "SELECT DISTINCT N_DESPACHO, FECHA FROM STA08 WHERE ID_CARPETA IN ($lista)"
+try { $out.cpa77 = Q "SELECT * FROM CPA77 WHERE ID_CARPETA IN ($lista)" } catch { $out.cpa77 = @(); $out.cpa77_error = $_.Exception.Message }
+$out.proveedores_aduana = Q "SELECT COD_PROVEE, NOM_PROVEE FROM CPA01 WHERE NOM_PROVEE LIKE '%ADUANA%' OR NOM_PROVEE LIKE '%A.F.I.P%' OR NOM_PROVEE LIKE '%AFIP%' OR NOM_PROVEE LIKE '%ARCA%'"
+$prov = @($out.proveedores_aduana | ForEach-Object { "'" + (E $_.COD_PROVEE) + "'" })
+# Comprobantes: los de CPA77 y los de Aduana dentro de los 60 dias del despacho
+$conds = @()
+foreach ($r in $out.cpa77) {
+  $p = $r.PSObject.Properties
+  if ($p['T_COMP'] -and $p['N_COMP']) {
+    $c = "(T_COMP = '" + (E $r.T_COMP) + "' AND N_COMP = '" + (E $r.N_COMP) + "'"
+    if ($p['COD_PROVEE'] -and $r.COD_PROVEE) { $c += " AND COD_PROVEE = '" + (E $r.COD_PROVEE) + "'" }
+    $conds += $c + ")"
+  }
+}
+$fechas = @($out.despachos | Where-Object { $_.FECHA } | ForEach-Object { $_.FECHA })
+if ($prov.Count -and $fechas.Count) {
+  $f = ($fechas | Sort-Object)[0]
+  $conds += "(COD_PROVEE IN (" + ($prov -join ',') + ") AND FECHA_EMIS BETWEEN DATEADD(day, -60, '$f') AND DATEADD(day, 60, '$f'))"
+}
+$out.comprobantes = @()
+if ($conds.Count) {
+  try { $out.comprobantes = Q ("SELECT TOP 40 * FROM CPA04 WHERE " + ($conds -join ' OR ') + " ORDER BY FECHA_EMIS") }
+  catch { $out.comprobantes_error = $_.Exception.Message
+          $sinFecha = @($conds | Where-Object { $_ -notmatch 'FECHA_EMIS' })
+          if ($sinFecha.Count) { $out.comprobantes = Q ("SELECT TOP 40 * FROM CPA04 WHERE " + ($sinFecha -join ' OR ')) } }
+}
+# Tablas de Compras con cuenta contable y comprobante
+$cols = Q "SELECT TABLE_NAME AS t, COLUMN_NAME AS c FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME LIKE 'CPA%' OR TABLE_NAME LIKE 'CP_%'"
+$porTabla = @{}
+foreach ($x in $cols) { if (-not $porTabla[$x.t]) { $porTabla[$x.t] = New-Object System.Collections.Generic.List[string] }; $porTabla[$x.t].Add($x.c) }
+$out.tablas_con_cuenta = @()
+$out.imputaciones = [ordered]@{}
+foreach ($t in ($porTabla.Keys | Sort-Object)) {
+  $c = $porTabla[$t]
+  $cuenta = @($c | Where-Object { $_ -match 'CTA|CUENTA' })
+  if (-not $cuenta.Count) { continue }
+  $out.tablas_con_cuenta += [pscustomobject]@{ tabla = $t; cuentas = ($cuenta -join ', '); columnas = $c.Count }
+  if (-not ($c -contains 'N_COMP' -and $c -contains 'T_COMP')) { continue }
+  $w = @()
+  foreach ($k in $out.comprobantes) {
+    $x = "(T_COMP = '" + (E $k.T_COMP) + "' AND N_COMP = '" + (E $k.N_COMP) + "'"
+    if ($c -contains 'COD_PROVEE') { $x += " AND COD_PROVEE = '" + (E $k.COD_PROVEE) + "'" }
+    $w += $x + ")"
+  }
+  if (-not $w.Count) { continue }
+  try { $out.imputaciones[$t] = Q ("SELECT TOP 200 * FROM $t WHERE " + ($w -join ' OR ')) }
+  catch { $out.imputaciones[$t] = @([pscustomobject]@{ error = $_.Exception.Message }) }
+}
+# Plan de cuentas, si esta en esta base (para poner nombre a las cuentas)
+$plan = Q "SELECT TOP 1 TABLE_NAME AS t FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME IN ('CPA92','CPA92B','GVA65','CO_CUENTA','CUENTAS')"
+$out.plan_tabla = if ($plan.Count) { $plan[0].t } else { $null }
+$out | ConvertTo-Json -Depth 5 -Compress
+"""
+
+
+def _sin_vacios(fila: dict) -> dict:
+    return {k: v for k, v in fila.items() if v not in (None, "", 0, 0.0, False) and not str(k).startswith("FILLER")}
+
+
+def _aduana_local(carpeta: int) -> dict:
+    carpeta = int(carpeta)
+    if not 0 < carpeta < 10 ** 8:
+        raise ValueError("Número de carpeta inválido.")
+    datos = _correr(_ADUANA.replace("__CARPETA8__", f"{carpeta:08d}"), tiempo=120)
+    for k in ("carpetas", "despachos", "cpa77", "proveedores_aduana", "comprobantes", "tablas_con_cuenta"):
+        v = datos.get(k)
+        datos[k] = [] if v is None else (v if isinstance(v, list) else [v])
+    for k in ("carpetas", "cpa77", "comprobantes"):
+        datos[k] = [_sin_vacios(f) for f in datos[k]]
+    imp = datos.get("imputaciones") or {}
+    datos["imputaciones"] = {t: [_sin_vacios(f) for f in (v if isinstance(v, list) else [v])] for t, v in imp.items() if v}
+    return datos
+
+
+def aduana_carpeta(carpeta: int) -> dict:
+    """Comprobantes de proveedor (y de Aduana) de una carpeta, con sus cuentas. Diagnostico."""
+    if es_servidor():
+        return _aduana_local(carpeta)
+    return _remoto("aduana", {"carpeta": int(carpeta)}, tiempo=140)
+
+
 # ------------------------------------------------------------------ desde otras PCs
 # La base esta solo en el servidor de Tango. Una Herramienta que corre en otra PC
 # no la puede leer: le pide el dato a la Herramienta del servidor (/api/base/...),
@@ -499,6 +594,8 @@ def responder_remoto(ruta: str, qs: dict):
         if p("refrescar") == "1":
             _cache.pop(("valorizacion",), None)
         return _valorizacion_local()
+    if ruta == "aduana":
+        return _aduana_local(int(p("carpeta")))
     if ruta == "remitos_pedido":
         return _remitos_pedido_local(int(p("id")))
     raise ValueError("Consulta desconocida.")
