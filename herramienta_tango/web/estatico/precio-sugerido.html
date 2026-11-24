@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0B6E69">
+<title>Precio sugerido | Herramienta Sianco</title>
+<link rel="icon" href="/icono-192.png">
+<link rel="apple-touch-icon" href="/icono-192.png">
+<link rel="manifest" href="/manifest.json">
+<link rel="stylesheet" href="/comun.css">
+<script>try{var t=localStorage.getItem("ht_tema");if(t==="claro"||t==="oscuro")document.documentElement.dataset.tema=t}catch(e){}</script>
+<style>
+  .elegir { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 14px; }
+  @media (max-width: 700px) { .elegir { grid-template-columns: 1fr; } }
+  .campo { position: relative; }
+  .campo label { display: block; font-size: .8rem; color: var(--plomo); margin-bottom: 4px; font-weight: 600; }
+  .campo input { width: 100%; box-sizing: border-box; font: inherit; padding: 9px 11px; border: 1px solid var(--linea); border-radius: var(--radio); background: var(--papel); color: inherit; }
+  .campo input:focus { outline: 2px solid var(--patina); outline-offset: 0; }
+  .sugerencias { position: absolute; left: 0; right: 0; top: 100%; z-index: 5; list-style: none; margin: 2px 0 0; padding: 4px 0;
+    background: var(--papel); border: 1px solid var(--linea); border-radius: var(--radio); box-shadow: 0 6px 18px rgba(0,0,0,.12); max-height: 320px; overflow-y: auto; }
+  .sugerencias button { display: block; width: 100%; text-align: left; font: inherit; color: inherit; background: none; border: 0; padding: 7px 12px; cursor: pointer; }
+  .sugerencias button:hover, .sugerencias button:focus { background: var(--seleccion); outline: none; }
+  .sugerencias small { color: var(--plomo); display: block; font-size: .78rem; }
+  .elegido { font-size: .82rem; color: var(--plomo); margin-top: 4px; min-height: 1.1em; }
+
+  .cab-res { padding: 14px 16px; margin-top: 14px; }
+  .cab-res h2 { margin: 0 0 2px; font-size: 1.2rem; overflow-wrap: anywhere; }
+  .cab-res p { margin: 0; color: var(--plomo); font-size: .9rem; }
+  .numeros { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 12px; }
+  @media (max-width: 800px) { .numeros { grid-template-columns: 1fr; } }
+  .numero { padding: 14px 16px; }
+  .numero .que { font-size: .82rem; color: var(--plomo); font-weight: 600; }
+  .numero .valor { font-size: 1.6rem; font-weight: 700; font-variant-numeric: tabular-nums; margin: 4px 0 2px; }
+  .numero .det { font-size: .85rem; color: var(--plomo); }
+  .margen { font-weight: 600; }
+  .margen.bajo { color: var(--oxido); }
+  .seccion-res { margin-top: 14px; padding: 12px 0 4px; }
+  .seccion-res h3 { font-size: .95rem; margin: 0 16px 6px; }
+  .seccion-res .nota { margin: 0 16px 8px; }
+  .tabla-envoltura { overflow-x: auto; }
+  .vacio { padding: 18px; color: var(--plomo); }
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="app-nav" id="app-nav"></nav>
+  <div class="app-principal">
+    <div class="pagina">
+      <header class="cabecera">
+        <div class="cabecera-sup">
+          <h1>Precio sugerido</h1>
+          <div class="datos"><span id="estado"></span></div>
+        </div>
+      </header>
+      <div class="tarjeta elegir">
+        <div class="campo">
+          <label for="cli">Cliente</label>
+          <input id="cli" type="search" autocomplete="off" spellcheck="false" placeholder="Razón social o código">
+          <ul class="sugerencias" id="cli-sug" hidden></ul>
+          <div class="elegido" id="cli-elegido"></div>
+        </div>
+        <div class="campo">
+          <label for="art">Artículo</label>
+          <input id="art" type="search" autocomplete="off" spellcheck="false" placeholder="Código o descripción">
+          <ul class="sugerencias" id="art-sug" hidden></ul>
+          <div class="elegido" id="art-elegido"></div>
+        </div>
+      </div>
+      <div id="resultado" aria-live="polite">
+        <p class="vacio">Elegí un cliente y un artículo para ver a cuánto se le vendió, cuánto está en su lista y cuánto cuesta.</p>
+      </div>
+      <p class="pie">Solo consulta: lee las facturas, las listas de precios y la valorización de Tango. El margen es sobre el costo de importación en dólares (sin derechos de Aduana), así que el margen real es algo menor.</p>
+    </div>
+  </div>
+</div>
+
+<script src="/comun.js"></script>
+<script>
+(() => {
+  "use strict";
+  const { $, el, norm, tokens, fmt, fmtPrecio, fecha, pedir, textoError } = HT;
+  HT.iniciar("precio-sugerido");
+
+  const params = new URLSearchParams(location.search);
+  let clientes = [], articulos = [];
+  let cliente = null, articulo = null, costo = null, datos = null, pedidoActual = 0;
+
+  const usd = v => v == null ? "—" : "US$ " + fmtPrecio.format(v);
+  const margen = (precio, c) => (precio && c && precio > 0) ? (precio - c) / precio * 100 : null;
+  function nodoMargen(precio) {
+    if (!costo || costo.costo == null) return null;
+    const m = margen(precio, costo.costo);
+    if (m == null) return null;
+    return el("span", "margen" + (m < 20 ? " bajo" : ""), `margen ${fmt.format(Math.round(m))} %`);
+  }
+
+  // ---- Buscadores con sugerencias
+  function buscador(input, lista, fuente, texto, sub, elegir) {
+    const mostrar = () => {
+      const ts = tokens(input.value);
+      if (!ts.length) { lista.hidden = true; return; }
+      const res = fuente().filter(x => ts.every(t => x._t.includes(t))).slice(0, 10);
+      lista.replaceChildren(...res.map(x => {
+        const li = el("li"); const b = el("button", "", texto(x)); b.type = "button";
+        b.append(el("small", "", sub(x)));
+        b.addEventListener("mousedown", e => e.preventDefault());
+        b.addEventListener("click", () => { lista.hidden = true; elegir(x); });
+        li.append(b); return li;
+      }));
+      lista.hidden = !res.length;
+    };
+    input.addEventListener("input", mostrar);
+    input.addEventListener("focus", mostrar);
+    input.addEventListener("blur", () => setTimeout(() => { lista.hidden = true; }, 120));
+    input.addEventListener("keydown", e => {
+      if (e.key === "Enter") { const b = lista.querySelector("button"); if (b && !lista.hidden) { e.preventDefault(); b.click(); } }
+      if (e.key === "Escape") lista.hidden = true;
+    });
+  }
+
+  function elegirCliente(c) {
+    cliente = c; $("cli").value = c.razon_social;
+    $("cli-elegido").textContent = `${c.codigo} · lista ${c.lista_precios || "sin lista"}`;
+    actualizarUrl(); cargar();
+  }
+  function elegirArticulo(a) {
+    articulo = a; $("art").value = a.descripcion || a.codigo;
+    $("art-elegido").textContent = a.codigo;
+    actualizarUrl(); cargar();
+  }
+  function actualizarUrl() {
+    const q = new URLSearchParams();
+    if (cliente) q.set("cliente", cliente.codigo);
+    if (articulo) q.set("art", articulo.codigo);
+    history.replaceState(null, "", location.pathname + (q.toString() ? "?" + q : ""));
+  }
+
+  buscador($("cli"), $("cli-sug"), () => clientes, c => c.razon_social, c => `${c.codigo} · ${c.lista_precios || "sin lista"}`, elegirCliente);
+  buscador($("art"), $("art-sug"), () => articulos, a => a.descripcion || a.codigo, a => a.codigo, elegirArticulo);
+
+  // ---- Resultado
+  async function cargar() {
+    if (!articulo) return;
+    const n = ++pedidoActual;
+    costo = null; datos = null;
+    $("resultado").replaceChildren(el("p", "vacio", "Consultando Tango…"));
+    const q = `art=${encodeURIComponent(articulo.codigo)}` + (cliente ? `&cliente=${encodeURIComponent(cliente.codigo)}` : "");
+    pedir(`/api/precio-sugerido/costo?art=${encodeURIComponent(articulo.codigo)}`, true)
+      .then(r => { if (n === pedidoActual) { costo = r.datos; if (datos) dibujar(); } })
+      .catch(e => { if (n === pedidoActual) { costo = { costo: null, error: textoError(e) }; if (datos) dibujar(); } });
+    try {
+      const r = await pedir(`/api/precio-sugerido?${q}`, true);
+      if (n !== pedidoActual) return;
+      datos = r.datos; dibujar();
+    } catch (e) {
+      if (n === pedidoActual) $("resultado").replaceChildren(el("p", "mensaje-error", textoError(e)));
+    }
+  }
+
+  function tablaVentas(filas, conCliente) {
+    const t = el("table", "tabla"); const th = el("tr");
+    const cols = ["Fecha", "Comprobante", ...(conCliente ? ["Cliente"] : []), "Cant.", "Precio", "En US$", ""];
+    cols.forEach((c, i) => th.append(el("th", i >= cols.length - 4 ? "der" : "", c)));
+    const thead = el("thead"); thead.append(th);
+    const tb = el("tbody");
+    for (const f of filas) {
+      const tr = el("tr", f.t_comp === "N/C" ? "apagado" : "");
+      tr.append(el("td", "", fecha(f.fecha)), el("td", "", `${f.tipo} ${f.numero}`));
+      if (conCliente) tr.append(el("td", "", f.cliente || f.codigo_cliente));
+      tr.append(el("td", "der", fmt.format(f.cantidad)),
+                el("td", "der", f.precio == null ? "—" : `${f.moneda} ${fmtPrecio.format(f.precio)}`),
+                el("td", "der", f.precio_usd == null ? "—" : fmtPrecio.format(f.precio_usd)));
+      const m = el("td", "der"); const nm = f.precio_usd != null ? nodoMargen(f.precio_usd) : null; if (nm) m.append(nm); tr.append(m);
+      tb.append(tr);
+    }
+    t.append(thead, tb);
+    const env = el("div", "tabla-envoltura"); env.append(t); return env;
+  }
+
+  function numero(que, valor, ...det) {
+    const d = el("div", "tarjeta numero");
+    d.append(el("div", "que", que), el("div", "valor", valor));
+    const p = el("div", "det"); det.filter(Boolean).forEach((x, i) => { if (i) p.append(" · "); p.append(x); }); d.append(p);
+    return d;
+  }
+
+  function dibujar() {
+    const d = datos, frag = document.createDocumentFragment();
+    const cab = el("div", "tarjeta cab-res");
+    cab.append(el("h2", "", d.articulo.descripcion || d.articulo.codigo),
+               el("p", "", d.cliente ? `${d.articulo.codigo} para ${d.cliente.razon_social} (lista ${d.cliente.lista || "sin lista"})` : `${d.articulo.codigo} · elegí un cliente para ver su lista y sus compras`));
+    frag.append(cab);
+
+    const nums = el("div", "numeros");
+    // Precio en su lista
+    const l = d.en_lista;
+    if (!d.cliente) nums.append(numero("Precio en su lista", "—", "Falta elegir el cliente"));
+    else if (!l || l.no_esta || !l.precio) nums.append(numero("Precio en su lista", "—", l && l.lista ? `No está en ${l.lista}` : "El cliente no tiene lista"));
+    else nums.append(numero("Precio en su lista", `${l.moneda || ""} ${fmtPrecio.format(l.precio)}`, l.especial ? "precio especial del cliente" : `lista ${l.lista}`, l.moneda === "US$" ? nodoMargen(l.precio) : null));
+    // Ultima venta a este cliente
+    const uv = (d.ventas_cliente || []).find(f => f.t_comp === "FAC");
+    if (!d.cliente) nums.append(numero("Última venta a este cliente", "—", "Falta elegir el cliente"));
+    else if (!uv) nums.append(numero("Última venta a este cliente", "—", d.ventas_error ? "no se pudo leer" : "Nunca se le facturó"));
+    else nums.append(numero("Última venta a este cliente", uv.precio_usd != null ? usd(uv.precio_usd) : `${uv.moneda} ${fmtPrecio.format(uv.precio)}`,
+                            fecha(uv.fecha), `${fmt.format(uv.cantidad)} u.`, uv.precio_usd != null ? nodoMargen(uv.precio_usd) : null));
+    // Costo
+    if (!costo) nums.append(numero("Costo", "…", "Calculando (la primera vez tarda un poco)"));
+    else if (costo.costo == null) nums.append(numero("Costo", "—", costo.error || "No hay costo en Tango para este artículo"));
+    else nums.append(numero("Costo", usd(costo.costo), costo.origen === "stock" ? "promedio del stock en Central" : "última importación (sin gastos)"));
+    frag.append(nums);
+
+    if (d.ventas_error) frag.append(el("p", "mensaje-error", d.ventas_error));
+    if (d.cliente) {
+      const s = el("div", "tarjeta seccion-res");
+      s.append(el("h3", "", `Ventas a ${d.cliente.razon_social}`));
+      s.append(d.ventas_cliente.length ? tablaVentas(d.ventas_cliente, false) : el("p", "nota", "No hay facturas de este artículo para este cliente."));
+      frag.append(s);
+    }
+    const o = el("div", "tarjeta seccion-res");
+    o.append(el("h3", "", d.cliente ? "Ventas a otros clientes" : "Últimas ventas"));
+    o.append(d.ventas_otros.length ? tablaVentas(d.ventas_otros, true) : el("p", "nota", "No hay facturas de este artículo."));
+    frag.append(o);
+
+    if (d.otras_listas.length) {
+      const s = el("div", "tarjeta seccion-res");
+      s.append(el("h3", "", "En las listas de precios"));
+      const t = el("table", "tabla"); const tb = el("tbody");
+      for (const x of d.otras_listas) {
+        const tr = el("tr"); tr.append(el("td", "", x.lista), el("td", "der", `${x.moneda} ${fmtPrecio.format(x.precio)}`));
+        const m = el("td", "der"); const nm = x.moneda === "US$" ? nodoMargen(x.precio) : null; if (nm) m.append(nm); tr.append(m);
+        tb.append(tr);
+      }
+      t.append(tb); s.append(t); frag.append(s);
+    }
+    if (costo && costo.detalle && costo.detalle.length && costo.origen === "stock") {
+      const s = el("details", "tarjeta seccion-res");
+      s.append(el("summary", "", "De dónde sale el costo"));
+      s.append(el("p", "nota", "Promedio, ponderado por cantidad, del costo de cada partida con stock en Central (carpeta de importación más los gastos cargados en Tango)."));
+      const t = el("table", "tabla"); const tb = el("tbody");
+      for (const x of costo.detalle) {
+        const tr = el("tr"); tr.append(el("td", "", `Partida ${x.partida}`), el("td", "", x.carpeta ? `carpeta ${x.carpeta}` : ""), el("td", "", fecha(x.fecha)),
+                                      el("td", "der", fmt.format(x.cantidad)), el("td", "der", usd(x.costo)));
+        tb.append(tr);
+      }
+      t.append(tb); s.append(t); frag.append(s);
+    }
+    if (d.ventas_aviso) frag.append(el("p", "nota", "Aviso: no se pudo leer la cotización de las facturas, así que los precios en pesos no se pasan a dólares."));
+    $("resultado").replaceChildren(frag);
+  }
+
+  // ---- Arranque
+  (async () => {
+    $("estado").textContent = "Cargando clientes y artículos…";
+    try {
+      const [c, a] = await Promise.all([pedir("/api/clientes"), pedir("/api/articulos")]);
+      clientes = c.datos.filter(x => x.habilitado !== false).map(x => ({ ...x, _t: norm(`${x.razon_social} ${x.codigo}`) }));
+      articulos = a.datos.map(x => ({ ...x, _t: norm(`${x.codigo} ${x.descripcion} ${x.sinonimo || ""}`) }));
+      $("estado").textContent = "";
+      const pc = params.get("cliente"), pa = params.get("art");
+      if (pc) { const x = clientes.find(y => y.codigo === pc); if (x) { cliente = x; $("cli").value = x.razon_social; $("cli-elegido").textContent = `${x.codigo} · lista ${x.lista_precios || "sin lista"}`; } }
+      if (pa) { const x = articulos.find(y => y.codigo === pa); if (x) { articulo = x; $("art").value = x.descripcion || x.codigo; $("art-elegido").textContent = x.codigo; } }
+      if (articulo) cargar(); else (cliente ? $("art") : $("cli")).focus();
+    } catch (e) { $("estado").textContent = ""; $("resultado").replaceChildren(el("p", "mensaje-error", textoError(e))); }
+  })();
+})();
+</script>
+</body>
+</html>

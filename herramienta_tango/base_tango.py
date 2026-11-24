@@ -399,6 +399,76 @@ def valorizacion_datos(forzar: bool = False) -> dict:
     return _remoto("valorizacion", {"refrescar": "1"} if forzar else {}, tiempo=200)
 
 
+# ------------------------------------------------------------------ ventas de un articulo
+# Ultimas facturas (GVA12) con sus renglones (GVA53) de un articulo, para el precio sugerido.
+# PRECIO_NET es el precio unitario neto del renglon; PREC_ULC_E, el costo de ultima compra en
+# moneda extranjera que Tango anoto al vender. La cotizacion de la factura (COTIZ) puede no
+# existir con ese nombre: si falla, se lee sin ella.
+_VENTAS_ARTICULO = r"""
+$out = [ordered]@{}
+$desde = "FROM GVA53 r JOIN GVA12 f ON f.T_COMP = r.T_COMP AND f.N_COMP = r.N_COMP LEFT JOIN GVA14 c ON c.COD_CLIENT = f.COD_CLIENT WHERE r.COD_ARTICU = '__COD__' AND r.T_COMP IN ('FAC', 'N/C') ORDER BY f.FECHA_EMIS DESC"
+try { $out.filas = Q "SELECT TOP 120 f.FECHA_EMIS AS F_FECHA, f.COD_CLIENT AS F_CLIENTE, c.RAZON_SOCI AS F_RAZON, f.MON_CTE AS F_MON_CTE, f.COTIZ AS F_COTIZ, r.* $desde" }
+catch { $out.aviso = $_.Exception.Message
+        $out.filas = Q "SELECT TOP 120 f.FECHA_EMIS AS F_FECHA, f.COD_CLIENT AS F_CLIENTE, c.RAZON_SOCI AS F_RAZON, f.MON_CTE AS F_MON_CTE, r.* $desde" }
+$out | ConvertTo-Json -Depth 4 -Compress
+"""
+
+
+def _num(v) -> float | None:
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _en_pesos(v) -> bool:
+    """MON_CTE: verdadero = moneda corriente (pesos)."""
+    if isinstance(v, bool):
+        return v
+    return str(v or "").strip().upper() in ("TRUE", "S", "SI", "1", "T")
+
+
+def _ventas_articulo_local(codigo: str) -> dict:
+    codigo = _validar_articulo(codigo)
+    clave = ("ventas_articulo", codigo)
+    if clave in _cache and time.time() - _cache[clave][0] < VIGENCIA:
+        return _cache[clave][1]
+    datos = _correr(_VENTAS_ARTICULO.replace("__COD__", codigo))
+    filas = []
+    for f in _filas(datos):
+        t = str(f.get("T_COMP") or "").strip()
+        precio = _num(_campo(f, "PRECIO_NET", "PRECIO", "PRECIO_PAN"))
+        cantidad = _num(_campo(f, "CANTIDAD", "CANT_FACT")) or 0.0
+        cotiz = _num(f.get("F_COTIZ"))
+        pesos = _en_pesos(f.get("F_MON_CTE"))
+        usd = None
+        if precio is not None:
+            if pesos and cotiz and cotiz > 1:
+                usd = precio / cotiz
+            elif not pesos:
+                usd = precio
+        filas.append({
+            "fecha": f.get("F_FECHA"), "t_comp": t, "tipo": _TIPOS.get(t, t),
+            "numero": _numero_comprobante(str(f.get("N_COMP") or "")),
+            "codigo_cliente": str(f.get("F_CLIENTE") or "").strip(), "cliente": str(f.get("F_RAZON") or "").strip(),
+            "cantidad": round(cantidad, 4), "precio": round(precio, 4) if precio is not None else None,
+            "moneda": "$" if pesos else "US$", "cotizacion": round(cotiz, 4) if cotiz else None,
+            "precio_usd": round(usd, 4) if usd is not None else None,
+            "costo_al_vender_usd": _num(f.get("PREC_ULC_E")) or None,
+        })
+    res = {"filas": filas, "aviso": datos.get("aviso")}
+    _cache[clave] = (time.time(), res)
+    return res
+
+
+def ventas_articulo(codigo: str) -> dict:
+    """Ultimas facturas y notas de credito de un articulo (base, solo lectura)."""
+    codigo = _validar_articulo(codigo)
+    if es_servidor():
+        return _ventas_articulo_local(codigo)
+    return _remoto("ventas_articulo", {"art": codigo})
+
+
 # ------------------------------------------------------------------ aduana de una carpeta
 # Diagnostico (solo lectura): que comprobantes de proveedor estan atados a una carpeta
 # (CPA77) o son de Aduana cerca de la fecha del despacho, y en que cuentas contables
@@ -541,7 +611,11 @@ def _remoto(ruta: str, parametros: dict, tiempo: int = 70):
         raise BaseNoDisponible(f"No se pudo pedir el dato a la Herramienta del servidor ({destino[0]}:{destino[1]}). "
                                f"¿Está prendida? {e}") from None
     if not datos.get("ok"):
-        raise BaseNoDisponible(datos.get("error") or "La Herramienta del servidor no pudo leer la base.")
+        error = datos.get("error") or "La Herramienta del servidor no pudo leer la base."
+        if error.strip().rstrip(".") == "Consulta desconocida":
+            error = ("La Herramienta del servidor tiene una versión anterior y todavía no conoce esta consulta. "
+                     "Se actualiza sola en hasta 15 minutos; probá de nuevo en un rato.")
+        raise BaseNoDisponible(error)
     return datos.get("datos")
 
 
@@ -594,6 +668,8 @@ def responder_remoto(ruta: str, qs: dict):
         if p("refrescar") == "1":
             _cache.pop(("valorizacion",), None)
         return _valorizacion_local()
+    if ruta == "ventas_articulo":
+        return _ventas_articulo_local(p("art"))
     if ruta == "aduana":
         return _aduana_local(int(p("carpeta")))
     if ruta == "remitos_pedido":

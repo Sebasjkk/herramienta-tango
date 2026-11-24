@@ -188,3 +188,13 @@ class TestAduana(unittest.TestCase):
              mock.patch.object(base_tango, "_remoto", return_value={"ok": 1}) as r:
             base_tango.aduana_carpeta(979)
         r.assert_called_once_with("aduana", {"carpeta": 979}, tiempo=140)
+
+
+class TestServidorViejo(unittest.TestCase):
+    def test_avisa_que_el_servidor_esta_desactualizado(self):
+        import io, json
+        resp = io.BytesIO(json.dumps({"ok": False, "error": "Consulta desconocida."}).encode())
+        with mock.patch.object(base_tango, "_servidor_tango", return_value=("srv", 8085)), \
+             mock.patch.object(base_tango.urllib.request, "urlopen", return_value=resp):
+            with self.assertRaisesRegex(base_tango.BaseNoDisponible, "versión anterior"):
+                base_tango._remoto("aduana", {"carpeta": 979})
