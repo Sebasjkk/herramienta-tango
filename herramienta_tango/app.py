@@ -194,7 +194,10 @@ def main(argv: list[str] | None = None) -> int:
     configurado = contexto.cargar_guardado()
     if configurado:
         # La conexion con Tango se prueba en segundo plano para que el panel abra enseguida
-        threading.Thread(target=contexto.probar_conexion, name="conexion-tango", daemon=True).start()
+        def conectar_y_precargar():
+            if contexto.probar_conexion().get("estado") == "ok":
+                contexto.servicio().precargar()
+        threading.Thread(target=conectar_y_precargar, name="conexion-tango", daemon=True).start()
 
     if cfg.repo_actualizaciones:
         actualizador.iniciar()

@@ -1,5 +1,6 @@
 """Valorizacion del stock de Central en dolares, con el criterio de la Simulacion de costos de Tango."""
 
+import os
 import io
 import json
 import subprocess
@@ -123,6 +124,7 @@ class Calculo(unittest.TestCase):
 class Base(unittest.TestCase):
     def test_lee_de_la_base_solo_con_select(self):
         base_tango._cache.clear()
+        p_simple = mock.patch.dict(os.environ, {"HERRAMIENTA_TANGO_SQL_SIMPLE": "1"}); p_simple.start(); self.addCleanup(p_simple.stop)
         with mock.patch.object(base_tango.sys, "platform", "win32"), \
              mock.patch.object(base_tango, "es_servidor", return_value=True), \
              mock.patch.object(base_tango.subprocess, "run",

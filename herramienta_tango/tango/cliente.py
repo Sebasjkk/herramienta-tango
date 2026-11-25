@@ -206,14 +206,26 @@ class ClienteTango:
     def _get(self, ruta: str, parametros: dict) -> dict:
         return self._pedir("GET", ruta, parametros)
 
+    PAGINAS_EN_PARALELO = 4
+
     def _paginas(self, ruta: str, parametros: dict) -> Iterator[dict]:
-        pagina, total = 0, 1
-        while pagina < total:
-            datos = self._get(ruta, {**parametros, "pageSize": self.TAM_PAGINA, "pageIndex": pagina})
-            resultado = datos.get("resultData") or {}
-            yield from (resultado.get("list") or [])
-            total = int(resultado.get("totalPages") or 0)
-            pagina += 1
+        """Todos los renglones, pidiendo a Tango varias paginas a la vez.
+
+        La primera pagina dice cuantas hay; el resto se pide en paralelo y se
+        devuelve en orden.
+        """
+        def pagina(n: int) -> dict:
+            return self._get(ruta, {**parametros, "pageSize": self.TAM_PAGINA, "pageIndex": n})
+
+        primera = pagina(0).get("resultData") or {}
+        yield from (primera.get("list") or [])
+        total = int(primera.get("totalPages") or 0)
+        if total <= 1:
+            return
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=min(self.PAGINAS_EN_PARALELO, total - 1)) as ex:
+            for datos in ex.map(pagina, range(1, total)):
+                yield from ((datos.get("resultData") or {}).get("list") or [])
 
     # --------------------------------------------------------------- lecturas
     def listar(self, proceso: int, vista: str = "") -> list[dict]:

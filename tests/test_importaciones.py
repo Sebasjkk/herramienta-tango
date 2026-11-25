@@ -1,5 +1,6 @@
 """Importaciones: en camino y precio de compra a partir de las tablas de carpetas."""
 
+import os
 import json
 import subprocess
 import unittest
@@ -56,6 +57,7 @@ class TestImportaciones(unittest.TestCase):
 
     def test_lee_de_la_base(self):
         base_tango._cache.clear()
+        p_simple = mock.patch.dict(os.environ, {"HERRAMIENTA_TANGO_SQL_SIMPLE": "1"}); p_simple.start(); self.addCleanup(p_simple.stop)
         with mock.patch.object(base_tango.sys, "platform", "win32"), \
              mock.patch.object(base_tango, "es_servidor", return_value=True), \
              mock.patch.object(base_tango.subprocess, "run",

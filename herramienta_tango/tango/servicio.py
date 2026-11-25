@@ -11,6 +11,7 @@ busqueda desde el celular.
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from datetime import date
@@ -21,29 +22,70 @@ from .cliente import ClienteTango, TangoError
 from .modelos import (Articulo, Cliente, Cotizacion, DatosEnvio, Deposito, ListaPrecios, Pedido,
                       PrecioVigente, Remito, RenglonCotizacion, RenglonVenta, SaldoArticulo, SaldoPartida, solo_digitos)
 
+log = logging.getLogger("herramienta_tango")
+
 T = TypeVar("T")
 
 
 class _Cache:
+    """Cache por clave con renovacion en segundo plano.
+
+    Mientras un dato es nuevo se devuelve tal cual. Cuando vence, se devuelve
+    igual lo guardado (al instante) y se pide lo nuevo a Tango en otro hilo:
+    nadie espera a Tango salvo la primera vez o con forzar=True. Si lo
+    guardado es muy viejo (mas de MAX_VIEJO veces la vigencia) se espera,
+    para no mostrar datos de hace horas.
+    """
+    MAX_VIEJO = 10
+
     def __init__(self):
         self._datos: dict[str, tuple[float, object]] = {}
         self._locks: dict[str, threading.Lock] = {}
+        self._renovando: set[str] = set()
         self._lock_global = threading.Lock()
 
     def _lock(self, clave: str) -> threading.Lock:
         with self._lock_global:
             return self._locks.setdefault(clave, threading.Lock())
 
+    def _cargar(self, clave: str, cargar: Callable[[], T]) -> tuple[T, float]:
+        datos = cargar()
+        momento = time.time()
+        self._datos[clave] = (momento, datos)
+        return datos, momento
+
+    def _renovar(self, clave: str, cargar: Callable[[], T]) -> None:
+        with self._lock_global:
+            if clave in self._renovando:
+                return
+            self._renovando.add(clave)
+
+        def tarea():
+            try:
+                with self._lock(clave):
+                    self._cargar(clave, cargar)
+            except Exception as e:      # queda lo anterior; el proximo pedido reintenta
+                log.warning(f"No se pudo renovar {clave} en segundo plano: {e}")
+            finally:
+                with self._lock_global:
+                    self._renovando.discard(clave)
+        threading.Thread(target=tarea, name=f"renovar-{clave}", daemon=True).start()
+
     def obtener(self, clave: str, segundos: int, cargar: Callable[[], T], forzar: bool = False) -> tuple[T, float]:
         """Devuelve (datos, momento_de_carga). Un solo pedido a Tango por clave a la vez."""
+        guardado = self._datos.get(clave)
+        if guardado and not forzar:
+            edad = time.time() - guardado[0]
+            if edad < segundos:
+                return guardado[1], guardado[0]  # type: ignore[return-value]
+            if edad < segundos * self.MAX_VIEJO:
+                self._renovar(clave, cargar)
+                return guardado[1], guardado[0]  # type: ignore[return-value]
         with self._lock(clave):
             guardado = self._datos.get(clave)
             if guardado and not forzar and time.time() - guardado[0] < segundos:
                 return guardado[1], guardado[0]  # type: ignore[return-value]
-            datos = cargar()
-            momento = time.time()
-            self._datos[clave] = (momento, datos)
-            return datos, momento
+            return self._cargar(clave, cargar)
 
     def olvidar(self, clave: str) -> None:
         with self._lock_global:
@@ -107,6 +149,19 @@ class ServicioTango:
             from ..mezclas import EditorMezclas
             self._mezclas = EditorMezclas(self)
         return self._mezclas
+
+    def precargar(self) -> None:
+        """Trae lo mas usado al arrancar, para que la primera pantalla no espere a Tango."""
+        from concurrent.futures import ThreadPoolExecutor
+        tareas = [self.saldos_por_partida, self.articulos, self.clientes, self.pedidos,
+                  self.listas_precios, self.depositos, self.cotizaciones]
+        def una(f):
+            try:
+                f()
+            except Exception as e:
+                log.warning(f"Precarga de {f.__name__}: {e}")
+        with ThreadPoolExecutor(max_workers=3) as ex:
+            list(ex.map(una, tareas))
 
     def _cacheado(self, clave: str, tipo: str, cargar: Callable[[], T], forzar: bool) -> tuple[T, float]:
         return self._cache.obtener(clave, self.vigencia[tipo], cargar, forzar)

@@ -1,4 +1,5 @@
 """Pruebas de la lectura de la base de Tango (sin SQL real: se simula PowerShell)."""
+import os
 import subprocess
 import unittest
 from unittest import mock
@@ -13,6 +14,7 @@ def salida(stdout="", stderr="", rc=0):
 class TestBaseTango(unittest.TestCase):
     def setUp(self):
         base_tango._cache.clear()
+        p_simple = mock.patch.dict(os.environ, {"HERRAMIENTA_TANGO_SQL_SIMPLE": "1"}); p_simple.start(); self.addCleanup(p_simple.stop)
         p = mock.patch.object(base_tango.sys, "platform", "win32"); p.start(); self.addCleanup(p.stop)
 
     def test_fuera_de_windows(self):
@@ -115,6 +117,7 @@ class TestBaseTango(unittest.TestCase):
 class TestDesdeOtraPC(unittest.TestCase):
     def setUp(self):
         base_tango._cache.clear()
+        p_simple = mock.patch.dict(os.environ, {"HERRAMIENTA_TANGO_SQL_SIMPLE": "1"}); p_simple.start(); self.addCleanup(p_simple.stop)
 
     def test_reconoce_el_servidor(self):
         with mock.patch.object(base_tango, "_servidor_tango", return_value=("desktop-b11ba4h", 8085)):
@@ -154,3 +157,22 @@ class TestDesdeOtraPC(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TrabajadorAbierto(unittest.TestCase):
+    def setUp(self):
+        base_tango._cache.clear()
+        p = mock.patch.object(base_tango.sys, "platform", "win32"); p.start(); self.addCleanup(p.stop)
+
+    def test_usa_el_powershell_abierto(self):
+        with mock.patch.object(base_tango._trabajador, "correr", return_value={"x": 1}) as t, \
+             mock.patch.object(base_tango.subprocess, "run") as run:
+            self.assertEqual(base_tango._correr("$out"), {"x": 1})
+        t.assert_called_once()
+        run.assert_not_called()
+
+    def test_si_falla_usa_un_powershell_aparte(self):
+        with mock.patch.object(base_tango._trabajador, "correr", return_value=None), \
+             mock.patch.object(base_tango.subprocess, "run", return_value=salida('{"x": 2}')) as run:
+            self.assertEqual(base_tango._correr("$out"), {"x": 2})
+        run.assert_called_once()

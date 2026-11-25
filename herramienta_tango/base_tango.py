@@ -19,9 +19,11 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import os
+import queue
 import re
 import subprocess
 import sys
+import threading
 import time
 
 SERVIDOR_SQL = os.environ.get("HERRAMIENTA_TANGO_SQL", "")       # vacio: se prueba solo (ver _FUNCION)
@@ -81,7 +83,108 @@ $out | ConvertTo-Json -Depth 4 -Compress
 """
 
 
+# PowerShell que queda abierto y recibe las consultas una por una: arrancar
+# PowerShell y encontrar el SQL Server cuesta un par de segundos, asi se paga
+# una sola vez. Si algo falla con el, se usa el camino de siempre (un
+# PowerShell por consulta), que ademas da el mensaje de error detallado.
+_BUCLE = r"""
+[Console]::InputEncoding = [Text.Encoding]::UTF8
+[Console]::Out.WriteLine('###LISTO###'); [Console]::Out.Flush()
+while ($true) {
+  $lineas = New-Object System.Collections.Generic.List[string]
+  while ($true) { $l = [Console]::In.ReadLine(); if ($l -eq $null) { exit 0 }; if ($l -eq '###FIN###') { break }; $lineas.Add($l) }
+  try { $r = (& ([scriptblock]::Create($lineas -join "`n"))) -join ''
+        [Console]::Out.WriteLine('###OK###' + $r) }
+  catch { [Console]::Out.WriteLine('###ERR###' + ($_.Exception.Message -replace '\s+', ' ')) }
+  [Console]::Out.Flush()
+}
+"""
+
+
+class _Trabajador:
+    def __init__(self):
+        self._proc: subprocess.Popen | None = None
+        self._salida = None
+        self._lock = threading.Lock()
+
+    def _cerrar(self) -> None:
+        if self._proc:
+            try:
+                self._proc.kill()
+            except OSError:
+                pass
+        self._proc = None
+
+    def _linea(self, tiempo: float) -> str | None:
+        try:
+            return self._salida.get(timeout=tiempo)
+        except queue.Empty:
+            return None
+
+    def _arrancar(self) -> bool:
+        completo = (_FUNCION.replace("__SERVIDOR__", SERVIDOR_SQL).replace("__INSTANCIA__", INSTANCIA)
+                    .replace("__BASE__", BASE) + _BUCLE)
+        self._proc = subprocess.Popen(
+            ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", completo],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            text=True, encoding="utf-8", errors="replace", bufsize=1,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        self._salida = queue.Queue()
+        proc, salida = self._proc, self._salida
+
+        def leer():
+            for l in proc.stdout:
+                salida.put(l.rstrip("\r\n"))
+            salida.put(None)
+        threading.Thread(target=leer, name="base-tango", daemon=True).start()
+        while True:
+            l = self._linea(60)
+            if l is None:
+                self._cerrar()
+                return False
+            if l == "###LISTO###":
+                return True
+
+    def correr(self, script: str, tiempo: int) -> dict | None:
+        """El resultado, o None si el trabajador no pudo o esta ocupado (se usa el camino de siempre)."""
+        if not self._lock.acquire(blocking=False):
+            return None                 # otra consulta en curso: esta va por separado, sin esperar
+        try:
+            try:
+                if (self._proc is None or self._proc.poll() is not None) and not self._arrancar():
+                    return None
+                self._proc.stdin.write(script.strip() + "\n###FIN###\n")
+                self._proc.stdin.flush()
+                while True:
+                    l = self._linea(tiempo)
+                    if l is None:
+                        self._cerrar()
+                        return None
+                    if l.startswith("###OK###"):
+                        return json.loads(l[8:].strip().splitlines()[-1])
+                    if l.startswith("###ERR###"):
+                        return None
+            except (OSError, ValueError):
+                self._cerrar()
+                return None
+        finally:
+            self._lock.release()
+
+
+_trabajador = _Trabajador()
+
+
 def _correr(script: str, tiempo: int = 60) -> dict:
+    if sys.platform != "win32":
+        raise BaseNoDisponible("La base de Tango solo se lee desde el servidor (Windows).")
+    if os.environ.get("HERRAMIENTA_TANGO_SQL_SIMPLE") != "1":
+        datos = _trabajador.correr(script, tiempo)
+        if datos is not None:
+            return datos
+    return _correr_aparte(script, tiempo)
+
+
+def _correr_aparte(script: str, tiempo: int = 60) -> dict:
     if sys.platform != "win32":
         raise BaseNoDisponible("La base de Tango solo se lee desde el servidor (Windows).")
     completo = (_FUNCION.replace("__SERVIDOR__", SERVIDOR_SQL).replace("__INSTANCIA__", INSTANCIA)
