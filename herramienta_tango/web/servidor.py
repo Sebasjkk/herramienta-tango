@@ -27,6 +27,9 @@ Listas de precios (leidas de las tablas de Tango, no de la consulta 12742):
     GET /api/articulos/<codigo>/precios   en que listas esta un articulo
     GET /api/articulos/<codigo>/cotizaciones   cotizaciones donde aparece (con cantidad y precio)
     GET /api/valorizacion            stock de Central valorizado en USD, renglon por renglon (base, solo lectura)
+    GET /api/valorizacion/aduana?carpeta=N  diagnostico: comprobantes de Aduana de una carpeta y sus cuentas
+    GET /api/precio-sugerido?art=&cliente=  ventas del articulo, precio en la lista del cliente (solo lectura)
+    GET /api/precio-sugerido/costo?art=     costo unitario en USD (valorizacion o ultima importacion)
     GET /valorizacion.xlsx           lo mismo en Excel
     GET /api/importaciones           carpetas de importacion y, por articulo, en camino y precio de compra (base, solo lectura)
     GET /api/articulos/<codigo>/movimientos    ultimos movimientos de stock (base, solo lectura)
@@ -128,7 +131,8 @@ RUTAS_APP = {"/api/precios/cambiar", "/api/precios/agregar", "/api/precios/quita
              "/api/listas/crear", "/api/listas/eliminar", "/api/listas/asignar",
              "/api/mezclas/crear", "/api/mezclas/subidas", "/api/mezclas/borrar",
              "/api/listas/importar/analizar", "/api/listas/importar/aplicar", "/api/listas/restaurar",
-             "/api/pedidos/eliminar", "/api/opciones"}
+             "/api/pedidos/eliminar", "/api/opciones",
+             "/api/precios/ajuste/vista-previa", "/api/precios/ajuste", "/api/precios/ajuste/revertir"}
 
 
 def _a_json(valor) -> object:
@@ -175,6 +179,35 @@ def crear_rutas(contexto) -> dict[str, Callable[[dict, bool], tuple]]:
         except base_tango.BaseNoDisponible as e:
             raise PedidoInvalido(str(e)) from None
 
+    def aduana(qs: dict, forzar: bool):
+        from .. import base_tango
+        carpeta = (qs.get("carpeta") or [""])[0].strip()
+        if not carpeta.isdigit():
+            raise PedidoInvalido("Falta el número de carpeta.")
+        try:
+            return base_tango.aduana_carpeta(int(carpeta)), time.time()
+        except ValueError as e:
+            raise PedidoInvalido(str(e)) from None
+        except base_tango.BaseNoDisponible as e:
+            raise PedidoInvalido(str(e)) from None
+
+    def precio_sugerido(qs: dict, forzar: bool):
+        from .. import base_tango, precio_sugerido as ps
+        art = (qs.get("art") or [""])[0].strip()
+        if not art:
+            raise PedidoInvalido("Falta el artículo.")
+        try:
+            return ps.armar(s(), art, (qs.get("cliente") or [""])[0]), time.time()
+        except ValueError as e:
+            raise PedidoInvalido(str(e)) from None
+
+    def precio_sugerido_costo(qs: dict, forzar: bool):
+        from .. import precio_sugerido as ps
+        art = (qs.get("art") or [""])[0].strip()
+        if not art:
+            raise PedidoInvalido("Falta el artículo.")
+        return ps.costo(s(), art), time.time()
+
     return {
         "/api/stock/partidas": lambda qs, f: s().saldos_por_partida(f),
         "/api/stock/articulos": lambda qs, f: s().saldos_por_articulo(f),
@@ -193,9 +226,13 @@ def crear_rutas(contexto) -> dict[str, Callable[[dict, bool], tuple]]:
         "/api/mezclas": lambda qs, f: (s().mezclas.registro.todas(), time.time()),
         "/api/listas/importar/estado": lambda qs, f: (s().importador.estado(), time.time()),
         "/api/listas/restaurar/estado": lambda qs, f: (s().editor.estado_restauracion(), time.time()),
+        "/api/precios/ajuste/estado": lambda qs, f: (s().editor.estado_ajuste(), time.time()),
         "/api/opciones": lambda qs, f: (opciones.leer(), time.time()),
         "/api/importaciones": importaciones,
         "/api/valorizacion": valorizacion,
+        "/api/valorizacion/aduana": aduana,
+        "/api/precio-sugerido": precio_sugerido,
+        "/api/precio-sugerido/costo": precio_sugerido_costo,
     }
 
 
@@ -532,6 +569,12 @@ def crear_manejador(contexto):
                     log.info(f"Opciones: {quien} cambió {texto('clave')} a {datos.get('valor')}")
                 elif ruta == "/api/listas/restaurar":
                     r = editor.restaurar_lista(texto("fecha"), texto("lista"), quien)
+                elif ruta == "/api/precios/ajuste/vista-previa":
+                    r = editor.vista_previa_ajuste(datos.get("porcentaje"), entero("lista"), datos.get("articulos"))
+                elif ruta == "/api/precios/ajuste":
+                    r = editor.ajustar_precios(datos.get("porcentaje"), quien, entero("lista"), datos.get("articulos"))
+                elif ruta == "/api/precios/ajuste/revertir":
+                    r = editor.revertir_ajuste(texto("fecha"), quien)
                 elif ruta == "/api/listas/importar/analizar":
                     try:
                         contenido = base64.b64decode(texto("archivo"), validate=True)

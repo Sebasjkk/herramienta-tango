@@ -46,6 +46,9 @@ VIGENCIA_RENGLONES = 60     # segundos
 MAX_NOMBRE_LISTA = 20
 
 
+MAX_PORCENTAJE_AJUSTE = 200
+
+
 class PedidoInvalido(ValueError):
     """Datos mal cargados: el mensaje se muestra tal cual."""
 
@@ -596,6 +599,155 @@ class EditorPrecios:
         estado["corriendo"] = False
         self.registro.anotar(quien, "restaurar lista", lista=lista.get("NOMBRE_LIS"), articulos=estado["hechos"] - len(estado["errores"]),
                              errores=estado["errores"][:50])
+
+    # ---------------------------------------------------------- ajuste de precios en bloque
+    # Sube o baja un porcentaje: toda una lista (o algunos articulos de ella), o algunos
+    # articulos en todas las listas donde esten. Se ajusta el precio de lista y los precios
+    # especiales de cliente que no esten en 0. Corre en un hilo aparte; al terminar deja en
+    # el registro el antes y el despues de cada renglon, para poder revertirlo.
+    @staticmethod
+    def _porcentaje(valor) -> float:
+        try:
+            p = round(float(str(valor).replace(",", ".").replace("%", "").strip()), 4)
+        except (TypeError, ValueError):
+            raise PedidoInvalido("El porcentaje tiene que ser un número (por ejemplo 10 o -5).") from None
+        if p == 0 or p <= -90 or p > MAX_PORCENTAJE_AJUSTE:
+            raise PedidoInvalido(f"El porcentaje tiene que estar entre -90 y {MAX_PORCENTAJE_AJUSTE}, y no puede ser 0.")
+        return p
+
+    def _renglones_ajuste(self, id_lista: int | None, codigos) -> tuple[list[dict], list[str]]:
+        cods = {str(c).strip().upper() for c in (codigos or []) if str(c).strip()}
+        todos = self._todos_los_renglones(forzar=True)
+        cod = lambda r: (r.get("COD_STA11") or r.get("COD_ARTICU") or "").strip().upper()
+        if id_lista is not None:
+            self._lista(id_lista)
+            filas = [r for r in todos if r.get("ID_GVA10") == id_lista and (not cods or cod(r) in cods)]
+        else:
+            if not cods:
+                raise PedidoInvalido("Indicá qué artículos ajustar.")
+            filas = [r for r in todos if cod(r) in cods]
+        encontrados = {cod(r) for r in filas}
+        return filas, sorted(cods - encontrados)
+
+    def vista_previa_ajuste(self, porcentaje, id_lista: int | None = None, codigos=None) -> dict:
+        p = self._porcentaje(porcentaje)
+        filas, faltan = self._renglones_ajuste(id_lista, codigos)
+        por_lista = Counter((r.get("NOMBRE_LIS") or "").strip() or f"Lista {r.get('NRO_DE_LIS')}" for r in filas)
+        ejemplos = [{"lista": (r.get("NOMBRE_LIS") or "").strip(), "articulo": (r.get("COD_STA11") or "").strip(),
+                     "descripcion": (r.get("DESCRIPCIO") or r.get("DESCRIPCION") or "").strip(),
+                     "precio": r.get("PRECIO"), "nuevo": round((r.get("PRECIO") or 0) * (1 + p / 100), 2)}
+                    for r in filas[:8]]
+        return {"porcentaje": p, "renglones": len(filas), "listas": [{"lista": k, "articulos": v} for k, v in sorted(por_lista.items())],
+                "no_encontrados": faltan, "ejemplos": ejemplos}
+
+    def estado_ajuste(self) -> dict:
+        return dict(getattr(self, "_ajuste", None) or {"corriendo": False})
+
+    def _ocupado(self) -> None:
+        for nombre in ("_ajuste", "_restauracion"):
+            if (getattr(self, nombre, None) or {}).get("corriendo"):
+                raise PedidoInvalido("Ya hay un cambio masivo en curso; esperá a que termine.")
+
+    def ajustar_precios(self, porcentaje, quien: str, id_lista: int | None = None, codigos=None) -> dict:
+        self._ocupado()
+        p = self._porcentaje(porcentaje)
+        filas, faltan = self._renglones_ajuste(id_lista, codigos)
+        if not filas:
+            raise PedidoInvalido("No hay artículos para ajustar con ese criterio.")
+        alcance = (f"lista {self._lista(id_lista).get('NOMBRE_LIS', '').strip()}" if id_lista is not None else "todas las listas") + \
+                  (f", {len({(r.get('COD_STA11') or '').strip() for r in filas})} artículos elegidos" if codigos else "")
+        self._ajuste = {"corriendo": True, "tipo": "ajuste", "porcentaje": p, "alcance": alcance, "total": len(filas),
+                        "hechos": 0, "cambiados": 0, "sin_precio": 0, "errores": [], "no_encontrados": faltan}
+        info = {r["ID_GVA17"]: ((r.get("NOMBRE_LIS") or "").strip() or f"Lista {r.get('NRO_DE_LIS')}",
+                                (r.get("COD_STA11") or r.get("COD_ARTICU") or "").strip()) for r in filas}
+        threading.Thread(target=self._ajustar, args=(info, 1 + p / 100, quien), daemon=True).start()
+        return self.estado_ajuste()
+
+    def _decimales(self, id_lista, cache: dict) -> int:
+        if id_lista not in cache:
+            try:
+                cache[id_lista] = self._lista(id_lista).get("DECIMALES") or 2
+            except (PedidoInvalido, TangoError):
+                cache[id_lista] = 2
+        return cache[id_lista]
+
+    def _ajustar(self, info: dict[int, tuple[str, str]], factor: float, quien: str) -> None:
+        estado, cambios, decimales = self._ajuste, [], {}
+        for id_renglon, (nombre_lista, codigo) in info.items():
+            try:
+                with self._lock:
+                    actual = self._leer_renglon(id_renglon)
+                    dec = self._decimales(actual.get("ID_GVA10"), decimales)
+                    nuevo = dict(actual)
+                    toco = False
+                    if (actual.get("PRECIO") or 0) > 0:
+                        nuevo["PRECIO"] = round(actual["PRECIO"] * factor, dec); toco = True
+                    especiales = [dict(c) for c in (actual.get("GVA13") or [])]
+                    for c in especiales:
+                        if (c.get("PRECIO") or 0) > 0:
+                            c["PRECIO"] = round(c["PRECIO"] * factor, dec); toco = True
+                    if not toco:
+                        estado["sin_precio"] += 1
+                    else:
+                        if especiales:
+                            nuevo["GVA13"] = especiales
+                        self._c.actualizar(PROCESO_RENGLONES, nuevo)
+                        despues = self._leer_renglon(id_renglon)
+                        if despues.get("PRECIO") != nuevo.get("PRECIO"):
+                            raise TangoError("Tango aceptó el cambio pero el precio guardado no coincide")
+                        cambios.append({"id": id_renglon, "lista": nombre_lista, "articulo": codigo,
+                                        "antes": _resumen(actual), "despues": _resumen(despues)})
+                        estado["cambiados"] += 1
+            except (PedidoInvalido, TangoError) as e:
+                estado["errores"].append({"articulo": f"{codigo} ({nombre_lista})", "error": str(e)})
+            estado["hechos"] += 1
+        self._invalidar()
+        self.registro.anotar(quien, "ajuste de precios", porcentaje=estado["porcentaje"], alcance=estado["alcance"],
+                             articulos=len(cambios), cambios=cambios, errores=estado["errores"][:50])
+        estado["fecha"] = self.registro.ultimos(1)[0].get("fecha") if cambios else None
+        estado["corriendo"] = False
+
+    def revertir_ajuste(self, fecha: str, quien: str) -> dict:
+        """Vuelve cada renglon de un ajuste al precio que tenia antes (desde el registro)."""
+        self._ocupado()
+        entrada = next((c for c in self.registro.ultimos(5000)
+                        if c.get("accion") == "ajuste de precios" and c.get("fecha") == fecha), None)
+        if not entrada or not entrada.get("cambios"):
+            raise PedidoInvalido("No encontré ese ajuste en el registro de cambios.")
+        if any(c.get("accion") == "revertir ajuste de precios" and c.get("ajuste") == fecha for c in self.registro.ultimos(5000)):
+            raise PedidoInvalido("Ese ajuste ya se revirtió.")
+        self._ajuste = {"corriendo": True, "tipo": "revertir", "porcentaje": entrada.get("porcentaje"), "alcance": entrada.get("alcance"),
+                        "total": len(entrada["cambios"]), "hechos": 0, "cambiados": 0, "sin_precio": 0, "errores": [],
+                        "no_encontrados": [], "ajuste": fecha}
+        threading.Thread(target=self._revertir, args=(entrada, quien), daemon=True).start()
+        return self.estado_ajuste()
+
+    def _revertir(self, entrada: dict, quien: str) -> None:
+        estado = self._ajuste
+        for c in entrada["cambios"]:
+            try:
+                with self._lock:
+                    actual = self._leer_renglon(c["id"])
+                    antes = c.get("antes") or {}
+                    nuevo = dict(actual)
+                    nuevo["PRECIO"] = antes.get("precio") if antes.get("precio") is not None else actual.get("PRECIO")
+                    previos = {(e.get("cliente") or "").strip(): e.get("precio") for e in antes.get("especiales") or []}
+                    especiales = [dict(x) for x in (actual.get("GVA13") or [])]
+                    for x in especiales:
+                        k = (x.get("COD_CLIENT") or "").strip()
+                        if k in previos and previos[k] is not None:
+                            x["PRECIO"] = previos[k]
+                    if especiales:
+                        nuevo["GVA13"] = especiales
+                    self._c.actualizar(PROCESO_RENGLONES, nuevo)
+                    estado["cambiados"] += 1
+            except (PedidoInvalido, TangoError) as e:
+                estado["errores"].append({"articulo": c.get("articulo"), "error": str(e)})
+            estado["hechos"] += 1
+        self._invalidar()
+        self.registro.anotar(quien, "revertir ajuste de precios", ajuste=entrada.get("fecha"), porcentaje=entrada.get("porcentaje"),
+                             alcance=entrada.get("alcance"), articulos=estado["cambiados"], errores=estado["errores"][:50])
+        estado["corriendo"] = False
 
     def asignar_lista(self, id_lista: int, id_cliente: int, quien: str) -> dict:
         """Cambia la lista de precios en la ficha del cliente (proceso 2117).

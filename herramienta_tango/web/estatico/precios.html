@@ -114,6 +114,10 @@
   .imp-op input { margin-top: 3px; }
   .avance { height: 10px; background: var(--linea-suave); border-radius: 99px; overflow: hidden; margin: 10px 0 6px; }
   .avance > div { height: 100%; background: var(--patina); width: 0; transition: width .3s; }
+  .alcance { display: grid; gap: 6px; margin: 10px 0 4px; }
+  .alcance label { display: flex; gap: 6px; align-items: center; font-size: .92rem; }
+  .vista-previa ul { margin: 4px 0 8px; padding-left: 20px; font-size: .9rem; }
+  textarea#aj-c { width: 100%; box-sizing: border-box; font: inherit; }
 </style>
 </head>
 <body>
@@ -177,7 +181,8 @@
     const nombre = el("button", "boton chico", n ? "Cambiar nombre" : "Poner mi nombre"); nombre.type = "button";
     nombre.addEventListener("click", () => HT.pedirNombre());
     const ver = el("button", "boton chico", "Ver cambios"); ver.type = "button"; ver.addEventListener("click", verCambios);
-    acc.append(nombre, ver);
+    const aj = el("button", "boton chico", "Subir o bajar precios"); aj.type = "button"; aj.addEventListener("click", () => ventanaAjuste(null));
+    acc.append(nombre, ver, aj);
     c.append(texto, acc);
   }
   HT.alCambiarNombre(dibujarEdicion);
@@ -208,6 +213,13 @@
             }
             det.append(t); li.append(det);
             if (c.accion === "eliminar lista") li.append(botonRestaurar(c));
+          }
+          if (c.accion === "ajuste de precios" && c.cambios && c.cambios.length) {
+            const det = el("details"); det.append(el("summary", "", `Ver los ${c.cambios.length} precios cambiados`));
+            const t = el("ul", "copia-lista");
+            for (const x of c.cambios) t.append(el("li", "", `${x.lista} · ${x.articulo}: ${fmtPrecio.format(precioDe(x.antes) || 0)} → ${fmtPrecio.format(precioDe(x.despues) || 0)}`));
+            det.append(t); li.append(det);
+            if (!datos.some(o => o.accion === "revertir ajuste de precios" && o.ajuste === c.fecha)) li.append(botonRevertir(c));
           }
           li.append(el("small", "", `${c.quien} · ${new Date(c.fecha).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}`));
           ul.append(li);
@@ -253,6 +265,8 @@
     if (c.accion === "crear lista") return `Se creó la lista ${c.lista} (número ${c.numero}, ${c.moneda})`;
     if (c.accion === "eliminar lista") return `Lista ${c.lista} eliminada (copia de sus ${c.articulos} artículos guardada)`;
     if (c.accion === "error al eliminar lista") return `No se pudo eliminar la lista ${c.lista}: ${c.error}`;
+    if (c.accion === "ajuste de precios") return `${c.porcentaje > 0 ? "Subieron" : "Bajaron"} ${fmt.format(Math.abs(c.porcentaje))} % los precios de ${c.articulos} artículos (${c.alcance})`;
+    if (c.accion === "revertir ajuste de precios") return `Se revirtió el ajuste de ${fmt.format(c.porcentaje)} % (${c.alcance}): ${c.articulos} artículos`;
     if (c.accion === "asignar lista") return `${c.razon_social || c.cliente}: pasó de la lista ${c.lista_anterior} a ${c.lista}`;
     return `${c.accion} ${c.lista || ""}`;
   }
@@ -480,6 +494,9 @@
         ...(r.especiales || []).map(e => [r.codigo_articulo, r.descripcion, e.razon_social || e.codigo_cliente, l.moneda, e.precio, HT.fecha(r.modificado)]),
       ]))));
     if (HT.esAdmin() && puedeEditar()) {
+      const aj = el("button", "boton chico", "Subir o bajar precios"); aj.type = "button";
+      aj.addEventListener("click", () => ventanaAjuste({ id: l.id, nombre: l.nombre, total: actual.renglones.length, filtradas: tokens(ui.q.value).length ? filasFiltradas() : null }));
+      acc.append(aj);
       const asig = el("button", "boton chico", "Asignar a un cliente"); asig.type = "button"; asig.addEventListener("click", asignarLista);
       const b = el("button", "boton chico peligro", "Eliminar lista"); b.type = "button"; b.addEventListener("click", eliminarLista);
       acc.append(asig, b);
@@ -489,11 +506,7 @@
     d.append(seccionUsos(l));
     if (puedeEditar()) d.append(formAgregar());
 
-    const ts = tokens(ui.q.value);
-    const filas = ts.length ? actual.renglones.filter(r => {
-      const txt = norm(r.codigo_articulo + " " + r.descripcion);
-      return ts.every(t => txt.includes(t) || sinCeros(norm(r.codigo_articulo)).includes(sinCeros(t)));
-    }) : actual.renglones;
+    const filas = filasFiltradas();
     if (!filas.length) {
       d.append(el("p", "aviso", actual.renglones.length ? "Ningún artículo de la lista coincide con la búsqueda." : "La lista todavía no tiene artículos."));
     } else {
@@ -505,6 +518,106 @@
     if (!actual.especiales_leidos) d.append(el("p", "pie", "Lista muy grande: se muestran los precios de lista, sin los precios especiales por cliente."));
     frag.append(d);
     ui.resultados.replaceChildren(frag);
+  }
+
+  function filasFiltradas() {
+    const ts = tokens(ui.q.value);
+    return ts.length ? actual.renglones.filter(r => {
+      const txt = norm(r.codigo_articulo + " " + r.descripcion);
+      return ts.every(t => txt.includes(t) || sinCeros(norm(r.codigo_articulo)).includes(sinCeros(t)));
+    }) : actual.renglones;
+  }
+
+  // ---------------------------------------------------------------- ajuste en bloque
+  // l = {id, nombre, total, filtradas} para una lista; null para artículos en todas las listas
+  function ventanaAjuste(l) {
+    ventana(l ? `Subir o bajar precios de ${l.nombre}` : "Subir o bajar precios en todas las listas", (d, cerrar) => {
+      const f = el("form");
+      const lp = el("label", "etiqueta", "Porcentaje (negativo para bajar)"); lp.htmlFor = "aj-p";
+      const pct = el("input"); pct.id = "aj-p"; pct.inputMode = "decimal"; pct.placeholder = "Por ejemplo 8 o -5"; pct.required = true;
+      f.append(lp, pct);
+      let alcance = null, codigos = null;
+      if (l && l.filtradas && l.filtradas.length < l.total) {
+        alcance = el("div", "alcance");
+        const op = (v, txt, chk) => { const lb = el("label"); const r = el("input"); r.type = "radio"; r.name = "aj-alc"; r.value = v; r.checked = chk; lb.append(r, " ", txt); return lb; };
+        alcance.append(op("todo", `Toda la lista (${fmt.format(l.total)} artículos)`, false),
+                       op("filtro", `Solo los ${fmt.format(l.filtradas.length)} que muestra la búsqueda`, true));
+        f.append(alcance);
+      }
+      if (!l) {
+        const lc = el("label", "etiqueta", "Códigos de artículo (uno por renglón, o separados por coma)"); lc.htmlFor = "aj-c";
+        codigos = el("textarea"); codigos.id = "aj-c"; codigos.rows = 5; codigos.required = true;
+        f.append(lc, codigos, el("p", "nota", "Se ajustan en todas las listas donde estén."));
+      }
+      f.append(el("p", "nota", "Se cambia el precio de lista y los precios especiales de cliente. Los que están en 0 quedan en 0. Queda en Ver cambios con el antes y el después, y se puede revertir."));
+      const prev = el("div", "vista-previa");
+      const err = el("p", "mensaje-error"); err.hidden = true;
+      const acc = el("div", "acciones");
+      const c = el("button", "boton", "Cancelar"); c.type = "button"; c.addEventListener("click", cerrar);
+      const ok = el("button", "boton primario", "Ver qué cambia"); ok.type = "submit";
+      acc.append(c, ok);
+      f.append(prev, err, acc);
+      d.append(f);
+      setTimeout(() => pct.focus(), 50);
+
+      let plan = null;
+      const pedido = () => {
+        const b = { porcentaje: pct.value.trim() };
+        if (l) {
+          b.lista = l.id;
+          const filtro = alcance && alcance.querySelector("input:checked").value === "filtro";
+          if (filtro) b.articulos = l.filtradas.map(r => r.codigo_articulo);
+        } else b.articulos = codigos.value.split(/[\s,;]+/).filter(Boolean);
+        return b;
+      };
+      const invalidar = () => { plan = null; ok.textContent = "Ver qué cambia"; ok.classList.remove("peligro"); prev.replaceChildren(); };
+      f.addEventListener("input", invalidar);
+      f.addEventListener("submit", async e => {
+        e.preventDefault(); err.hidden = true; ok.disabled = true;
+        try {
+          if (!plan) {
+            plan = (await escribir("/api/precios/ajuste/vista-previa", pedido())).datos;
+            const signo = plan.porcentaje > 0 ? "Sube" : "Baja";
+            prev.replaceChildren(el("p", "", `${signo} ${fmt.format(Math.abs(plan.porcentaje))} % a ${fmt.format(plan.renglones)} artículos en ${plan.listas.length} lista${plan.listas.length === 1 ? "" : "s"}.`));
+            if (plan.listas.length > 1) { const ul = el("ul"); plan.listas.forEach(x => ul.append(el("li", "", `${x.lista}: ${fmt.format(x.articulos)}`))); prev.append(ul); }
+            if (plan.no_encontrados.length) prev.append(el("p", "mensaje-error", `No están en ninguna lista: ${plan.no_encontrados.join(", ")}`));
+            if (!plan.renglones) { ok.disabled = false; plan = null; return; }
+            ok.textContent = `Aplicar a ${fmt.format(plan.renglones)} artículos`; ok.classList.add("peligro"); ok.disabled = false;
+            return;
+          }
+          await escribir("/api/precios/ajuste", pedido());
+          ok.textContent = "Aplicando…";
+          seguirAjuste(prev, () => { ok.textContent = "Listo"; c.textContent = "Cerrar"; cargarListas(true).then(() => { if (actual) abrirLista(actual.lista.id, true); }); });
+        } catch (ex) { err.textContent = ex.message; err.hidden = false; ok.disabled = false; }
+      });
+    });
+  }
+
+  // Avance de un ajuste o reversion que corre en el servidor
+  async function seguirAjuste(caja, alTerminar) {
+    const txt = el("p", "nota"); caja.append(txt);
+    while (document.body.contains(caja)) {
+      let e;
+      try { e = (await pedir("/api/precios/ajuste/estado", true)).datos; } catch { await new Promise(r => setTimeout(r, 2000)); continue; }
+      txt.textContent = e.corriendo ? `${e.tipo === "revertir" ? "Revirtiendo" : "Aplicando"}: ${e.hechos} de ${e.total}…`
+        : `Listo: ${e.cambiados} cambiados` + (e.sin_precio ? `, ${e.sin_precio} sin precio (quedaron en 0)` : "") +
+          (e.errores.length ? `, ${e.errores.length} con error (${e.errores.slice(0, 3).map(x => `${x.articulo}: ${x.error}`).join("; ")})` : "") + ".";
+      if (!e.corriendo) { if (alTerminar) alTerminar(e); return; }
+      await new Promise(r => setTimeout(r, 1500));
+    }
+  }
+
+  function botonRevertir(c) {
+    const caja = el("div", "restaurar");
+    const b = el("button", "boton chico", `Revertir este ajuste (${c.articulos} artículos)`); b.type = "button";
+    caja.append(b);
+    b.addEventListener("click", async () => {
+      if (!confirm(`¿Volver los ${c.articulos} artículos al precio que tenían antes de este ajuste?`)) return;
+      b.disabled = true;
+      try { await escribir("/api/precios/ajuste/revertir", { fecha: c.fecha }); seguirAjuste(caja, () => cargarListas(true)); }
+      catch (e) { caja.append(el("p", "mensaje-error", e.message)); b.disabled = false; }
+    });
+    return caja;
   }
 
   function filaRenglon(r) {

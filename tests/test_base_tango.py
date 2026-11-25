@@ -162,6 +162,8 @@ if __name__ == "__main__":
 class TrabajadorAbierto(unittest.TestCase):
     def setUp(self):
         base_tango._cache.clear()
+        e = mock.patch.dict(os.environ); e.start(); self.addCleanup(e.stop)
+        os.environ.pop("HERRAMIENTA_TANGO_SQL_SIMPLE", None)
         p = mock.patch.object(base_tango.sys, "platform", "win32"); p.start(); self.addCleanup(p.stop)
 
     def test_usa_el_powershell_abierto(self):
@@ -176,3 +178,48 @@ class TrabajadorAbierto(unittest.TestCase):
              mock.patch.object(base_tango.subprocess, "run", return_value=salida('{"x": 2}')) as run:
             self.assertEqual(base_tango._correr("$out"), {"x": 2})
         run.assert_called_once()
+
+
+class TestAduana(unittest.TestCase):
+    def setUp(self):
+        base_tango._cache.clear()
+        p = mock.patch.object(base_tango.sys, "platform", "win32"); p.start(); self.addCleanup(p.stop)
+        q = mock.patch.object(base_tango, "es_servidor", return_value=True); q.start(); self.addCleanup(q.stop)
+        p_simple = mock.patch.dict(os.environ, {"HERRAMIENTA_TANGO_SQL_SIMPLE": "1"}); p_simple.start(); self.addCleanup(p_simple.stop)
+
+    def test_arma_la_consulta_y_limpia_vacios(self):
+        js = ('{"carpetas":{"ID_CARPETA":"0000100000979","OBS":""},"despachos":[{"N_DESPACHO":"26001IC04","FECHA":"2026-08-10"}],'
+              '"cpa77":null,"proveedores_aduana":{"COD_PROVEE":"ADUANA","NOM_PROVEE":"ADUANA"},'
+              '"comprobantes":[{"T_COMP":"FAC","N_COMP":"A000100001234","IMPORTE":100.5,"FILLER_1":"x","VACIO":null}],'
+              '"tablas_con_cuenta":{"tabla":"CPA14","cuentas":"COD_CTA","columnas":20},'
+              '"imputaciones":{"CPA14":{"T_COMP":"FAC","COD_CTA":"1274","IMPORTE":50}}}')
+        with mock.patch.object(base_tango.subprocess, "run", return_value=salida(js)) as run:
+            d = base_tango.aduana_carpeta(979)
+        script = run.call_args[0][0][-1]
+        self.assertIn("RIGHT(RTRIM(ID_CARPETA), 8) = '00000979'", script)
+        self.assertNotRegex(script.upper(), r"\b(INSERT|UPDATE|DELETE|DROP|ALTER)\b")
+        self.assertEqual(d["cpa77"], [])
+        self.assertEqual(d["comprobantes"], [{"T_COMP": "FAC", "N_COMP": "A000100001234", "IMPORTE": 100.5}])
+        self.assertEqual(d["imputaciones"]["CPA14"][0]["COD_CTA"], "1274")
+        self.assertEqual(d["carpetas"], [{"ID_CARPETA": "0000100000979"}])
+
+    def test_carpeta_invalida(self):
+        for n in (0, -1, 10 ** 9):
+            with self.assertRaises(ValueError):
+                base_tango.aduana_carpeta(n)
+
+    def test_desde_otra_pc(self):
+        with mock.patch.object(base_tango, "es_servidor", return_value=False), \
+             mock.patch.object(base_tango, "_remoto", return_value={"ok": 1}) as r:
+            base_tango.aduana_carpeta(979)
+        r.assert_called_once_with("aduana", {"carpeta": 979}, tiempo=140)
+
+
+class TestServidorViejo(unittest.TestCase):
+    def test_avisa_que_el_servidor_esta_desactualizado(self):
+        import io, json
+        resp = io.BytesIO(json.dumps({"ok": False, "error": "Consulta desconocida."}).encode())
+        with mock.patch.object(base_tango, "_servidor_tango", return_value=("srv", 8085)), \
+             mock.patch.object(base_tango.urllib.request, "urlopen", return_value=resp):
+            with self.assertRaisesRegex(base_tango.BaseNoDisponible, "versión anterior"):
+                base_tango._remoto("aduana", {"carpeta": 979})

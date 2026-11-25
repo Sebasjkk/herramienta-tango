@@ -7,6 +7,7 @@ Se ejecutan con:  python -m unittest discover -s tests
 """
 
 import json
+import os
 import threading
 import unittest
 import urllib.error
@@ -23,6 +24,8 @@ from herramienta_tango.tango import TokenInvalido, procesos
 from herramienta_tango.tango.modelos import Articulo, Cotizacion, DatosEnvio, Pedido, PrecioVigente, Remito, SaldoPartida
 from herramienta_tango.tango.servicio import ServicioTango
 from herramienta_tango.web.servidor import crear_servidor
+
+os.environ["HERRAMIENTA_TANGO_SQL_SIMPLE"] = "1"   # en las pruebas, sin PowerShell abierto
 
 CFG = config.Config(servidor="http://tango-prueba:17000", company="3", timeout=5, puerto=0,
                     vigencia_saldos=60, repo_actualizaciones="", actualizacion_automatica=False,
