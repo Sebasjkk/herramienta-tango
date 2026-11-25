@@ -178,6 +178,7 @@ Una lista nueva hay que asignársela al cliente en su ficha en Tango.
 ```
 python -m unittest discover -s tests      # pruebas
 python HerramientaTango.pyw               # correrlo desde el código (abre el panel)
+python HerramientaTango.pyw --demo        # con datos inventados, sin Tango ni base (http://127.0.0.1:8086)
 ```
 
 Solo usa la librería estándar de Python 3.10 o superior.

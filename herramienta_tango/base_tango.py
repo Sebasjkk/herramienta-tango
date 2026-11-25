@@ -175,6 +175,8 @@ _trabajador = _Trabajador()
 
 
 def _correr(script: str, tiempo: int = 60) -> dict:
+    if os.environ.get("HERRAMIENTA_TANGO_DEMO") == "1":
+        raise BaseNoDisponible("En el modo demo no hay base de datos de Tango.")
     if sys.platform != "win32":
         raise BaseNoDisponible("La base de Tango solo se lee desde el servidor (Windows).")
     if os.environ.get("HERRAMIENTA_TANGO_SQL_SIMPLE") != "1":
@@ -519,6 +521,8 @@ def _servidor_tango() -> tuple[str, int] | None:
 
 def es_servidor() -> bool:
     """True si esta PC es la del servidor de Tango (donde esta la base)."""
+    if os.environ.get("HERRAMIENTA_TANGO_DEMO") == "1":
+        return True
     if os.environ.get("HERRAMIENTA_TANGO_BASE_LOCAL") == "1":
         return True
     destino = _servidor_tango()

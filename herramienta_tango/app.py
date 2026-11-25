@@ -113,12 +113,44 @@ def _renombrar_accesos() -> None:
         log.warning(f"No se pudieron renombrar los accesos directos: {e}")
 
 
+def _main_demo(args) -> int:
+    """Corre con datos inventados (demo.py): no usa Tango, ni la base, ni guarda configuracion."""
+    from dataclasses import replace
+    from . import demo
+    os.environ["HERRAMIENTA_TANGO_DEMO"] = "1"
+    cfg = replace(config.cargar(), puerto=demo.PUERTO_DEMO, repo_actualizaciones="")
+    contexto = Contexto(cfg, fabrica_cliente=demo.ClienteDemo)
+    contexto.modo_demo = True
+    contexto._servicio = contexto._armar_servicio("http://demo:17000", "demo")
+    contexto.probar_conexion()
+    contexto.actualizador = Actualizador(VERSION, "", 0, False, lambda: None)
+    contexto.actualizador.estado.estado = "desactivado"
+    try:
+        servidor = crear_servidor(contexto, cfg.puerto)
+    except OSError as e:
+        print(f"No se pudo abrir el puerto {cfg.puerto}: {e}")
+        return 1
+    contexto.al_cerrar = lambda: threading.Thread(target=servidor.shutdown, daemon=True).start()
+    url = f"http://127.0.0.1:{cfg.puerto}/"
+    print(f"Modo demo (datos inventados): {url}  -  Ctrl+C para cerrar")
+    if not args.no_abrir:
+        threading.Timer(0.8, lambda: webbrowser.open(url)).start()
+    try:
+        servidor.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        servidor.server_close()
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     _configurar_salida()
     parser = argparse.ArgumentParser(prog="HerramientaTango", description=f"{NOMBRE} v{VERSION}")
     parser.add_argument("--no-abrir", action="store_true", help="no abrir el panel en el navegador al iniciar")
     parser.add_argument("--servicio", action="store_true", help="modo servidor (lo usa la tarea programada)")
     parser.add_argument("--hijo-servicio", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--demo", action="store_true", help="ver la Herramienta con datos inventados, sin Tango")
     parser.add_argument("--escribir-version", metavar="ARCHIVO", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
 
@@ -127,6 +159,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     _configurar_log()
+    if args.demo:
+        return _main_demo(args)
     if args.servicio:
         inst = sistema.instalacion()
         if inst:

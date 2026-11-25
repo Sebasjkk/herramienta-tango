@@ -33,6 +33,7 @@ class Contexto:
         self.estado_tango: dict = {"estado": "sin_configurar", "mensaje": "", "revisado": None}
         self.actualizador = None          # lo asigna app.py
         self.al_cerrar: Callable[[], None] = lambda: None
+        self.modo_demo = False            # --demo: datos inventados, no se cambia nada de la PC
         self.como_servicio = False        # corre como tarea programada de Windows (modo servidor)
         self.cambio_modo: dict = {"estado": "", "mensaje": ""}   # activacion/desactivacion en curso
 
@@ -77,6 +78,8 @@ class Contexto:
     # ------------------------------------------------------------- acciones del panel
     def configurar(self, servidor: str, token: str) -> tuple[bool, str]:
         """Prueba servidor y token contra Tango; si andan, los guarda y los usa."""
+        if self.modo_demo:
+            return False, "En el modo demo no se puede cambiar esto."
         servidor = config.normalizar_servidor(servidor)
         token = (token or "").strip()
         if not token:
@@ -119,6 +122,8 @@ class Contexto:
             log.info(f"Modo servidor: {mensaje}")
 
     def activar_modo_servidor(self) -> tuple[bool, str]:
+        if self.modo_demo:
+            return False, "En el modo demo no se puede cambiar esto."
         inst = sistema.instalacion()
         if not sistema.es_windows() or not inst:
             return False, "Solo disponible con el programa instalado en Windows."
