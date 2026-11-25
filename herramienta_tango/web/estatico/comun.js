@@ -221,6 +221,11 @@ window.HT = (() => {
       '<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke-linecap="round">' +
       '<path d="M7.6 19.6A9.8 9.8 0 1 1 12.9 21.8"/><path d="M9.3 16.6A6.1 6.1 0 1 1 13 18.1"/>' +
       '<path d="M10.7 14.1A2.6 2.6 0 1 1 12.6 14.6"/></g></svg></span>';
+    const atajo = el("button", "atajo");
+    atajo.type = "button";
+    atajo.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>' +
+      '<span>Buscar…</span><kbd>Ctrl K</kbd>';
+    atajo.addEventListener("click", () => paleta());
     const ul = el("ul", "nav-lista");
     let grupo = null;
     for (const m of MODULOS) {
@@ -256,7 +261,7 @@ window.HT = (() => {
     pie.append(el("span", "", ""));
     pie.lastChild.id = "version";
     abajo.append(selectorTema(), con, pie);
-    nav.replaceChildren(marca, ul, abajo);
+    nav.replaceChildren(marca, atajo, ul, abajo);
     // Si la lista no entra en la pantalla, el degradé de abajo avisa que se puede bajar
     const marcarMas = () => ul.classList.toggle("hay-mas", ul.scrollHeight - ul.scrollTop - ul.clientHeight > 4);
     // El modulo abierto siempre a la vista (por ejemplo, En camino en una notebook), por encima del degradé.
@@ -289,6 +294,88 @@ window.HT = (() => {
     aviso.id = "app-aviso"; aviso.hidden = true; aviso.setAttribute("role", "status");
     principal.querySelector(".pagina").prepend(aviso);
   }
+
+  // ---------------------------------------------------------------- busqueda global (Ctrl+K)
+  // Pantallas, articulos y clientes desde cualquier lado. Los datos se piden la primera vez que se abre.
+  let datosPaleta = null;
+  const sinTildes = t => (t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  function cargarPaleta() {
+    if (datosPaleta) return datosPaleta;
+    const pedir = r => fetch(r).then(x => x.json()).then(j => j.datos || []).catch(() => []);
+    datosPaleta = Promise.all([pedir("/api/articulos"), pedir("/api/clientes")]);
+    return datosPaleta;
+  }
+  function paleta() {
+    if (document.querySelector("dialog.paleta")) return;
+    const d = el("dialog", "paleta");
+    const caja = el("div", "paleta-buscar");
+    caja.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>';
+    const input = el("input");
+    input.type = "search"; input.placeholder = "Buscar pantalla, artículo o cliente…"; input.setAttribute("aria-label", "Buscar");
+    caja.append(input, el("kbd", "", "Esc"));
+    const lista = el("ul", "paleta-lista");
+    lista.setAttribute("role", "listbox");
+    d.append(caja, lista);
+    document.body.append(d);
+    const cerrar = () => { if (d.open) d.close(); d.remove(); };
+    d.addEventListener("close", () => d.remove());
+    d.addEventListener("click", e => { if (e.target === d) cerrar(); });
+    let opciones = [], elegida = 0, articulos = [], clientes = [];
+    const ir = o => { cerrar(); location.href = o.href; };
+    function marcar(i) {
+      elegida = Math.max(0, Math.min(i, opciones.length - 1));
+      lista.querySelectorAll(".paleta-op").forEach((li, n) => li.setAttribute("aria-selected", n === elegida ? "true" : "false"));
+      lista.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" });
+    }
+    function pintar() {
+      const q = sinTildes(input.value.trim());
+      const pal = q.split(/\s+/).filter(Boolean);
+      const coincide = t => pal.every(p => t.includes(p));
+      const grupos = [];
+      const mods = MODULOS.filter(m => !q || coincide(sinTildes(m.titulo + " " + (m.grupo || ""))))
+        .map(m => ({ titulo: m.titulo, sub: m.grupo || "", href: m.href, icono: m.icono }));
+      if (mods.length) grupos.push(["Pantallas", mods]);
+      if (q.length >= 2) {
+        const arts = articulos.filter(a => coincide(sinTildes(`${a.codigo} ${a.descripcion} ${a.sinonimo || ""} ${a.codigo_barras || ""}`))).slice(0, 8)
+          .map(a => ({ titulo: a.descripcion || a.codigo, sub: a.codigo, href: "/buscar?art=" + encodeURIComponent(a.codigo), icono: "stock" }));
+        if (arts.length) grupos.push(["Artículos", arts]);
+        const clis = clientes.filter(c => coincide(sinTildes(`${c.codigo} ${c.razon_social} ${c.cuit || ""}`))).slice(0, 6)
+          .map(c => ({ titulo: c.razon_social, sub: c.codigo, href: "/clientes?ver=" + encodeURIComponent(c.codigo), icono: "persona" }));
+        if (clis.length) grupos.push(["Clientes", clis]);
+        grupos.push(["Buscar en todo", [{ titulo: `Buscar «${input.value.trim()}» en artículos`, sub: "", href: "/buscar?q=" + encodeURIComponent(input.value.trim()), icono: "buscar" }]]);
+      }
+      opciones = [];
+      lista.replaceChildren();
+      for (const [nombre, ops] of grupos) {
+        lista.append(el("li", "paleta-grupo", nombre));
+        for (const o of ops) {
+          const li = el("li", "paleta-op");
+          li.setAttribute("role", "option");
+          li.innerHTML = svg(o.icono);
+          li.append(el("span", "", o.titulo), el("span", "sub", o.sub));
+          const n = opciones.length;
+          li.addEventListener("mousemove", () => { if (elegida !== n) marcar(n); });
+          li.addEventListener("click", () => ir(o));
+          opciones.push(o); lista.append(li);
+        }
+      }
+      if (!opciones.length) lista.append(el("li", "paleta-vacio", "No hay nada con eso."));
+      marcar(0);
+    }
+    input.addEventListener("input", pintar);
+    input.addEventListener("keydown", e => {
+      if (e.key === "ArrowDown") { e.preventDefault(); marcar(elegida + 1); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); marcar(elegida - 1); }
+      else if (e.key === "Enter" && opciones[elegida]) { e.preventDefault(); ir(opciones[elegida]); }
+    });
+    d.showModal();
+    input.focus();
+    pintar();
+    cargarPaleta().then(([a, c]) => { articulos = a; clientes = c; if (d.isConnected) pintar(); });
+  }
+  document.addEventListener("keydown", e => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); paleta(); }
+  });
 
   function menuMas(activo) {
     const d = el("dialog", "hoja-mas");
