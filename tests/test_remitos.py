@@ -117,16 +117,16 @@ class TestPdf(unittest.TestCase):
         llamadas = []
         def pdf(proceso, id_registro):
             llamadas.append(proceso)
-            if proceso != 17839:
+            if proceso != 19845:
                 raise TangoError("no")
             return "f.pdf", b"%PDF"
         s = sv.ServicioTango.__new__(sv.ServicioTango)
         s._cliente = SimpleNamespace(pdf=pdf)
         s._proceso_pdf = {}
-        self.assertEqual(s.pdf_factura(73653), ("f.pdf", b"%PDF"))
-        self.assertEqual(llamadas, [17965, 17839])
-        llamadas.clear()
-        s.pdf_factura(73650)
-        self.assertEqual(llamadas, [17839])
+        self.assertEqual(s.pdf_pedido(26), ("f.pdf", b"%PDF"))
+        self.assertEqual(llamadas, [19845])
         with self.assertRaisesRegex(TangoError, "Apertura"):
-            s.pdf_pedido(26)
+            s.pdf_factura(73653)
+        llamadas.clear()
+        s.pdf_pedido(27)
+        self.assertEqual(llamadas, [19845])
