@@ -12,8 +12,8 @@ from . import config
 
 # Solo estas claves, con su valor por defecto
 OPCIONES = {
-    # Eliminar pedidos por la API: requiere la "API de Transacciones Tango Ventas",
-    # que la licencia de Sianco no incluye (19/11/2026). Se activa si se compra.
+    # Cerrar y eliminar pedidos por la API: requieren la "API de Transacciones Tango Ventas",
+    # que la licencia de Sianco no incluye (eliminar 19/11/2026, cerrar 26/11/2026). Se activa si se compra.
     "pedidos_eliminar": False,
 }
 

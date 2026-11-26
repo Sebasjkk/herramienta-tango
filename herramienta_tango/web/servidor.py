@@ -609,6 +609,9 @@ def crear_manejador(contexto):
                 elif ruta == "/api/listas/asignar":
                     r = editor.asignar_lista(entero("lista"), entero("cliente"), quien)
                 elif ruta == "/api/pedidos/cerrar":
+                    if not opciones.leer()["pedidos_eliminar"]:
+                        raise DatoInvalido("Cerrar pedidos desde la Herramienta está desactivado: la licencia de Tango "
+                                           "no lo permite. Cerralo desde la pantalla de Pedidos de Tango.")
                     r = contexto.servicio().gestion_pedidos.cerrar(entero("id"), quien)
                 elif ruta == "/api/pedidos/eliminar":
                     if not opciones.leer()["pedidos_eliminar"]:

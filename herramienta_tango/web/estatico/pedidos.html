@@ -357,7 +357,10 @@
       z.append(el("h3", "", "Cerrar"));
       z.append(el("p", "nota", "Da el pedido por terminado aunque quede algo pendiente. No toca los remitos ni las facturas que ya se hicieron. " +
                                "Es la opción para pedidos viejos que tienen remito y por eso no se pueden anular."));
+      // Cerrar por la API tambien necesita la "API de Transacciones Tango Ventas" (probado el
+      // 26/11/2026 con el pedido 12): queda inactivo con el mismo interruptor que eliminar.
       const c = el("button", "boton chico", "Cerrar pedido"); c.type = "button";
+      c.disabled = !opc.pedidos_eliminar;
       const res = el("p", "nota"); res.hidden = true;
       c.addEventListener("click", async () => {
         if (!confirm(`¿Cerrar el pedido ${corto(p.numero)} de ${p.cliente || p.codigo_cliente}? Pasa a «Cerrado» en Tango.`)) return;
@@ -373,6 +376,8 @@
         }
       });
       z.append(c, res);
+      if (!opc.pedidos_eliminar) z.append(el("p", "nota", "Desactivado: la licencia de Tango no incluye la «API de Transacciones Tango Ventas». " +
+                                                        "Mientras tanto se cierra desde la pantalla de Pedidos de Tango, buscando el pedido " + corto(p.numero) + "."));
     }
     z.append(el("h3", "", "Anular o eliminar"));
     const b = el("button", "boton chico peligro", "Eliminar pedido"); b.type = "button";
@@ -393,8 +398,8 @@
                      "Volvé acá y tocá Actualizar."]) ol.append(el("li", "", x));
     como.append(ol);
     z.append(como);
-    const act = el("button", "boton-texto", opc.pedidos_eliminar ? "Desactivar eliminar pedidos desde la Herramienta"
-                                                                : "Ya tenemos la licencia: activar eliminar pedidos");
+    const act = el("button", "boton-texto", opc.pedidos_eliminar ? "Desactivar cerrar y eliminar pedidos desde la Herramienta"
+                                                                : "Ya tenemos la licencia: activar cerrar y eliminar pedidos");
     act.type = "button";
     act.addEventListener("click", async () => {
       const activar = !opc.pedidos_eliminar;
