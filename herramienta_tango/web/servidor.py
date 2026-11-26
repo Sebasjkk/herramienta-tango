@@ -42,6 +42,7 @@ Listas de precios (leidas de las tablas de Tango, no de la consulta 12742):
     GET /api/base/{usos,comprobantes,renglones}  lo mismo, para la Herramienta de otra PC
     GET /api/comprobantes/renglones?t=&n=   renglones de un comprobante (base, solo lectura)
     GET /factura.pdf?t=FAC&n=A0000300013006   PDF de una factura (prueba procesos de GetPdf)
+    GET /remito/<id>.pdf             PDF de un remito (Ficha Live de remitos, id = ID_STA14)
     GET /pedido/<id>.pdf             PDF de un pedido (prueba procesos de GetPdf)
     GET /cotizacion/<id>.pdf         el PDF del formulario 128, como lo imprime Tango
     GET /api/remitos                 remitos del ultimo año (consulta 17965), con la OC del pedido
@@ -505,6 +506,14 @@ def crear_manejador(contexto):
                     if not id_texto.isdigit():
                         raise PedidoInvalido("Número de cotización inválido.")
                     nombre, contenido = contexto.servicio().pdf_cotizacion(int(id_texto))
+                    nombre = nombre.replace('"', "").encode("ascii", "replace").decode()
+                    self._responder(200, "application/pdf", contenido,
+                                    {"Content-Disposition": f'inline; filename="{nombre}"'})
+                elif url.path.startswith("/remito/") and url.path.endswith(".pdf"):
+                    id_texto = url.path[len("/remito/"):-4]
+                    if not id_texto.isdigit():
+                        raise PedidoInvalido("Número de remito inválido.")
+                    nombre, contenido = contexto.servicio().pdf_remito(int(id_texto))
                     nombre = nombre.replace('"', "").encode("ascii", "replace").decode()
                     self._responder(200, "application/pdf", contenido,
                                     {"Content-Disposition": f'inline; filename="{nombre}"'})

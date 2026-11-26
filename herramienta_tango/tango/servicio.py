@@ -242,11 +242,15 @@ class ServicioTango:
                 return r
             except TangoError as e:
                 errores.append(f"{proceso}: {e}")
-        raise TangoError(f"Tango no devolvió el PDF de {tipo} con ningún proceso probado ({'; '.join(errores)[:300]}). "
-                         f"Hace falta el número de proceso que muestra Apertura → API (GetPdf) en la pantalla de {tipo} del Tango web.")
+        de = {"el pedido": "del pedido", "el remito": "del remito"}.get(tipo, f"de {tipo}")
+        raise TangoError(f"Tango no devolvió el PDF {de} con ningún proceso probado ({'; '.join(errores)[:300]}). "
+                         f"Hace falta el número de la Ficha Live {de} del Tango web (la dirección termina en /dashboard/NNNNN).")
 
     def pdf_factura(self, id_factura: int) -> tuple[str, bytes]:
         return self._pdf_probando("la factura", procesos.PDF_FACTURA, id_factura)
+
+    def pdf_remito(self, id_remito: int) -> tuple[str, bytes]:
+        return self._pdf_probando("el remito", procesos.PDF_REMITO, id_remito)
 
     def pdf_pedido(self, id_pedido: int) -> tuple[str, bytes]:
         return self._pdf_probando("el pedido", procesos.PDF_PEDIDO, id_pedido)

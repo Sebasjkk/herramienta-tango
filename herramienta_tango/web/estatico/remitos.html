@@ -35,7 +35,7 @@
   .remito .ped { grid-column: 2 / span 2; font-size: .85rem; color: var(--plomo); }
   .ped .sin { color: var(--oxido); font-weight: 600; }
   .ped .con { color: var(--grafito); font-weight: 600; }
-  .ped a.pdf { color: var(--patina); text-decoration: underline; text-underline-offset: 2px; }
+  .ped a.pdf, .num a.pdf { color: var(--patina); text-decoration: underline; text-underline-offset: 2px; }
   .remito[open] > summary { border-bottom: 1px solid var(--linea-suave); }
   .remito .cuerpo { padding: 10px 16px 14px; }
   .remito table { width: 100%; border-collapse: collapse; font-size: .9rem; }
@@ -220,7 +220,8 @@
           ped.append(linkPdf(f.numero, f.n_comp ? `/factura.pdf?t=${encodeURIComponent(f.t_comp)}&n=${encodeURIComponent(f.n_comp)}` : null)); });
       } else ped.append(el("span", "sin", "Sin facturar"));
     }
-    s.append(el("span", "num", r.numero_corto), el("span", "cli", r.cliente || r.codigo_cliente), el("span", "fec", fecha(r.fecha)), ped);
+    const num = el("span", "num"); num.append(linkPdf(r.numero_corto, r.id ? `/remito/${r.id}.pdf` : null));
+    s.append(num, el("span", "cli", r.cliente || r.codigo_cliente), el("span", "fec", fecha(r.fecha)), ped);
     d.append(s);
     const cuerpo = el("div", "cuerpo"); d.append(cuerpo);
     d.addEventListener("toggle", () => { if (d.open) detalle(r, cuerpo); });

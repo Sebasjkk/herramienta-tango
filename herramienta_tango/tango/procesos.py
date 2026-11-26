@@ -29,8 +29,9 @@ LIVE_COTIZACIONES_DETALLE = 12481  # Ventas > Consultas > Cotizaciones > Detalle
 # PDF de facturas y pedidos: Api/GetPdf con alguno de estos procesos (se prueban en orden y se
 # recuerda el que anduvo). Sin confirmar en el Tango de Sianco: el numero correcto es el que
 # muestra Apertura -> API (GetPdf) en la pantalla del comprobante en el Tango web.
-PDF_FACTURA = (11663,)                        # id = ID_GVA12. Tablero 11663 (26/11/2026); 17965/17839
-                                              # responden "GetPdfContentById no implementado"
+PDF_FACTURA = (14077,)                        # Ficha Live de facturas, creditos y debitos (id = ID_GVA12).
+                                              # 17965/17839/11663 responden "GetPdfContentById no implementado"
+PDF_REMITO = (14093,)                         # Ficha Live de remitos (id = ID_STA14)
 PDF_PEDIDO = (19845, 2007, 12481)             # id = ID_GVA21
 TABLERO_FICHA_COTIZACION = 14062   # Ficha Live de cotizaciones: Api/GetPdf con este proceso
                                    # devuelve el PDF del formulario 128 (id = ID_GVA08)
