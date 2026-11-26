@@ -125,7 +125,7 @@ class TestPdf(unittest.TestCase):
         s._proceso_pdf = {}
         self.assertEqual(s.pdf_pedido(26), ("f.pdf", b"%PDF"))
         self.assertEqual(llamadas, [19845])
-        with self.assertRaisesRegex(TangoError, "Apertura"):
+        with self.assertRaisesRegex(TangoError, "Ficha Live"):
             s.pdf_factura(73653)
         llamadas.clear()
         s.pdf_pedido(27)
