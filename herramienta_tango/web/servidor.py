@@ -210,6 +210,13 @@ def crear_rutas(contexto) -> dict[str, Callable[[dict, bool], tuple]]:
             raise PedidoInvalido("Falta el artículo.")
         return ps.costo(s(), art), time.time()
 
+    def _remitos_diag():
+        from .. import base_tango, remitos as rem
+        try:
+            return rem.diagnostico(s()), time.time()
+        except base_tango.BaseNoDisponible as e:
+            raise PedidoInvalido(str(e)) from None
+
     def _remitos_vista(forzar: bool):
         from .. import remitos as rem
         return rem.vista(s(), forzar)
@@ -229,6 +236,7 @@ def crear_rutas(contexto) -> dict[str, Callable[[dict, bool], tuple]]:
         "/api/cotizaciones": lambda qs, f: s().cotizaciones(f),
         "/api/remitos": lambda qs, f: s().remitos(f),
         "/api/remitos/vista": lambda qs, f: _remitos_vista(f),
+        "/api/remitos/diagnostico": lambda qs, f: _remitos_diag(),
         "/api/precios/cambios": lambda qs, f: (s().editor.registro.ultimos(300), time.time()),
         "/api/mezclas": lambda qs, f: (s().mezclas.registro.todas(), time.time()),
         "/api/listas/importar/estado": lambda qs, f: (s().importador.estado(), time.time()),

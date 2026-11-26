@@ -91,8 +91,9 @@
   let remitos = [], grupo = "todos", mostrar = MAX;
   const renglones = new Map();   // id -> datos | Promise
 
+  const corto = n => (n || "").trim().slice(-8).replace(/^0+/, "") || "0";   // pedido sin el prefijo de sucursal
   const textoBusqueda = r => norm([r.numero_corto, r.numero, r.cliente, r.codigo_cliente,
-    ...r.pedidos.flatMap(p => [p.numero, p.orden_compra])].join(" "));
+    ...r.pedidos.flatMap(p => [corto(p.numero), p.orden_compra])].join(" "));
 
   async function cargar(forzar) {
     $("estado").textContent = "Consultando Tango…";
@@ -100,6 +101,7 @@
       const d = await pedir("/api/remitos/vista", forzar);
       remitos = d.datos.remitos.map(r => ({ ...r, _t: textoBusqueda(r) }));
       $("aviso").hidden = !d.datos.aviso; $("aviso").textContent = d.datos.aviso || "";
+      if (d.datos.origen === "ultimo_remito") $("aviso").append(" ", botonDiagnostico());
       $("estado").textContent = HT.textoDatos(d);
       if (forzar) renglones.clear();
       render();
@@ -107,6 +109,28 @@
       $("estado").textContent = "Sin datos";
       $("lista").replaceChildren(cajaError(e, () => cargar(true)));
     }
+  }
+
+  // Busca en la base que une remitos y pedidos (solo lectura) y deja el resultado para copiar
+  function botonDiagnostico() {
+    const b = el("button", "boton chico", "Buscar la relación en la base"); b.type = "button";
+    b.addEventListener("click", async () => {
+      b.disabled = true; b.textContent = "Buscando (puede tardar un minuto)…";
+      let texto;
+      try { texto = JSON.stringify((await pedir("/api/remitos/diagnostico", true)).datos, null, 1); }
+      catch (e) { texto = "Error: " + textoError(e); }
+      HT.ventana("Relación entre remitos y pedidos", (dlg, cerrar) => {
+        const ta = el("textarea"); ta.value = texto; ta.readOnly = true; ta.rows = 16; ta.style.width = "100%"; ta.style.fontSize = ".75rem";
+        const acc = el("div", "acciones");
+        const cp = el("button", "boton primario", "Copiar"); cp.type = "button";
+        cp.addEventListener("click", async () => { try { await navigator.clipboard.writeText(texto); cp.textContent = "Copiado"; } catch { ta.select(); document.execCommand("copy"); cp.textContent = "Copiado"; } });
+        const c = el("button", "boton", "Cerrar"); c.type = "button"; c.addEventListener("click", cerrar);
+        acc.append(c, cp);
+        dlg.append(el("p", "", "Copiá esto y pasáselo a quien mantiene la Herramienta."), ta, acc);
+      });
+      b.disabled = false; b.textContent = "Buscar la relación en la base";
+    });
+    return b;
   }
 
   function coincide(r, ts) {
@@ -144,9 +168,8 @@
     const ped = el("span", "ped");
     if (r.pedidos.length) {
       ped.append(el("span", "con", r.pedidos.length > 1 ? "Pedidos " : "Pedido "),
-        r.pedidos.map(p => `${p.numero.replace(/^0+/, "") || p.numero}${p.orden_compra ? ` (OC ${p.orden_compra})` : ""}`).join(", "));
+        r.pedidos.map(p => `${corto(p.numero)}${p.orden_compra ? ` · OC ${p.orden_compra}` : ""}`).join(", "));
     } else ped.append(el("span", "sin", "Sin pedido"));
-    if (r.estado) ped.append(` · ${r.estado}`);
     s.append(el("span", "num", r.numero_corto), el("span", "cli", r.cliente || r.codigo_cliente), el("span", "fec", fecha(r.fecha)), ped);
     d.append(s);
     const cuerpo = el("div", "cuerpo"); d.append(cuerpo);
@@ -165,7 +188,7 @@
       const t = el("table"); const th = el("tr");
       th.append(el("th", "", "Artículo"), el("th", "der", "Cantidad"));
       const thead = el("thead"); thead.append(th); const tb = el("tbody");
-      for (const x of d.renglones) {
+      for (const x of d.renglones.filter(x => x.codigo || x.cantidad)) {
         const tr = el("tr"); const a = el("td");
         a.append(x.descripcion || x.codigo, el("span", "cod", x.codigo));
         if (x.partidas.length) a.append(el("span", "partidas", "Partida " + x.partidas.map(p => `${p.partida} (${fmt.format(p.cantidad)})`).join(", ")));

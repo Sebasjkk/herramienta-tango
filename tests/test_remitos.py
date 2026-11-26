@@ -78,3 +78,14 @@ class TestBase(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestDiagnostico(unittest.TestCase):
+    def test_parte_del_ultimo_remito_de_un_pedido(self):
+        with mock.patch.object(base_tango, "diag_pedido_remito", return_value={"coincidencias": []}) as d:
+            r = remitos.diagnostico(Servicio())
+        d.assert_called_once_with(24, 2)
+        self.assertEqual(r["par"]["remito"], "R0000800000111")
+
+    def test_script_solo_lectura(self):
+        self.assertNotRegex(base_tango._DIAG_PEDIDO_REMITO.upper(), r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|EXEC)\b")

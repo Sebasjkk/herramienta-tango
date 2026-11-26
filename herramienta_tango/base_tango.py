@@ -464,6 +464,54 @@ $out | ConvertTo-Json -Depth 4 -Compress
 """
 
 
+# Diagnostico: que une un remito con su pedido. Se parte de un par conocido (el ultimo remito
+# que el pedido guarda) y se busca en toda la base: las columnas con "PEDI"/"GVA21" y, en cada
+# tabla que las tenga, las filas que apuntan a ese pedido. Solo lectura.
+_DIAG_PEDIDO_REMITO = r"""
+$out = [ordered]@{}
+function E($v) { ([string]$v).Replace("'", "''") }
+$out.pedido = Q "SELECT * FROM GVA21 WHERE ID_GVA21 = __PED__"
+$out.remito = Q "SELECT * FROM STA14 WHERE ID_STA14 = __REM__"
+$nro = if ($out.pedido.Count) { [string]$out.pedido[0].NRO_PEDIDO } else { '' }
+$out.columnas = Q "SELECT c.TABLE_NAME AS t, c.COLUMN_NAME AS c, c.DATA_TYPE AS tipo FROM INFORMATION_SCHEMA.COLUMNS c JOIN INFORMATION_SCHEMA.TABLES x ON x.TABLE_NAME = c.TABLE_NAME AND x.TABLE_TYPE = 'BASE TABLE' WHERE (c.COLUMN_NAME LIKE '%PEDI%' OR c.COLUMN_NAME LIKE '%GVA21%' OR c.COLUMN_NAME LIKE '%GVA03%') AND c.TABLE_NAME NOT IN ('GVA21')"
+$out.coincidencias = @()
+foreach ($x in $out.columnas) {
+  $w = $null
+  if ($x.tipo -match 'int|numeric|decimal') { if ($x.c -match 'GVA21|ID_') { $w = "[$($x.c)] = __PED__" } }
+  elseif ($x.tipo -match 'char|text' -and $nro) {
+    $d = ($nro -replace '\D', ''); if ($d.Length -gt 8) { $d = $d.Substring($d.Length - 8) }
+    $w = "([$($x.c)] = '" + (E $nro) + "' OR (LEN(RTRIM([$($x.c)])) > 0 AND RTRIM([$($x.c)]) LIKE '%" + (E $d) + "'))"
+  }
+  if (-not $w) { continue }
+  try {
+    $n = (Q "SELECT COUNT(*) AS n FROM [$($x.t)] WHERE $w")[0].n
+    if ($n -gt 0) {
+      $out.coincidencias += [pscustomobject]@{ tabla = $x.t; columna = $x.c; filas = $n; ejemplo = (Q "SELECT TOP 3 * FROM [$($x.t)] WHERE $w") }
+    }
+  } catch { $out.coincidencias += [pscustomobject]@{ tabla = $x.t; columna = $x.c; error = $_.Exception.Message } }
+}
+$out | ConvertTo-Json -Depth 6 -Compress
+"""
+
+
+def _diag_pedido_remito_local(id_pedido: int, id_remito: int) -> dict:
+    datos = _correr(_DIAG_PEDIDO_REMITO.replace("__PED__", str(int(id_pedido))).replace("__REM__", str(int(id_remito))), tiempo=180)
+    res = {"pedido": [_sin_vacios(f) for f in _como_lista(datos.get("pedido"))],
+           "remito": [_sin_vacios(f) for f in _como_lista(datos.get("remito"))],
+           "columnas": [f"{c.get('t')}.{c.get('c')} ({c.get('tipo')})" for c in _como_lista(datos.get("columnas"))],
+           "coincidencias": []}
+    for c in _como_lista(datos.get("coincidencias")):
+        res["coincidencias"].append({**{k: v for k, v in c.items() if k != "ejemplo"},
+                                     "ejemplo": [_sin_vacios(f) for f in _como_lista(c.get("ejemplo"))]})
+    return res
+
+
+def diag_pedido_remito(id_pedido: int, id_remito: int) -> dict:
+    if es_servidor():
+        return _diag_pedido_remito_local(id_pedido, id_remito)
+    return _remoto("diag_pedido_remito", {"pedido": int(id_pedido), "remito": int(id_remito)}, tiempo=200)
+
+
 def _como_lista(v) -> list[dict]:
     """ConvertTo-Json devuelve un objeto suelto cuando hay una sola fila."""
     if isinstance(v, dict):
@@ -883,6 +931,8 @@ def responder_remoto(ruta: str, qs: dict):
         return _ventas_articulo_local(p("art"))
     if ruta == "aduana":
         return _aduana_local(int(p("carpeta")))
+    if ruta == "diag_pedido_remito":
+        return _diag_pedido_remito_local(int(p("pedido")), int(p("remito")))
     if ruta == "remitos_con_pedido":
         return _remitos_con_pedido_local()
     if ruta == "renglones_remito":

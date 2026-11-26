@@ -57,3 +57,17 @@ def vista(servicio, forzar: bool = False) -> dict:
 
 def renglones(id_remito: int) -> dict:
     return base_tango.renglones_remito(id_remito)
+
+
+def diagnostico(servicio) -> dict:
+    """Busca en la base que une remitos y pedidos, partiendo del remito mas reciente que un
+    pedido tiene como ultimo remito (un par seguro)."""
+    remitos, _ = servicio.remitos(False)
+    pedidos, _ = servicio.pedidos(False)
+    por_numero = {_clave(p.numero): p for p in pedidos}
+    for r in remitos:
+        p = por_numero.get(_clave(r.pedido)) if r.pedido else None
+        if p and r.id:
+            return {"par": {"remito": r.numero, "id_remito": r.id, "pedido": p.numero, "id_pedido": p.id},
+                    **base_tango.diag_pedido_remito(p.id, r.id)}
+    return {"error": "No encontré ningún remito que un pedido tenga como último remito."}
