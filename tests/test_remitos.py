@@ -24,7 +24,8 @@ class Servicio:
 class TestVista(unittest.TestCase):
     def test_pedidos_desde_la_base(self):
         base = {"relacion": True, "remitos": {"R0000800000110": [{"id": 24, "numero": "0000000000037"}],
-                                              "R0000800000111": [{"id": 24, "numero": "0000000000037"}]}}
+                                              "R0000800000111": [{"id": 24, "numero": "0000000000037"}]},
+                "facturas": {"R0000800000110": [{"tipo": "Factura", "numero": "A 0003-00013009"}]}}
         with mock.patch.object(base_tango, "remitos_con_pedido", return_value=base):
             d, _ = remitos.vista(Servicio())
         r = {x["id"]: x for x in d["remitos"]}
@@ -32,6 +33,8 @@ class TestVista(unittest.TestCase):
         self.assertEqual(r[1]["pedidos"][0]["orden_compra"], "OC-555")     # entrega parcial anterior: tambien con pedido
         self.assertEqual(r[2]["pedidos"][0]["numero"], "0000000000037")
         self.assertEqual(r[3]["pedidos"], [])
+        self.assertEqual(r[1]["facturas"][0]["numero"], "A 0003-00013009")
+        self.assertEqual(r[3]["facturas"], [])                              # sin facturar
 
     def test_sin_base_usa_el_ultimo_remito_y_avisa(self):
         with mock.patch.object(base_tango, "remitos_con_pedido", side_effect=base_tango.BaseNoDisponible("sin base.")):
@@ -55,10 +58,13 @@ class TestBase(unittest.TestCase):
 
     def test_remitos_con_pedido(self):
         js = ('{"relacion":true,"filas":[{"N_COMP":"R0000800000110","ID_PEDIDO":24,"NRO_PEDIDO":"0000000000037"},'
-              '{"N_COMP":"R0000800000110","ID_PEDIDO":25,"NRO_PEDIDO":"0000000000038"}]}')
-        with self.correr(js):
+              '{"N_COMP":"R0000800000110","ID_PEDIDO":25,"NRO_PEDIDO":"0000000000038"}],'
+              '"facturas":{"N_COMP":"R0000800000110","T_COMP":"FAC","N_FAC":"A0000300013009"}}')
+        with self.correr(js) as run:
             d = base_tango.remitos_con_pedido()
+        self.assertIn("REFERENCIA_REMITO", run.call_args[0][0][-1])
         self.assertEqual(len(d["remitos"]["R0000800000110"]), 2)
+        self.assertEqual(d["facturas"]["R0000800000110"], [{"tipo": "Factura", "numero": "A 0003-00013009"}])
 
     def test_renglones_con_partidas_y_una_sola_fila(self):
         js = ('{"renglones":{"COD_ARTICU":"PA0007","DESCRIPCION":"POLVO","CANTIDAD":250,"TIPO_MOV":"S"},'

@@ -87,13 +87,15 @@
       ayuda: "Con pedido: se hicieron desde un pedido de Tango. Si un pedido se entregó en partes, cada remito aparece con el mismo pedido." },
     { id: "sin", titulo: "Sin pedido", f: r => !r.pedidos.length,
       ayuda: "Sin pedido: se hicieron directo, sin un pedido detrás. No tienen orden de compra del cliente asociada en Tango." },
+    { id: "sinfac", titulo: "Sin facturar", f: r => Array.isArray(r.facturas) && !r.facturas.length,
+      ayuda: "Sin facturar: se entregó la mercadería pero todavía no hay una factura hecha con ese remito." },
   ];
   let remitos = [], grupo = "todos", mostrar = MAX;
   const renglones = new Map();   // id -> datos | Promise
 
   const corto = n => (n || "").trim().slice(-8).replace(/^0+/, "") || "0";   // pedido sin el prefijo de sucursal
   const textoBusqueda = r => norm([r.numero_corto, r.numero, r.cliente, r.codigo_cliente,
-    ...r.pedidos.flatMap(p => [corto(p.numero), p.orden_compra])].join(" "));
+    ...r.pedidos.flatMap(p => [corto(p.numero), p.orden_compra]), ...(r.facturas || []).map(f => f.numero)].join(" "));
 
   async function cargar(forzar) {
     $("estado").textContent = "Consultando Tango…";
@@ -170,6 +172,11 @@
       ped.append(el("span", "con", r.pedidos.length > 1 ? "Pedidos " : "Pedido "),
         r.pedidos.map(p => `${corto(p.numero)}${p.orden_compra ? ` · OC ${p.orden_compra}` : ""}`).join(", "));
     } else ped.append(el("span", "sin", "Sin pedido"));
+    if (Array.isArray(r.facturas)) {
+      ped.append(" · ");
+      if (r.facturas.length) ped.append(el("span", "con", "Facturado "), r.facturas.map(f => f.numero).join(", "));
+      else ped.append(el("span", "sin", "Sin facturar"));
+    }
     s.append(el("span", "num", r.numero_corto), el("span", "cli", r.cliente || r.codigo_cliente), el("span", "fec", fecha(r.fecha)), ped);
     d.append(s);
     const cuerpo = el("div", "cuerpo"); d.append(cuerpo);

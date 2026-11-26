@@ -32,12 +32,13 @@ def vista(servicio, forzar: bool = False) -> dict:
         return {"id": p.id if p else id_pedido, "numero": (p.numero if p else numero) or "",
                 "orden_compra": p.orden_compra_cliente if p else "", "estado": p.estado if p else None}
 
-    origen, aviso, mapa = "base", "", {}
+    origen, aviso, mapa, facturas = "base", "", {}, {}
     try:
         datos = base_tango.remitos_con_pedido()
         if not datos.get("relacion"):
             raise base_tango.BaseNoDisponible("No se encontró en la base la columna que une remitos y pedidos.")
         mapa = {_clave(k): v for k, v in (datos.get("remitos") or {}).items()}
+        facturas = {_clave(k): v for k, v in (datos.get("facturas") or {}).items()}
     except base_tango.BaseNoDisponible as e:
         origen = "ultimo_remito"
         aviso = (f"{e} Se muestra el pedido solo para el último remito de cada pedido: con entregas parciales, "
@@ -51,7 +52,8 @@ def vista(servicio, forzar: bool = False) -> dict:
             peds = [pedido_dict(None, r.pedido)] if r.pedido else []
         salida.append({"id": r.id, "numero": r.numero, "numero_corto": r.numero_corto, "fecha": r.fecha,
                        "id_cliente": r.id_cliente, "codigo_cliente": r.codigo_cliente, "cliente": r.cliente,
-                       "estado": r.estado, "pedidos": peds})
+                       "estado": r.estado, "pedidos": peds,
+                       "facturas": facturas.get(_clave(r.numero), []) if origen == "base" else None})
     return {"remitos": salida, "origen": origen, "aviso": aviso}, momento
 
 

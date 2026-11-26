@@ -377,6 +377,13 @@ _REMITOS_PEDIDO = r"""
 $out = [ordered]@{}
 $cols = Q "SELECT TABLE_NAME AS t, COLUMN_NAME AS c FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME IN ('STA14','STA20') AND (COLUMN_NAME LIKE '%PEDI%' OR COLUMN_NAME LIKE '%GVA21%')"
 $out.columnas = @($cols | ForEach-Object { "$($_.t).$($_.c)" })
+# GVA106: cuanto de cada renglon del pedido salio en cada remito (encontrado el 26/11/2026)
+try {
+  $out.filas = Q "SELECT c.T_COMP AS T_COMP, c.N_COMP AS N_COMP, c.FECHA_MOV AS FECHA, d.COD_ARTICU AS COD_ARTICU, g.CANT_REM AS CANTIDAD, 'S' AS TIPO_MOV FROM GVA106 g JOIN GVA21 p ON p.NRO_PEDIDO = g.NRO_PEDIDO AND p.TALON_PED = g.TALON_PED JOIN STA14 c ON c.TCOMP_IN_S = g.TCOMP_IN_S AND c.NCOMP_IN_S = g.NCOMP_IN_S LEFT JOIN GVA03 d ON d.NRO_PEDIDO = g.NRO_PEDIDO AND d.TALON_PED = g.TALON_PED AND d.N_RENGLON = g.N_RENG_PED WHERE p.ID_GVA21 = __ID__ ORDER BY c.FECHA_MOV, c.N_COMP"
+  $out.relacion = $true; $out.origen = 'GVA106'
+  $out | ConvertTo-Json -Depth 4 -Compress
+  exit
+} catch { $out.gva106_error = $_.Exception.Message }
 $tiene = { param($t, $c) [bool]($cols | Where-Object { $_.t -eq $t -and $_.c -eq $c }) }
 $nro = "(SELECT NRO_PEDIDO FROM GVA21 WHERE ID_GVA21 = __ID__)"
 $sel = "c.T_COMP AS T_COMP, c.N_COMP AS N_COMP, c.FECHA_MOV AS FECHA, r.COD_ARTICU AS COD_ARTICU, r.CANTIDAD AS CANTIDAD, r.TIPO_MOV AS TIPO_MOV"
@@ -427,21 +434,14 @@ def _remitos_pedido_local(id_pedido: int) -> dict:
 # _REMITOS_PEDIDO: la relacion puede estar en STA20 o STA14, por ID_GVA21 o por numero.
 _REMITOS_CON_PEDIDO = r"""
 $out = [ordered]@{}
-$cols = Q "SELECT TABLE_NAME AS t, COLUMN_NAME AS c FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME IN ('STA14','STA20') AND (COLUMN_NAME LIKE '%PEDI%' OR COLUMN_NAME LIKE '%GVA21%' OR COLUMN_NAME = 'ID_STA14')"
-$tiene = { param($t, $c) [bool]($cols | Where-Object { $_.t -eq $t -and $_.c -eq $c }) }
-$union = if (& $tiene 'STA20' 'ID_STA14') { "c.ID_STA14 = r.ID_STA14" } else { "c.TCOMP_IN_S = r.TCOMP_IN_S AND c.NCOMP_IN_S = r.NCOMP_IN_S" }
-$sel = "SELECT DISTINCT c.N_COMP AS N_COMP, p.ID_GVA21 AS ID_PEDIDO, p.NRO_PEDIDO AS NRO_PEDIDO"
-$donde = "WHERE c.T_COMP = 'REM' AND c.FECHA_MOV >= DATEADD(day, -400, GETDATE())"
-$sql = $null
-if (& $tiene 'STA20' 'ID_GVA21') { $sql = "$sel FROM STA20 r JOIN STA14 c ON $union JOIN GVA21 p ON p.ID_GVA21 = r.ID_GVA21 $donde" }
-elseif (& $tiene 'STA14' 'ID_GVA21') { $sql = "$sel FROM STA14 c JOIN GVA21 p ON p.ID_GVA21 = c.ID_GVA21 $donde" }
-else {
-  foreach ($c in @('NRO_PEDIDO', 'N_PEDIDO', 'NRO_PEDI')) {
-    if (& $tiene 'STA20' $c) { $sql = "$sel FROM STA20 r JOIN STA14 c ON $union JOIN GVA21 p ON p.NRO_PEDIDO = r.$c $donde"; break }
-    if (& $tiene 'STA14' $c) { $sql = "$sel FROM STA14 c JOIN GVA21 p ON p.NRO_PEDIDO = c.$c $donde"; break }
-  }
-}
-if ($sql) { $out.filas = Q $sql; $out.relacion = $true } else { $out.filas = @(); $out.relacion = $false }
+$desde = "DATEADD(day, -400, GETDATE())"
+# REFERENCIA_REMITO (TIPO P = pedido) une el remito (ID_STA14) con el pedido (talonario + numero).
+# GVA55 (remito por numero) queda como respaldo. Encontrado con el diagnostico del 26/11/2026.
+$out.filas = Q "SELECT DISTINCT c.N_COMP AS N_COMP, p.ID_GVA21 AS ID_PEDIDO, p.NRO_PEDIDO AS NRO_PEDIDO FROM REFERENCIA_REMITO r JOIN STA14 c ON c.ID_STA14 = r.ID_STA14 JOIN GVA21 p ON p.NRO_PEDIDO = r.NRO_PEDIDO AND p.TALON_PED = r.TALON_PED WHERE r.TIPO = 'P' AND c.T_COMP = 'REM' AND c.FECHA_MOV >= $desde UNION SELECT DISTINCT g.N_COMP, p.ID_GVA21, p.NRO_PEDIDO FROM GVA55 g JOIN GVA21 p ON p.NRO_PEDIDO = g.NRO_PEDIDO AND p.TALON_PED = g.TALON_PED WHERE g.T_COMP = 'REM' AND g.FECHA_PEDI >= DATEADD(day, -800, GETDATE())"
+$out.relacion = $true
+# GVA107: que factura se hizo con cada remito
+try { $out.facturas = Q "SELECT DISTINCT c.N_COMP AS N_COMP, f.TCOMP_V AS T_COMP, f.NCOMP_V AS N_FAC FROM GVA107 f JOIN STA14 c ON c.TCOMP_IN_S = f.TCOMP_IN_S AND c.NCOMP_IN_S = f.NCOMP_IN_S WHERE c.T_COMP = 'REM' AND c.FECHA_MOV >= $desde" }
+catch { $out.facturas = @(); $out.facturas_error = $_.Exception.Message }
 $out | ConvertTo-Json -Depth 4 -Compress
 """
 
@@ -525,13 +525,21 @@ def _remitos_con_pedido_local() -> dict:
         return _cache[clave][1]
     datos = _correr(_REMITOS_CON_PEDIDO)
     por_remito: dict[str, list[dict]] = {}
-    for f in _filas(datos):
+    for f in _como_lista(datos.get("filas")):
         n = str(f.get("N_COMP") or "").strip()
         lista = por_remito.setdefault(n, [])
         x = {"id": f.get("ID_PEDIDO"), "numero": str(f.get("NRO_PEDIDO") or "").strip()}
         if x not in lista:
             lista.append(x)
-    res = {"relacion": bool(datos.get("relacion")), "remitos": por_remito}
+    facturas: dict[str, list[dict]] = {}
+    for f in _como_lista(datos.get("facturas")):
+        n = str(f.get("N_COMP") or "").strip()
+        t = str(f.get("T_COMP") or "").strip()
+        x = {"tipo": _TIPOS.get(t, t), "numero": _numero_comprobante(str(f.get("N_FAC") or ""))}
+        if x not in facturas.setdefault(n, []):
+            facturas[n].append(x)
+    res = {"relacion": bool(datos.get("relacion")), "remitos": por_remito, "facturas": facturas,
+           "facturas_leidas": not datos.get("facturas_error")}
     _cache[clave] = (time.time(), res)
     return res
 
