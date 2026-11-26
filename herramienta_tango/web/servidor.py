@@ -282,6 +282,15 @@ def ruta_variable(contexto, ruta: str):
         return base
     if partes == ["api", "comprobantes", "renglones"]:
         return lambda qs, f: (contexto.servicio().editor.renglones_comprobante((qs.get("t") or [""])[0], (qs.get("n") or [""])[0]), time.time())
+    if len(partes) == 4 and partes[:2] == ["api", "remitos"] and partes[2].isdigit() and partes[3] == "diagnostico-factura":
+        id_remito = int(partes[2])
+        def diag_factura(qs, f):
+            from .. import base_tango
+            try:
+                return base_tango.diag_factura_remito(id_remito), time.time()
+            except base_tango.BaseNoDisponible as e:
+                raise PedidoInvalido(str(e)) from None
+        return diag_factura
     if len(partes) == 4 and partes[:2] == ["api", "remitos"] and partes[2].isdigit() and partes[3] == "renglones":
         id_remito = int(partes[2])
         def renglones_remito(qs, f):

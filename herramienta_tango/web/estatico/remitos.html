@@ -87,8 +87,6 @@
       ayuda: "Con pedido: se hicieron desde un pedido de Tango. Si un pedido se entregó en partes, cada remito aparece con el mismo pedido." },
     { id: "sin", titulo: "Sin pedido", f: r => !r.pedidos.length,
       ayuda: "Sin pedido: se hicieron directo, sin un pedido detrás. No tienen orden de compra del cliente asociada en Tango." },
-    { id: "sinfac", titulo: "Sin facturar", f: r => Array.isArray(r.facturas) && !r.facturas.length,
-      ayuda: "Sin facturar: se entregó la mercadería pero todavía no hay una factura hecha con ese remito." },
   ];
   let remitos = [], grupo = "todos", mostrar = MAX;
   const renglones = new Map();   // id -> datos | Promise
@@ -135,6 +133,34 @@
     return b;
   }
 
+  function mostrarParaCopiar(titulo, texto) {
+    HT.ventana(titulo, (dlg, cerrar) => {
+      const ta = el("textarea"); ta.value = texto; ta.readOnly = true; ta.rows = 16; ta.style.width = "100%"; ta.style.fontSize = ".75rem";
+      const acc = el("div", "acciones");
+      const cp = el("button", "boton primario", "Copiar"); cp.type = "button";
+      cp.addEventListener("click", async () => { try { await navigator.clipboard.writeText(texto); } catch { ta.select(); document.execCommand("copy"); } cp.textContent = "Copiado"; });
+      const c = el("button", "boton", "Cerrar"); c.type = "button"; c.addEventListener("click", cerrar);
+      acc.append(c, cp);
+      dlg.append(el("p", "", "Copiá esto y pasáselo a quien mantiene la Herramienta."), ta, acc);
+    });
+  }
+
+  // Para un remito que se sabe facturado pero cuya factura no aparece: busca en la base donde quedó la relación
+  function botonDiagFactura(r) {
+    const caja = el("p", "nota");
+    const b = el("button", "boton-texto", "¿Está facturado y no aparece? Buscar su factura en la base"); b.type = "button";
+    b.addEventListener("click", async () => {
+      b.disabled = true; b.textContent = "Buscando (puede tardar un par de minutos)…";
+      let texto;
+      try { texto = JSON.stringify({ remito: r.numero, ...(await pedir(`/api/remitos/${r.id}/diagnostico-factura`, true)).datos }, null, 1); }
+      catch (e) { texto = "Error: " + textoError(e); }
+      mostrarParaCopiar("Factura del remito " + r.numero_corto, texto);
+      b.disabled = false; b.textContent = "¿Está facturado y no aparece? Buscar su factura en la base";
+    });
+    caja.append(b);
+    return caja;
+  }
+
   function coincide(r, ts) {
     return ts.every(t => r._t.includes(t) || sinCeros(solo(r.numero)).includes(sinCeros(solo(t)) || "\u0000"));
   }
@@ -172,11 +198,9 @@
       ped.append(el("span", "con", r.pedidos.length > 1 ? "Pedidos " : "Pedido "),
         r.pedidos.map(p => `${corto(p.numero)}${p.orden_compra ? ` · OC ${p.orden_compra}` : ""}`).join(", "));
     } else ped.append(el("span", "sin", "Sin pedido"));
-    if (Array.isArray(r.facturas)) {
-      ped.append(" · ");
-      if (r.facturas.length) ped.append(el("span", "con", "Facturado "), r.facturas.map(f => f.numero).join(", "));
-      else ped.append(el("span", "sin", "Sin facturar"));
-    }
+    // Solo se muestra cuando se encontro la factura: para los remitos sin pedido todavia no se
+    // sabe donde guarda Tango la relacion, asi que "no encontrada" no quiere decir "sin facturar".
+    if (r.facturas && r.facturas.length) ped.append(" · ", el("span", "con", "Facturado "), r.facturas.map(f => f.numero).join(", "));
     s.append(el("span", "num", r.numero_corto), el("span", "cli", r.cliente || r.codigo_cliente), el("span", "fec", fecha(r.fecha)), ped);
     d.append(s);
     const cuerpo = el("div", "cuerpo"); d.append(cuerpo);
@@ -205,6 +229,7 @@
       t.append(thead, tb);
       cuerpo.replaceChildren(t);
       if (!d.partidas_leidas) cuerpo.append(el("p", "nota", "No se pudieron leer las partidas de este remito."));
+      if (!(r.facturas && r.facturas.length)) cuerpo.append(botonDiagFactura(r));
     } catch (e) {
       renglones.delete(r.id);
       cuerpo.replaceChildren(el("p", "mensaje-error", textoError(e)));

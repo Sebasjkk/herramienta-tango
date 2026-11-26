@@ -468,6 +468,54 @@ $out | ConvertTo-Json -Depth 4 -Compress
 # Diagnostico: que une un remito con su pedido. Se parte de un par conocido (el ultimo remito
 # que el pedido guarda) y se busca en toda la base: las columnas con "PEDI"/"GVA21" y, en cada
 # tabla que las tenga, las filas que apuntan a ese pedido. Solo lectura.
+# Diagnostico: donde queda la factura de un remito sin pedido. Busca el numero del remito
+# (N_COMP y el numero interno NCOMP_IN_S) en todas las columnas de texto con nombre de
+# comprobante o remito, y trae las facturas del cliente cercanas a la fecha. Solo lectura.
+_DIAG_FACTURA_REMITO = r"""
+$out = [ordered]@{}
+function E($v) { ([string]$v).Replace("'", "''") }
+$out.remito = Q "SELECT * FROM STA14 WHERE ID_STA14 = __REM__"
+if (-not $out.remito.Count) { $out.error = 'No encontré ese remito.'; $out | ConvertTo-Json -Depth 6 -Compress; exit }
+$r = $out.remito[0]
+$ncomp = E $r.N_COMP; $nin = E $r.NCOMP_IN_S; $tin = E $r.TCOMP_IN_S; $cli = E $r.COD_PRO_CL; $fec = [string]$r.FECHA_MOV
+$cols = Q "SELECT c.TABLE_NAME AS t, c.COLUMN_NAME AS c FROM INFORMATION_SCHEMA.COLUMNS c JOIN INFORMATION_SCHEMA.TABLES x ON x.TABLE_NAME = c.TABLE_NAME AND x.TABLE_TYPE = 'BASE TABLE' WHERE c.DATA_TYPE IN ('varchar','char','nvarchar','nchar') AND c.CHARACTER_MAXIMUM_LENGTH BETWEEN 8 AND 40 AND (c.COLUMN_NAME LIKE '%COMP%' OR c.COLUMN_NAME LIKE '%REMI%' OR c.COLUMN_NAME LIKE '%REM%') AND c.TABLE_NAME NOT IN ('STA14','STA20')"
+$porTabla = @{}
+foreach ($x in $cols) { if (-not $porTabla[$x.t]) { $porTabla[$x.t] = New-Object System.Collections.Generic.List[string] }; $porTabla[$x.t].Add($x.c) }
+$out.coincidencias = @()
+foreach ($x in $cols) {
+  if ($x.c -match 'IN_S') {
+    if ($x.c -match '^T') { continue }
+    $w = "[$($x.c)] COLLATE DATABASE_DEFAULT = '$nin'"
+    $tc = ($porTabla[$x.t] | Where-Object { $_ -match '^TCOMP.*IN_S' } | Select-Object -First 1)
+    if ($tc) { $w += " AND [$tc] COLLATE DATABASE_DEFAULT = '$tin'" }
+  } else { $w = "[$($x.c)] COLLATE DATABASE_DEFAULT = '$ncomp'" }
+  try {
+    $n = (Q "SELECT COUNT(*) AS n FROM [$($x.t)] WHERE $w")[0].n
+    if ($n -gt 0) { $out.coincidencias += [pscustomobject]@{ tabla = $x.t; columna = $x.c; filas = $n; ejemplo = (Q "SELECT TOP 3 * FROM [$($x.t)] WHERE $w") } }
+  } catch { }
+}
+$out.facturas_cliente = Q "SELECT TOP 8 * FROM GVA12 WHERE COD_CLIENT = '$cli' AND T_COMP IN ('FAC','N/D') AND FECHA_EMIS BETWEEN DATEADD(day, -15, '$fec') AND DATEADD(day, 60, '$fec') ORDER BY FECHA_EMIS"
+$out | ConvertTo-Json -Depth 6 -Compress
+"""
+
+
+def _diag_factura_remito_local(id_remito: int) -> dict:
+    datos = _correr(_DIAG_FACTURA_REMITO.replace("__REM__", str(int(id_remito))), tiempo=240)
+    if datos.get("error"):
+        return {"error": datos["error"]}
+    return {"remito": [_sin_vacios(f) for f in _como_lista(datos.get("remito"))],
+            "coincidencias": [{**{k: v for k, v in c.items() if k != "ejemplo"},
+                               "ejemplo": [_sin_vacios(f) for f in _como_lista(c.get("ejemplo"))]}
+                              for c in _como_lista(datos.get("coincidencias"))],
+            "facturas_cliente": [_sin_vacios(f) for f in _como_lista(datos.get("facturas_cliente"))]}
+
+
+def diag_factura_remito(id_remito: int) -> dict:
+    if es_servidor():
+        return _diag_factura_remito_local(id_remito)
+    return _remoto("diag_factura_remito", {"remito": int(id_remito)}, tiempo=260)
+
+
 _DIAG_PEDIDO_REMITO = r"""
 $out = [ordered]@{}
 function E($v) { ([string]$v).Replace("'", "''") }
@@ -940,6 +988,8 @@ def responder_remoto(ruta: str, qs: dict):
         return _ventas_articulo_local(p("art"))
     if ruta == "aduana":
         return _aduana_local(int(p("carpeta")))
+    if ruta == "diag_factura_remito":
+        return _diag_factura_remito_local(int(p("remito")))
     if ruta == "diag_pedido_remito":
         return _diag_pedido_remito_local(int(p("pedido")), int(p("remito")))
     if ruta == "remitos_con_pedido":

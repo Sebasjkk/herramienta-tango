@@ -95,3 +95,14 @@ class TestDiagnostico(unittest.TestCase):
 
     def test_script_solo_lectura(self):
         self.assertNotRegex(base_tango._DIAG_PEDIDO_REMITO.upper(), r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|EXEC)\b")
+
+
+class TestDiagFactura(unittest.TestCase):
+    def test_solo_lectura(self):
+        self.assertNotRegex(base_tango._DIAG_FACTURA_REMITO.upper(), r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|EXEC)\b")
+
+    def test_desde_otra_pc(self):
+        with mock.patch.object(base_tango, "es_servidor", return_value=False), \
+             mock.patch.object(base_tango, "_remoto", return_value={}) as r:
+            base_tango.diag_factura_remito(32004)
+        r.assert_called_once_with("diag_factura_remito", {"remito": 32004}, tiempo=260)
