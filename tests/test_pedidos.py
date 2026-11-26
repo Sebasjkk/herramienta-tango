@@ -24,6 +24,11 @@ class TangoFalso:
     def obtener(self, proceso, id_):
         return self.datos.get(proceso, {}).get(id_)
 
+    def actualizar(self, proceso, registro):
+        if self.rechazar:
+            raise TangoError(f"Tango no pudo resolver el pedido: {self.rechazar}")
+        self.datos[proceso][registro["ID_GVA21"]] = dict(registro)
+
     def borrar(self, proceso, id_):
         if self.rechazar:
             raise TangoError(f"Tango no pudo resolver el pedido: {self.rechazar}")
@@ -83,6 +88,25 @@ class TestPedidos(unittest.TestCase):
             e.eliminar(7, "31", "Fran")
         self.assertIn(7, t.datos[19845])
         self.assertEqual([c["accion"] for c in self.registro.ultimos()], ["error al eliminar pedido", "eliminar pedido"])
+
+    def test_cerrar(self):
+        t = TangoFalso()
+        t.datos[19845][8] = {**PEDIDO, "ID_GVA21": 8, "ESTADO": 2}
+        e = EditorPedidos(t, Servicio(), self.registro)
+        e.cerrar(8, "Seba")
+        self.assertEqual(t.datos[19845][8]["ESTADO"], 4)
+        self.assertEqual(self.registro.ultimos()[0]["estado_anterior"], 2)
+        with self.assertRaisesRegex(PedidoInvalido, "Cerrado"):
+            e.cerrar(8, "Seba")                     # ya cerrado
+        with self.assertRaisesRegex(PedidoInvalido, "Cumplido"):
+            e.cerrar(7, "Seba")                     # el 7 esta cumplido
+
+    def test_cerrar_rechazado_por_licencia(self):
+        t = TangoFalso(rechazar="Su licencia no incluye el uso del API de Transacciones Tango Ventas.")
+        t.datos[19845][8] = {**PEDIDO, "ID_GVA21": 8, "ESTADO": 2}
+        with self.assertRaisesRegex(TangoError, "cerrar el pedido 31: .*licencia"):
+            EditorPedidos(t, Servicio(), self.registro).cerrar(8, "Seba")
+        self.assertEqual(t.datos[19845][8]["ESTADO"], 2)
 
 
 if __name__ == "__main__":

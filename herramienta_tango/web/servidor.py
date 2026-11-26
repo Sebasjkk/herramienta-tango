@@ -15,6 +15,7 @@ de la empresa consulte Tango sin conocer su API:
     GET /api/pedidos/avance          cuanto se entrego de cada pedido pendiente (sin entregar / parcial / entregado)
     GET /api/pedidos/<id>/remitos    remitos y devoluciones hechos contra el pedido (base, solo lectura)
     GET/POST /api/opciones           opciones para todos los equipos ({"clave", "valor"})
+    POST /api/pedidos/cerrar         {"id": n}   pasa el pedido a Cerrado (si la licencia lo permite)
     POST /api/pedidos/eliminar       {"id": n, "confirmar": "31"}   copia en cambios_pedidos.jsonl
     GET /api/listas-precios
     GET /api/precios                 precios vigentes de todas las listas
@@ -135,7 +136,7 @@ RUTAS_APP = {"/api/precios/cambiar", "/api/precios/agregar", "/api/precios/quita
              "/api/listas/crear", "/api/listas/eliminar", "/api/listas/asignar",
              "/api/mezclas/crear", "/api/mezclas/subidas", "/api/mezclas/borrar",
              "/api/listas/importar/analizar", "/api/listas/importar/aplicar", "/api/listas/restaurar",
-             "/api/pedidos/eliminar", "/api/opciones",
+             "/api/pedidos/eliminar", "/api/pedidos/cerrar", "/api/opciones",
              "/api/precios/ajuste/vista-previa", "/api/precios/ajuste", "/api/precios/ajuste/revertir"}
 
 
@@ -607,6 +608,8 @@ def crear_manejador(contexto):
                     r = editor.crear_lista(texto("nombre"), texto("moneda"), quien, entero("numero"), entero("cliente"))
                 elif ruta == "/api/listas/asignar":
                     r = editor.asignar_lista(entero("lista"), entero("cliente"), quien)
+                elif ruta == "/api/pedidos/cerrar":
+                    r = contexto.servicio().gestion_pedidos.cerrar(entero("id"), quien)
                 elif ruta == "/api/pedidos/eliminar":
                     if not opciones.leer()["pedidos_eliminar"]:
                         raise DatoInvalido("Eliminar pedidos desde la Herramienta está desactivado: la licencia de Tango "

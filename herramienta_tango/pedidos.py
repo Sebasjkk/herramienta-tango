@@ -133,6 +133,32 @@ class EditorPedidos:
         with ThreadPoolExecutor(max_workers=CONSULTAS_EN_PARALELO) as ex:
             return {i: d for i, d in ex.map(uno, ids) if d is not None}
 
+    def cerrar(self, id_pedido: int, quien: str) -> dict:
+        """Pasa el pedido a Cerrado (ESTADO 4) con Update del proceso de pedidos. Puede que la
+        licencia no lo permita (sin "API de Transacciones Tango Ventas"): si Tango lo rechaza,
+        no se toco nada y se devuelve su motivo. La ficha anterior queda en el registro."""
+        with self._lock:
+            v = self._c.obtener(procesos.PEDIDOS, id_pedido)
+            if not v:
+                raise PedidoInvalido("Ese pedido ya no existe en Tango.")
+            numero = _txt(v.get("NRO_PEDIDO"))
+            corto = numero[-8:].lstrip("0") or "0"
+            estado = v.get("ESTADO")
+            if estado not in (1, 2):
+                raise PedidoInvalido(f"El pedido {corto} está {ESTADOS.get(estado, estado)}: solo se cierran los ingresados o aprobados.")
+            self.registro.anotar(quien, "cerrar pedido", pedido=numero, estado_anterior=estado, copia=v)
+            try:
+                self._c.actualizar(procesos.PEDIDOS, {**v, "ESTADO": 4})
+                despues = self._c.obtener(procesos.PEDIDOS, id_pedido) or {}
+                if despues.get("ESTADO") != 4:
+                    raise TangoError(f"Tango respondió bien pero el pedido sigue en {ESTADOS.get(despues.get('ESTADO'), despues.get('ESTADO'))}.")
+            except TangoError as e:
+                self.registro.anotar(quien, "error al cerrar pedido", pedido=numero, error=str(e))
+                raise TangoError(f"Tango no dejó cerrar el pedido {corto}: {e}") from None
+            finally:
+                self._servicio.olvidar("pedidos")
+            return {"cerrado": numero}
+
     def eliminar(self, id_pedido: int, confirmar_numero: str, quien: str) -> dict:
         with self._lock:
             v = self._c.obtener(procesos.PEDIDOS, id_pedido)

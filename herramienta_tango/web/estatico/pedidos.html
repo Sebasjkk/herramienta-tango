@@ -353,6 +353,27 @@
     // Eliminar por la API necesita la "API de Transacciones Tango Ventas", que la licencia
     // no incluye (probado el 19/11/2026). El boton queda inactivo hasta que se active.
     const z = el("section", "zona-peligro");
+    if (p.estado === 1 || p.estado === 2) {
+      z.append(el("h3", "", "Cerrar"));
+      z.append(el("p", "nota", "Da el pedido por terminado aunque quede algo pendiente. No toca los remitos ni las facturas que ya se hicieron. " +
+                               "Es la opción para pedidos viejos que tienen remito y por eso no se pueden anular."));
+      const c = el("button", "boton chico", "Cerrar pedido"); c.type = "button";
+      const res = el("p", "nota"); res.hidden = true;
+      c.addEventListener("click", async () => {
+        if (!confirm(`¿Cerrar el pedido ${corto(p.numero)} de ${p.cliente || p.codigo_cliente}? Pasa a «Cerrado» en Tango.`)) return;
+        c.disabled = true; c.textContent = "Cerrando…"; res.hidden = true;
+        try {
+          await HT.escribir("/api/pedidos/cerrar", { id: p.id });
+          res.className = "nota"; res.textContent = "Listo: el pedido quedó cerrado en Tango."; res.hidden = false;
+          c.textContent = "Cerrado";
+          cargar(true);
+        } catch (e) {
+          res.className = "mensaje-error"; res.textContent = e.message; res.hidden = false;
+          c.disabled = false; c.textContent = "Cerrar pedido";
+        }
+      });
+      z.append(c, res);
+    }
     z.append(el("h3", "", "Anular o eliminar"));
     const b = el("button", "boton chico peligro", "Eliminar pedido"); b.type = "button";
     b.disabled = !opc.pedidos_eliminar;
