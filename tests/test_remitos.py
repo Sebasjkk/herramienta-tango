@@ -65,7 +65,8 @@ class TestBase(unittest.TestCase):
         self.assertIn("REFERENCIA_REMITO", run.call_args[0][0][-1])
         self.assertIn("FROM GVA54 f", run.call_args[0][0][-1])
         self.assertEqual(len(d["remitos"]["R0000800000110"]), 2)
-        self.assertEqual(d["facturas"]["R0000800000110"], [{"tipo": "Factura", "numero": "A 0003-00013009"}])
+        self.assertEqual(d["facturas"]["R0000800000110"], [{"tipo": "Factura", "numero": "A 0003-00013009",
+                                                             "t_comp": "FAC", "n_comp": "A0000300013009"}])
 
     def test_renglones_con_partidas_y_una_sola_fila(self):
         js = ('{"renglones":{"COD_ARTICU":"PA0007","DESCRIPCION":"POLVO","CANTIDAD":250,"TIPO_MOV":"S"},'
@@ -107,3 +108,25 @@ class TestDiagFactura(unittest.TestCase):
              mock.patch.object(base_tango, "_remoto", return_value={}) as r:
             base_tango.diag_factura_remito(32004)
         r.assert_called_once_with("diag_factura_remito", {"remito": 32004}, tiempo=260)
+
+
+class TestPdf(unittest.TestCase):
+    def test_prueba_procesos_y_recuerda_el_que_anduvo(self):
+        from herramienta_tango.tango import servicio as sv
+        from herramienta_tango.tango.cliente import TangoError
+        llamadas = []
+        def pdf(proceso, id_registro):
+            llamadas.append(proceso)
+            if proceso != 17839:
+                raise TangoError("no")
+            return "f.pdf", b"%PDF"
+        s = sv.ServicioTango.__new__(sv.ServicioTango)
+        s._cliente = SimpleNamespace(pdf=pdf)
+        s._proceso_pdf = {}
+        self.assertEqual(s.pdf_factura(73653), ("f.pdf", b"%PDF"))
+        self.assertEqual(llamadas, [17965, 17839])
+        llamadas.clear()
+        s.pdf_factura(73650)
+        self.assertEqual(llamadas, [17839])
+        with self.assertRaisesRegex(TangoError, "Apertura"):
+            s.pdf_pedido(26)

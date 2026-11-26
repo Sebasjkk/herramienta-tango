@@ -586,13 +586,34 @@ def _remitos_con_pedido_local() -> dict:
     for f in _como_lista(datos.get("facturas")):
         n = str(f.get("N_COMP") or "").strip()
         t = str(f.get("T_COMP") or "").strip()
-        x = {"tipo": _TIPOS.get(t, t), "numero": _numero_comprobante(str(f.get("N_FAC") or ""))}
+        x = {"tipo": _TIPOS.get(t, t), "numero": _numero_comprobante(str(f.get("N_FAC") or "")),
+             "t_comp": t, "n_comp": str(f.get("N_FAC") or "").strip()}
         if x not in facturas.setdefault(n, []):
             facturas[n].append(x)
     res = {"relacion": bool(datos.get("relacion")), "remitos": por_remito, "facturas": facturas,
            "facturas_leidas": not datos.get("facturas_error")}
     _cache[clave] = (time.time(), res)
     return res
+
+
+def _id_factura_local(t_comp: str, n_comp: str) -> int:
+    t_comp, n_comp = _renglones_validar(t_comp, n_comp)
+    datos = _correr(f"""
+$out = [ordered]@{{}}
+$out.filas = Q "SELECT TOP 1 ID_GVA12 FROM GVA12 WHERE T_COMP = '{t_comp}' AND N_COMP = '{n_comp}'"
+$out | ConvertTo-Json -Depth 3 -Compress
+""")
+    filas = _como_lista(datos.get("filas"))
+    if not filas or not filas[0].get("ID_GVA12"):
+        raise BaseNoDisponible("No encontré esa factura en la base de Tango.")
+    return int(filas[0]["ID_GVA12"])
+
+
+def id_factura(t_comp: str, n_comp: str) -> int:
+    """ID_GVA12 de un comprobante de venta, para pedir su PDF (base, solo lectura)."""
+    if es_servidor():
+        return _id_factura_local(t_comp, n_comp)
+    return int(_remoto("id_factura", {"t": t_comp, "n": n_comp}))
 
 
 def remitos_con_pedido() -> dict:
@@ -990,6 +1011,8 @@ def responder_remoto(ruta: str, qs: dict):
         return _ventas_articulo_local(p("art"))
     if ruta == "aduana":
         return _aduana_local(int(p("carpeta")))
+    if ruta == "id_factura":
+        return _id_factura_local(p("t"), p("n"))
     if ruta == "diag_factura_remito":
         return _diag_factura_remito_local(int(p("remito")))
     if ruta == "diag_pedido_remito":

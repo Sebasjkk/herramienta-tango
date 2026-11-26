@@ -228,6 +228,29 @@ class ServicioTango:
             for x in self._cliente.consulta_live(procesos.LIVE_COTIZACIONES_DETALLE, self.DESDE_SIEMPRE, date.today())
         ], forzar)
 
+    _proceso_pdf: dict = {}
+
+    def _pdf_probando(self, tipo: str, candidatos, id_registro: int) -> tuple[str, bytes]:
+        """GetPdf con el proceso que ya anduvo para este tipo, o probando los candidatos en orden."""
+        conocido = self._proceso_pdf.get(tipo)
+        orden = [conocido] + [c for c in candidatos if c != conocido] if conocido else list(candidatos)
+        errores = []
+        for proceso in orden:
+            try:
+                r = self._cliente.pdf(proceso, id_registro)
+                self._proceso_pdf[tipo] = proceso
+                return r
+            except TangoError as e:
+                errores.append(f"{proceso}: {e}")
+        raise TangoError(f"Tango no devolvió el PDF de {tipo} con ningún proceso probado ({'; '.join(errores)[:300]}). "
+                         f"Hace falta el número de proceso que muestra Apertura → API (GetPdf) en la pantalla de {tipo} del Tango web.")
+
+    def pdf_factura(self, id_factura: int) -> tuple[str, bytes]:
+        return self._pdf_probando("la factura", procesos.PDF_FACTURA, id_factura)
+
+    def pdf_pedido(self, id_pedido: int) -> tuple[str, bytes]:
+        return self._pdf_probando("el pedido", procesos.PDF_PEDIDO, id_pedido)
+
     def pdf_cotizacion(self, id_cotizacion: int) -> tuple[str, bytes]:
         return self._cliente.pdf(procesos.TABLERO_FICHA_COTIZACION, id_cotizacion)
 

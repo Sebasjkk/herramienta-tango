@@ -26,6 +26,11 @@ LIVE_SALDOS_POR_ARTICULO = 17668     # por articulo y deposito, tambien los que 
 LIVE_VENTAS_DETALLE = 17839  # renglones de comprobantes de venta, por fecha
 LIVE_COTIZACIONES = 17948      # Ventas > Consultas > Cotizaciones > Consulta (una por fila)
 LIVE_COTIZACIONES_DETALLE = 12481  # Ventas > Consultas > Cotizaciones > Detalle (renglones)
+# PDF de facturas y pedidos: Api/GetPdf con alguno de estos procesos (se prueban en orden y se
+# recuerda el que anduvo). Sin confirmar en el Tango de Sianco: el numero correcto es el que
+# muestra Apertura -> API (GetPdf) en la pantalla del comprobante en el Tango web.
+PDF_FACTURA = (17965, 17839, 2027, 2028)      # id = ID_GVA12
+PDF_PEDIDO = (19845, 2007, 12481)             # id = ID_GVA21
 TABLERO_FICHA_COTIZACION = 14062   # Ficha Live de cotizaciones: Api/GetPdf con este proceso
                                    # devuelve el PDF del formulario 128 (id = ID_GVA08)
 LIVE_COMPROBANTES_VENTA = 17965   # comprobantes de venta, uno por fila (remitos: TIPO_COMPROBANTE = REM)

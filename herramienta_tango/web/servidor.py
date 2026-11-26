@@ -40,6 +40,8 @@ Listas de precios (leidas de las tablas de Tango, no de la consulta 12742):
     GET /api/listas/<id>/comprobantes?anio=  comprobantes de venta de un año con esa lista (base, solo lectura)
     GET /api/base/{usos,comprobantes,renglones}  lo mismo, para la Herramienta de otra PC
     GET /api/comprobantes/renglones?t=&n=   renglones de un comprobante (base, solo lectura)
+    GET /factura.pdf?t=FAC&n=A0000300013006   PDF de una factura (prueba procesos de GetPdf)
+    GET /pedido/<id>.pdf             PDF de un pedido (prueba procesos de GetPdf)
     GET /cotizacion/<id>.pdf         el PDF del formulario 128, como lo imprime Tango
     GET /api/remitos                 remitos del ultimo año (consulta 17965), con la OC del pedido
     GET /api/remitos/vista           los mismos, con todos sus pedidos (relacion leida de la base)
@@ -502,6 +504,22 @@ def crear_manejador(contexto):
                     if not id_texto.isdigit():
                         raise PedidoInvalido("Número de cotización inválido.")
                     nombre, contenido = contexto.servicio().pdf_cotizacion(int(id_texto))
+                    nombre = nombre.replace('"', "").encode("ascii", "replace").decode()
+                    self._responder(200, "application/pdf", contenido,
+                                    {"Content-Disposition": f'inline; filename="{nombre}"'})
+                elif url.path == "/factura.pdf" or (url.path.startswith("/pedido/") and url.path.endswith(".pdf")):
+                    from .. import base_tango
+                    try:
+                        if url.path == "/factura.pdf":
+                            id_fac = base_tango.id_factura((qs.get("t") or [""])[0], (qs.get("n") or [""])[0])
+                            nombre, contenido = contexto.servicio().pdf_factura(id_fac)
+                        else:
+                            id_texto = url.path[len("/pedido/"):-4]
+                            if not id_texto.isdigit():
+                                raise PedidoInvalido("Número de pedido inválido.")
+                            nombre, contenido = contexto.servicio().pdf_pedido(int(id_texto))
+                    except (ValueError, base_tango.BaseNoDisponible) as e:
+                        raise PedidoInvalido(str(e)) from None
                     nombre = nombre.replace('"', "").encode("ascii", "replace").decode()
                     self._responder(200, "application/pdf", contenido,
                                     {"Content-Disposition": f'inline; filename="{nombre}"'})
