@@ -49,7 +49,8 @@
   .fila-der.neg { color: var(--oxido); font-weight: 700; }
   .mas-filas { font-size: .82rem; color: var(--plomo); margin: 4px 0 8px; }
 
-  @media (min-width: 700px) { .cifras { grid-template-columns: repeat(4, 1fr); } }
+  @media (min-width: 700px) { .cifras { grid-template-columns: repeat(3, 1fr); } }
+  @media (min-width: 1150px) { .cifras { grid-template-columns: repeat(5, 1fr); } }
   @media (min-width: 960px) { .paneles { grid-template-columns: 1fr 1fr; align-items: start; } }
 </style>
 </head>
@@ -109,11 +110,15 @@
     { id: "ped", rotulo: "Pedidos pendientes", href: "/pedidos" },
     { id: "neg", rotulo: "Artículos en negativo", href: "/buscar?f=neg" },
     { id: "mez", rotulo: "Mezclas sin subir", href: "/mezclas" },
+    { id: "rem", rotulo: "Remitos sin facturar", href: "/remitos?pestana=sinfac" },
   ];
   const PANELES = [
+    { id: "rec", titulo: "Abiertos hace poco", link: ["Buscar", "/buscar"], solo: () => HT.recientes(1).length > 0 },
     { id: "cot", titulo: "Cotizaciones que vencen pronto", link: ["Ver todas", "/cotizaciones"] },
     { id: "ped", titulo: "Pedidos pendientes", link: ["Ver todos", "/pedidos"] },
     { id: "stock", titulo: "Stock para revisar", link: ["Ver negativos", "/buscar?f=neg"] },
+    { id: "rem", titulo: "Remitos sin facturar", link: ["Ver todos", "/remitos?pestana=sinfac"] },
+    { id: "imp", titulo: "Llega de importación", link: ["Ver en camino", "/importaciones?vista=camino"] },
     { id: "precios", titulo: "Últimos cambios de precios", link: ["Ir a Precios", "/precios"] },
   ];
 
@@ -126,6 +131,7 @@
     }
     const p = $("paneles"); p.replaceChildren();
     for (const x of PANELES) {
+      if (x.solo && !x.solo()) continue;
       const t = el("section", "tarjeta panel"); t.id = "panel-" + x.id;
       const cab = el("div", "panel-cab");
       const l = el("a", "", x.link[0]); l.href = x.link[1];
@@ -158,7 +164,7 @@
     a.replaceChildren(el("span", "rotulo", CIFRAS.find(x => x.id === id).rotulo), el("span", "falla", e.origen === "red" ? "Sin conexión" : "No se pudo consultar"));
   }
 
-  function panel(id, ...contenido) { $("panel-" + id).querySelector(".cuerpo").replaceChildren(...contenido); }
+  function panel(id, ...contenido) { const p = $("panel-" + id); if (p) p.querySelector(".cuerpo").replaceChildren(...contenido); }
   function panelError(id, e, reintentar) { panel(id, HT.cajaError(e, reintentar)); }
 
   // filas: [{ href, tit, sub, der, derClase, estado: [clase, texto] }]
@@ -316,6 +322,59 @@
     } catch (e) { panelError("precios", e, precios); }
   }
 
+  // ---------------------------------------------------------------- recientes (de este equipo)
+  const TIPOS_REC = { articulo: "Artículo", cliente: "Cliente", pedido: "Pedido", remito: "Remito", cotizacion: "Cotización" };
+  function abiertos() {
+    if (!$("panel-rec")) return;
+    panel("rec", lista(HT.recientes(MAX_FILAS).map(x => ({ href: x.href, tit: x.titulo, sub: x.sub,
+      der: TIPOS_REC[x.tipo] || "" })), "Todavía no abriste nada desde este equipo."));
+  }
+
+  // ---------------------------------------------------------------- remitos sin facturar
+  async function remitosSinFacturar(forzar) {
+    const pintar = d => {
+      const sin = d.datos.remitos.filter(r => Array.isArray(r.facturas) && !r.facturas.length)
+        .sort((a, b) => (a.fecha || "").localeCompare(b.fecha || ""));
+      const leidas = d.datos.remitos.some(r => Array.isArray(r.facturas));
+      if (!leidas) {
+        const a = $("cifra-rem"); a.className = "cifra";
+        a.replaceChildren(el("span", "rotulo", "Remitos sin facturar"), el("span", "falla", "Sin datos de facturación"));
+        panel("rem", el("p", "vacio", "No se pudo leer qué remitos están facturados.")); return;
+      }
+      const viejos = sin.filter(r => r.fecha && diasHasta(r.fecha) < -7).length;
+      cifra("rem", sin.length, viejos ? `${fmt.format(viejos)} de hace más de una semana` : sin.length ? "todos de esta semana" : "", viejos ? "atencion" : sin.length ? "" : "ok");
+      panel("rem", lista(sin.map(r => ({ href: "/remitos?q=" + encodeURIComponent(r.numero), tit: `${r.numero_corto} · ${r.cliente || r.codigo_cliente}`,
+        sub: r.pedidos.length ? "Pedido " + r.pedidos.map(p => corto(p.numero)).join(", ") : "Sin pedido",
+        estado: r.fecha && diasHasta(r.fecha) < -7 ? ["vencida", `Hace ${-diasHasta(r.fecha)} días`] : null,
+        der: r.fecha && diasHasta(r.fecha) >= -7 ? fecha(r.fecha) : "" })), "No hay remitos sin facturar.", sin.length));
+    };
+    try {
+      const d = await pedir("/api/remitos/vista", forzar, { previo: pintar });
+      pintar(d);
+      return d;
+    } catch (e) { cifraError("rem", e); panelError("rem", e, () => remitosSinFacturar(true)); }
+  }
+
+  // ---------------------------------------------------------------- importaciones en camino
+  async function importaciones(forzar) {
+    const pintar = d => {
+      const abiertas = d.datos.carpetas.filter(c => !c.cerrada && c.renglones.some(r => r.falta > EPS))
+        .sort((a, b) => (b.fecha || "").localeCompare(a.fecha || ""));
+      panel("imp", lista(abiertas.map(c => {
+        const ped = c.renglones.reduce((t, r) => t + r.pedido, 0), lleg = c.renglones.reduce((t, r) => t + Math.min(r.nacionalizado, r.pedido), 0);
+        const faltan = c.renglones.filter(r => r.falta > EPS).length;
+        return { href: "/importaciones?ver=" + encodeURIComponent(c.id), tit: `Carpeta ${c.corto} · ${c.proveedor || "sin proveedor"}`,
+                 sub: `${faltan} ${faltan === 1 ? "artículo" : "artículos"} por llegar` + (ped > EPS && lleg > EPS ? ` · llegó el ${Math.round(100 * lleg / ped)}%` : ""),
+                 der: c.fecha ? fecha(c.fecha) : "" };
+      }), "No hay mercadería en camino."));
+    };
+    try {
+      const d = await pedir("/api/importaciones", forzar, { previo: pintar });
+      pintar(d);
+      return d;
+    } catch (e) { panelError("imp", e, () => importaciones(true)); }
+  }
+
   // ---------------------------------------------------------------- carga
   let guardadoMasViejo = null;
   function anotarGuardado(d) {
@@ -327,7 +386,9 @@
   async function cargar(forzar) {
     $("datos").textContent = "Consultando Tango…";
     cargando = true; guardadoMasViejo = null;
-    const r = (await Promise.all([cotizaciones(forzar), pedidos(forzar), stock(forzar), mezclas(), precios()])).filter(Boolean);
+    abiertos();
+    const r = (await Promise.all([cotizaciones(forzar), pedidos(forzar), stock(forzar), mezclas(), precios(),
+                                  remitosSinFacturar(forzar), importaciones(forzar)])).filter(Boolean);
     cargando = false;
     $("datos").textContent = r.length ? HT.textoDatos(r.sort((a, b) => a.actualizado.localeCompare(b.actualizado))[0])
       : guardadoMasViejo ? HT.textoDatos(guardadoMasViejo).replace("actualizando…", "sin conexión con Tango") : "Sin datos de Tango";

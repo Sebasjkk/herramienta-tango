@@ -188,6 +188,7 @@
       if (p) {
         if (!GRUPOS.find(g => g.id === grupo).f(p)) { const g = GRUPOS.find(g => g.id !== "todos" && g.f(p)); if (g) grupo = g.id; }
         elegido = p.id;
+        HT.anotarReciente({ tipo: "pedido", clave: p.id, titulo: `Pedido ${corto(p.numero)}`, sub: p.cliente || p.codigo_cliente, href: "/pedidos?ver=" + p.id });
         if (!window.matchMedia("(min-width: 960px)").matches) $("contenido").classList.add("viendo");
       }
       verPendiente = null;
@@ -224,6 +225,7 @@
       }
       b.addEventListener("click", () => {
         elegido = p.id;
+        HT.anotarReciente({ tipo: "pedido", clave: p.id, titulo: `Pedido ${corto(p.numero)}`, sub: p.cliente || p.codigo_cliente, href: "/pedidos?ver=" + p.id });
         if (!window.matchMedia("(min-width: 960px)").matches) { history.pushState({}, "", "#ped=" + p.id); $("contenido").classList.add("viendo"); window.scrollTo(0, 0); }
         render();
       });

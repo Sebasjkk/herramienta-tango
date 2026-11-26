@@ -630,6 +630,20 @@ window.HT = (() => {
     setInterval(revisarEstado, 15000);
   }
 
+  // ---------------------------------------------------------------- recientes
+  // Lo ultimo que se abrio en este equipo (articulos, clientes, pedidos, remitos, cotizaciones),
+  // para volver de un toque desde el inicio. x = { tipo, clave, titulo, sub, href }
+  const RECIENTES = "ht_abiertos";
+  function recientes(n = 10) {
+    try { return JSON.parse(localStorage.getItem(RECIENTES) || "[]").slice(0, n); } catch { return []; }
+  }
+  function anotarReciente(x) {
+    if (!x || !x.href || !x.titulo) return;
+    const id = x.tipo + ":" + x.clave;
+    const lista = [{ ...x, id, cuando: Date.now() }, ...recientes(40).filter(y => y.id !== id)].slice(0, 30);
+    try { localStorage.setItem(RECIENTES, JSON.stringify(lista)); } catch {}
+  }
+
   // Buscador con boton para borrar
   function conectarBuscador(input, botonLimpiar, alCambiar) {
     let espera;
@@ -643,5 +657,5 @@ window.HT = (() => {
            cajaError, esCelular, instalada, iniciar, conectarBuscador, svg, esqueleto, avisar, copiarLink, textoDatos, exportar, botonExportar, guardado, linkCliente,
            // quien modifica
            nombre: leerNombre, pedirNombre: () => pedirNombre(false), alCambiarNombre: f => oyentes.push(f),
-           escribir, ventana, campo, botones };
+           escribir, ventana, campo, botones, recientes, anotarReciente };
 })();

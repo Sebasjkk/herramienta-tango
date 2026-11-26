@@ -103,6 +103,16 @@
     .volver { display: inline-flex; margin: 0 0 10px; }
     body:has(.busqueda.viendo-ficha) .barra-filtros { display: none; }   /* en la ficha no hacen falta */
   }
+  .lista-mezclas { list-style: none; margin: 0; padding: 0; }
+  .fila-mezcla { display: grid; grid-template-columns: 1fr auto; gap: 0 10px; padding: 6px 0; border-bottom: 1px solid var(--linea-suave); font-size: .9rem; }
+  .fila-mezcla small { grid-column: 1; color: var(--plomo); font-size: .8rem; }
+  .fila-mezcla b { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-variant-numeric: tabular-nums; }
+  .fila-buscar { display: flex; gap: 8px; align-items: stretch; }
+  .fila-buscar .buscador { flex: 1; min-width: 0; }
+  .escanear { display: inline-flex; align-items: center; gap: 6px; border-radius: var(--radio); border-width: 2px; padding: 0 14px; font-weight: 600; }
+  .escanear svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; }
+  @media (max-width: 599px) { .escanear span { position: absolute; left: -9999px; } .escanear { padding: 0 12px; } }
+  .escaneo { margin: 6px 2px 0; }
 </style>
 </head>
 <body>
@@ -117,13 +127,21 @@
         </div>
       </header>
       <div class="barra">
-        <div class="buscador">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>
-          <label for="q" style="position:absolute;left:-9999px">Buscar artículo</label>
-          <input id="q" type="search" inputmode="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-                 placeholder="Filtrar por código, descripción, partida o código de barras" enterkeyhint="search" autofocus>
-          <button type="button" class="limpiar" id="limpiar" aria-label="Borrar búsqueda" hidden>×</button>
+        <div class="fila-buscar">
+          <div class="buscador">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>
+            <label for="q" style="position:absolute;left:-9999px">Buscar artículo</label>
+            <input id="q" type="search" inputmode="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                   placeholder="Filtrar por código, descripción, partida o código de barras" enterkeyhint="search" autofocus>
+            <button type="button" class="limpiar" id="limpiar" aria-label="Borrar búsqueda" hidden>×</button>
+          </div>
+          <button type="button" class="boton escanear" id="escanear" title="Sacale una foto a la etiqueta: lee el código del artículo o de la partida">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8V5.5A1.5 1.5 0 0 1 4.5 4H7M17 4h2.5A1.5 1.5 0 0 1 21 5.5V8M21 16v2.5a1.5 1.5 0 0 1-1.5 1.5H17M7 20H4.5A1.5 1.5 0 0 1 3 18.5V16"/><path d="M7 8v8M10 8v8M13.5 8v8M17 8v8"/></svg>
+            <span>Escanear</span>
+          </button>
+          <input type="file" id="foto" accept="image/*" capture="environment" hidden>
         </div>
+        <p class="nota escaneo" id="escaneo" hidden></p>
         <div class="barra-filtros">
           <div class="filtros" id="filtros" role="group" aria-label="Filtros"></div>
         </div>
@@ -148,6 +166,7 @@
 </div>
 
 <script src="/comun.js"></script>
+<script src="/escaner.js"></script>
 <script src="/codigo128.js"></script>
 <script src="/etiqueta-codigo.js"></script>
 <script>
@@ -623,10 +642,15 @@
     });
   }
 
+  let ultimoAnotado = null;
   function dibujarFicha() {
     const cont = $("detalle");
     const a = seleccion && arts.get(seleccion);
     if (!a) { cont.replaceChildren(); return; }
+    if (a.cod !== ultimoAnotado && a.desc) {         // para "Abiertos hace poco" del inicio (clics y enlaces)
+      ultimoAnotado = a.cod;
+      HT.anotarReciente({ tipo: "articulo", clave: a.cod, titulo: a.desc, sub: "Artículo " + a.cod, href: "/buscar?art=" + encodeURIComponent(a.cod) });
+    }
     const t = el("article", "tarjeta ficha");
 
     const volver = el("button", "boton volver", "‹ Resultados");
@@ -647,10 +671,12 @@
     const link = el("button", "boton chico", "Copiar link"); link.type = "button";
     link.title = "Para mandar este artículo por WhatsApp o mail";
     link.addEventListener("click", () => HT.copiarLink("/buscar?art=" + encodeURIComponent(a.cod)));
-    acc.append(link);
+    const sug = el("a", "boton chico", "Precio sugerido"); sug.href = "/precio-sugerido?art=" + encodeURIComponent(a.cod);
+    sug.title = "A cuánto se vendió, en qué listas está y cuánto cuesta";
+    acc.append(link, sug);
     t.append(acc, codigoDeBarras(a));
 
-    t.append(seccionStock(a), seccionImportaciones(a), seccionMovimientos(a), seccionPrecios(a), seccionCotizaciones(a));
+    t.append(seccionStock(a), seccionImportaciones(a), seccionMovimientos(a), seccionMezclas(a), seccionPrecios(a), seccionCotizaciones(a));
     cont.replaceChildren(t);
   }
 
@@ -893,7 +919,10 @@
     for (const m of ms) {
       const tr = el("tr");
       const comp = el("td"); comp.append(el("div", "", m.tipo || m.t_comp)); comp.firstChild.style.fontWeight = "600";
-      comp.append(el("div", "nota", m.numero)); comp.lastChild.style.margin = "0";
+      const nro = el("div", "nota"); nro.style.margin = "0";
+      if (m.t_comp === "REM") { const l = el("a", "", m.numero); l.href = "/remitos?q=" + encodeURIComponent(m.numero); nro.append(l); }
+      else nro.append(m.numero || "");
+      comp.append(nro);
       const cant = el("td", "der " + (m.cantidad < 0 ? "mov-sale" : "mov-entra"), (m.cantidad > 0 ? "+" : "") + num(m.cantidad) + " " + unidad(a.um));
       tr.append(comp, el("td", "", fecha(m.fecha)), el("td", "", m.tercero), ...(conPartida ? [el("td", "", m.partida)] : []), cant);
       tbody.append(tr);
@@ -902,6 +931,34 @@
     const env = el("div", "tabla-envoltura"); env.append(tabla);
     s.append(env);
     if (ms.length >= 60) s.append(el("p", "nota", "Se ven los últimos 60."));
+    return s;
+  }
+
+  // Mezclas (registro de la Herramienta) en las que se uso el articulo
+  let mezclas = null;           // lista | "cargando" | Error
+  function seccionMezclas(a) {
+    if (mezclas === null) {
+      mezclas = "cargando";
+      pedir("/api/mezclas").then(d => { mezclas = d.datos; }, e => { mezclas = e; }).then(() => { if (seleccion) dibujarFicha(); });
+    }
+    if (!Array.isArray(mezclas)) return document.createDocumentFragment();
+    const usos = mezclas.flatMap(m => m.renglones.filter(r => r.codigo === a.cod).map(r => ({ m, r })))
+      .sort((x, y) => (y.m.fecha || "").localeCompare(x.m.fecha || ""));
+    if (!usos.length) return document.createDocumentFragment();
+    const s = el("section", "seccion");
+    const cab = el("div", "seccion-cab"); cab.append(el("h3", "", "Mezclas"));
+    const ver = el("a", "", "Ir a Mezclas"); ver.href = "/mezclas"; cab.append(ver);
+    s.append(cab);
+    const total = usos.reduce((t, u) => t + (u.r.cantidad || 0), 0);
+    s.append(el("p", "nota", `Se usó en ${usos.length === 1 ? "1 mezcla" : usos.length + " mezclas"}: ${num(total)} ${unidad(a.um)} en total.`));
+    const ul = el("ul", "lista-mezclas");
+    for (const { m, r } of usos.slice(0, 6)) {
+      const li = el("li"); const fila = el("div", "fila-mezcla");
+      fila.append(el("span", "", m.referencia), el("small", "", [fecha((m.fecha || "").slice(0, 10)), r.partida && "partida " + r.partida, m.estado === "subida" ? "subida a Tango" : "sin subir"].filter(Boolean).join(" · ")),
+                  el("b", "", `${num(r.cantidad)} ${unidad(a.um)}`));
+      li.append(fila); ul.append(li);
+    }
+    s.append(ul);
     return s;
   }
 
@@ -942,6 +999,43 @@
   const titulo = d => d ? d.charAt(0) + d.slice(1).toLowerCase() : "";
 
   // ---------------------------------------------------------------- eventos
+  // ---------------------------------------------------------------- escanear una etiqueta
+  // Lee los codigos de la foto y busca: primero una partida (es lo mas preciso), despues un articulo
+  // por su codigo o por su codigo de barras. Si no encuentra nada, deja el texto leido en la busqueda.
+  function resolverCodigo(textos) {
+    const n = t => norm(t).replace(/\s+/g, "");
+    for (const t of textos) {
+      for (const [cod, lotes] of stockPor) if (lotes.some(l => n(l.partida) === n(t))) return { cod, partida: t };
+    }
+    for (const t of textos) {
+      if (arts.has(t)) return { cod: t };
+      for (const a of arts.values()) if (n(a.cod) === n(t) || (a.barras && n(a.barras) === n(t))) return { cod: a.cod };
+    }
+    return null;
+  }
+  $("escanear").addEventListener("click", () => $("foto").click());
+  $("foto").addEventListener("change", async () => {
+    const archivo = $("foto").files[0];
+    $("foto").value = "";
+    if (!archivo) return;
+    const aviso = $("escaneo");
+    aviso.hidden = false; aviso.className = "nota escaneo"; aviso.textContent = "Leyendo la etiqueta…";
+    try {
+      const textos = await Escaner.leerFoto(archivo);
+      if (!textos.length) { aviso.className = "mensaje-error escaneo"; aviso.textContent = "No se pudo leer ningún código. Probá de nuevo, más cerca y con el código derecho y bien iluminado."; return; }
+      const r = resolverCodigo(textos);
+      if (r) {
+        aviso.textContent = `Leído: ${textos.join(" · ")}` + (r.partida ? ` (partida ${r.partida})` : "");
+        $("q").value = r.partida || r.cod; $("limpiar").hidden = false;
+        abrir(r.cod); render();
+      } else {
+        aviso.className = "mensaje-error escaneo";
+        aviso.textContent = `Leído: ${textos.join(" · ")}. No coincide con ningún artículo ni partida de Tango.`;
+        $("q").value = textos[0]; $("limpiar").hidden = false; render();
+      }
+    } catch (e) { aviso.className = "mensaje-error escaneo"; aviso.textContent = e.message; }
+  });
+
   if (params.get("q")) $("q").value = params.get("q");
   // /buscar?art=<codigo>: abrir directo la ficha (links desde Inicio, Cotizaciones o compartidos)
   if (params.get("art")) {

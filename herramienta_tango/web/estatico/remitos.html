@@ -44,6 +44,7 @@
   .remito .der { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .remito .partidas { display: block; font-size: .8rem; color: var(--plomo); }
   .remito .cod { display: block; font-size: .78rem; color: var(--plomo); }
+  .acciones-rem { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
   .mas { text-align: center; color: var(--plomo); font-size: .88rem; }
 </style>
 </head>
@@ -92,6 +93,9 @@
       ayuda: "Sin facturar: se entregó la mercadería pero ninguno de sus renglones está en una factura todavía." },
   ];
   let remitos = [], grupo = "todos", mostrar = MAX;
+  const params = new URLSearchParams(location.search);
+  let abrirSiUno = !!params.get("q");
+  if (GRUPOS.some(g => g.id === params.get("pestana"))) grupo = params.get("pestana");
   const renglones = new Map();   // id -> datos | Promise
 
   const corto = n => (n || "").trim().slice(-8).replace(/^0+/, "") || "0";   // pedido sin el prefijo de sucursal
@@ -186,6 +190,8 @@
     const ul = $("lista");
     if (!filas.length) { ul.replaceChildren(el("li", "aviso", remitos.length ? "No hay remitos que coincidan." : "No hay remitos en el último año.")); return; }
     ul.replaceChildren(...filas.slice(0, mostrar).map(itemRemito));
+    // Entrando con /remitos?q=<numero> y un solo resultado: se abre
+    if (abrirSiUno && filas.length === 1) { abrirSiUno = false; const d = ul.querySelector("details"); if (d) d.open = true; }
     if (filas.length > mostrar) {
       const li = el("li", "mas"); const b = el("button", "boton chico", `Ver ${fmt.format(Math.min(MAX, filas.length - mostrar))} más (de ${fmt.format(filas.length - mostrar)})`);
       b.type = "button"; b.addEventListener("click", () => { mostrar += MAX; render(); }); li.append(b); ul.append(li);
@@ -226,7 +232,9 @@
     s.append(num, el("span", "cli", r.cliente || r.codigo_cliente), el("span", "fec", fecha(r.fecha)), ped);
     d.append(s);
     const cuerpo = el("div", "cuerpo"); d.append(cuerpo);
-    d.addEventListener("toggle", () => { if (d.open) detalle(r, cuerpo); });
+    d.addEventListener("toggle", () => { if (!d.open) return;
+      HT.anotarReciente({ tipo: "remito", clave: r.id, titulo: `Remito ${r.numero_corto}`, sub: r.cliente || r.codigo_cliente, href: "/remitos?q=" + encodeURIComponent(r.numero) });
+      detalle(r, cuerpo); });
     li.append(d);
     return li;
   }
@@ -250,6 +258,11 @@
       }
       t.append(thead, tb);
       cuerpo.replaceChildren(t);
+      const acc = el("div", "acciones-rem");
+      const et = el("a", "boton chico", "Etiqueta de envío"); et.href = "/etiquetas?remito=" + r.id;
+      acc.append(et);
+      if (r.codigo_cliente) { const cl = el("a", "boton chico", "Ver cliente"); cl.href = "/clientes?ver=" + encodeURIComponent(r.codigo_cliente); acc.append(cl); }
+      cuerpo.append(acc);
       if (!d.partidas_leidas) cuerpo.append(el("p", "nota", "No se pudieron leer las partidas de este remito."));
       if (!(r.facturas && r.facturas.length)) cuerpo.append(botonDiagFactura(r));
     } catch (e) {
@@ -258,6 +271,7 @@
     }
   }
 
+  if (params.get("q")) $("q").value = params.get("q");
   HT.conectarBuscador($("q"), $("limpiar"), () => { mostrar = MAX; render(); });
   $("actualizar").addEventListener("click", () => cargar(true));
   cargar(false);

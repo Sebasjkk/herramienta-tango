@@ -238,7 +238,7 @@
       const c = cots.find(x => x.id === verPendiente);
       const actualG = GRUPOS.find(g => g.id === grupo);
       if (c && (actualG.especial || !actualG.f(c))) { const g = GRUPOS.find(g => !g.especial && g.f(c)); if (g) grupo = g.id; }
-      if (c) elegida = c.id;
+      if (c) { elegida = c.id; HT.anotarReciente({ tipo: "cotizacion", clave: c.id, titulo: `Cotización ${c.numero_corto}`, sub: c.cliente || c.codigo_cliente, href: "/cotizaciones?ver=" + c.id }); }
       verPendiente = null;
     }
     // Pestanas con cantidades
@@ -275,6 +275,7 @@
                el("span", "meta", `${c.vendedor || "Sin vendedor"} · vigencia ${fecha(c.vigencia)} · ${c.moneda === "$" ? "pesos" : "dólares"}`));
       b.addEventListener("click", () => {
         elegida = c.id;
+        HT.anotarReciente({ tipo: "cotizacion", clave: c.id, titulo: `Cotización ${c.numero_corto}`, sub: c.cliente || c.codigo_cliente, href: "/cotizaciones?ver=" + c.id });
         if (!window.matchMedia("(min-width: 960px)").matches) {
           history.pushState({}, "", "#cot=" + c.id);
           $("contenido").classList.add("viendo"); window.scrollTo(0, 0);

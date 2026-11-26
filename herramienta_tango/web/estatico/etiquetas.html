@@ -116,6 +116,9 @@
       remitos = d.datos;
       $("estado").textContent = "Datos de Tango de las " + HT.hora(new Date(d.actualizado)) + " h";
       dibujarLista();
+      // Entrando con /etiquetas?remito=<id> (desde Remitos): ya queda elegido
+      const pre = Number(new URLSearchParams(location.search).get("remito"));
+      if (pre && !elegido) { const r = remitos.find(x => x.id === pre); if (r) { $("q").value = r.numero_corto; dibujarLista(); elegir(r); } }
     } catch (e) {
       $("estado").textContent = "Sin datos";
       $("remitos").replaceChildren(cajaError(e, () => cargar(true)));

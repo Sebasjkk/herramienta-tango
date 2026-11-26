@@ -107,7 +107,7 @@
   const enCurso = c => c.estado === 2 && !(c.vigencia && c.vigencia < hoy);
 
   let clientes = [];
-  const pedidosDe = new Map(), cotizDe = new Map(), preciosDe = new Map();
+  const pedidosDe = new Map(), cotizDe = new Map(), preciosDe = new Map(), remitosDe = new Map();
   const avances = new Map();          // id de pedido -> avance de entrega (solo pendientes)   // codigo de cliente -> [...]
   let filtro = "todos";
   const params = new URLSearchParams(location.search);
@@ -141,6 +141,9 @@
       .then(d => { avances.clear(); for (const a of d.datos) avances.set(a.id, a); render(); }, () => {});
     extra("/api/cotizaciones", cotizDe);
     extra("/api/precios", preciosDe);
+    // Remitos (con su pedido y su factura): se piden aparte porque leen la base de Tango
+    pedir("/api/remitos/vista", forzar, { previo: g => { agrupar(remitosDe, g.datos.remitos, "codigo_cliente"); render(); } })
+      .then(d => { agrupar(remitosDe, d.datos.remitos, "codigo_cliente"); remitosDe.error = null; render(); }, e => { remitosDe.error = e; render(); });
     let previo = null;
     try {
       usarClientes(await pedir("/api/clientes", forzar, { previo: g => { previo = g; usarClientes(g); } }));
@@ -184,6 +187,7 @@
       b.append(el("span", "nom", c.razon_social || c.codigo), el("span", "cod", [c.codigo, c.lista_precios].filter(Boolean).join(" · ")), der);
       b.addEventListener("click", () => {
         elegido = c.codigo;
+        HT.anotarReciente({ tipo: "cliente", clave: c.codigo, titulo: c.razon_social || c.codigo, sub: "Cliente " + c.codigo, href: "/clientes?ver=" + encodeURIComponent(c.codigo) });
         history.replaceState(history.state, "", "/clientes?ver=" + encodeURIComponent(c.codigo) + location.hash);
         if (!window.matchMedia("(min-width: 960px)").matches) { history.pushState({}, "", "#cli"); $("contenido").classList.add("viendo"); window.scrollTo(0, 0); }
         render();
@@ -229,7 +233,9 @@
     const acc = el("div", "ficha-acciones");
     const link = el("button", "boton chico", "Copiar link"); link.type = "button";
     link.addEventListener("click", () => HT.copiarLink("/clientes?ver=" + encodeURIComponent(c.codigo)));
-    acc.append(link);
+    const sug = el("a", "boton chico", "Precio sugerido"); sug.href = "/precio-sugerido?cliente=" + encodeURIComponent(c.codigo);
+    sug.title = "A cuánto se le vendió cada artículo, su lista y el costo";
+    acc.append(link, sug);
     t.append(acc);
 
     // Pedidos: pendientes primero
@@ -262,6 +268,27 @@
       if (cots.length > 8) sc.append(el("p", "nota", `y ${cots.length - 8} más.`));
     }
     t.append(sc);
+
+    // Remitos: los mas nuevos primero, con su pedido y su factura
+    const rems = (remitosDe.get(c.codigo) || []).slice().sort((a, b) => (b.fecha || "").localeCompare(a.fecha || ""));
+    const verRem = el("a", "", "Ver todos"); verRem.href = "/remitos?q=" + encodeURIComponent(c.razon_social || c.codigo);
+    const sr = seccion("Remitos del último año", rems.length ? verRem : null);
+    if (errorDe(remitosDe)) sr.append(errorDe(remitosDe));
+    else if (!rems.length) sr.append(el("p", "nota", "No tiene remitos en el último año."));
+    else {
+      const sinFac = rems.filter(r => Array.isArray(r.facturas) && !r.facturas.length).length;
+      if (sinFac) sr.append(el("p", "nota", `${sinFac === 1 ? "1 remito" : sinFac + " remitos"} sin facturar.`));
+      const ul = el("ul", "lista-mini");
+      for (const r of rems.slice(0, 8)) {
+        const fac = Array.isArray(r.facturas) ? (r.facturas.length ? el("span", "etiqueta-estado e-cumplido", "Facturado") : el("span", "etiqueta-estado e-vencida", "Sin facturar")) : "";
+        ul.append(filaLink("/remitos?q=" + encodeURIComponent(r.numero), "Remito " + r.numero_corto,
+          [fecha(r.fecha), r.pedidos.length ? "Pedido " + r.pedidos.map(p => cortoPed(p.numero)).join(", ") : "sin pedido",
+           ...(r.facturas || []).map(f => f.numero)].filter(Boolean).join(" · "), fac));
+      }
+      sr.append(ul);
+      if (rems.length > 8) sr.append(el("p", "nota", `y ${rems.length - 8} más.`));
+    }
+    t.append(sr);
 
     // Precios especiales (los de su lista con precio propio)
     const ps = (preciosDe.get(c.codigo) || []).filter(p => p.precio > 0).sort((a, b) => a.descripcion.localeCompare(b.descripcion, "es"));
