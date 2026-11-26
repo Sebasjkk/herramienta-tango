@@ -214,6 +214,14 @@ def crear_rutas(contexto) -> dict[str, Callable[[dict, bool], tuple]]:
             raise PedidoInvalido("Falta el artículo.")
         return ps.costo(s(), art), time.time()
 
+    def _precios_auto():
+        pa = getattr(contexto, "precios_auto", None)
+        if pa is None:
+            return {"activo": False}
+        e = pa.leer()
+        return {"activo": True, "desde_id": e.get("desde_id"), "ultima_revision": e.get("ultima_revision"),
+                "historial": list(reversed(e.get("historial", [])))[:20]}
+
     def _remitos_diag():
         from .. import base_tango, remitos as rem
         try:
@@ -246,6 +254,7 @@ def crear_rutas(contexto) -> dict[str, Callable[[dict, bool], tuple]]:
         "/api/listas/importar/estado": lambda qs, f: (s().importador.estado(), time.time()),
         "/api/listas/restaurar/estado": lambda qs, f: (s().editor.estado_restauracion(), time.time()),
         "/api/precios/ajuste/estado": lambda qs, f: (s().editor.estado_ajuste(), time.time()),
+        "/api/precios/automaticos": lambda qs, f: (_precios_auto(), time.time()),
         "/api/opciones": lambda qs, f: (opciones.leer(), time.time()),
         "/api/importaciones": importaciones,
         "/api/valorizacion": valorizacion,

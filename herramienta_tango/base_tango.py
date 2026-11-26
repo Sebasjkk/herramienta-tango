@@ -901,6 +901,53 @@ def aduana_carpeta(carpeta: int) -> dict:
     return _remoto("aduana", {"carpeta": int(carpeta)}, tiempo=140)
 
 
+# ------------------------------------------------------------------ cotizaciones nuevas (para precios automaticos)
+# Cabecera (GVA08) y renglones (GVA09) de las cotizaciones con ID mayor a uno dado. Los renglones se
+# unen por ID_GVA08 si existe esa columna en GVA09; si no, por talonario y numero.
+_COTIZACIONES_DESDE = r"""
+$out = [ordered]@{}
+$out.maximo = (Q "SELECT ISNULL(MAX(ID_GVA08), 0) AS m FROM GVA08")[0].m
+$out.cabeceras = Q "SELECT TOP 40 * FROM GVA08 WHERE ID_GVA08 > __DESDE__ ORDER BY ID_GVA08"
+$cols = @(Q "SELECT COLUMN_NAME AS c FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'GVA09'" | ForEach-Object { $_.c })
+if ($out.cabeceras.Count) {
+  $ids = ($out.cabeceras | ForEach-Object { [int]$_.ID_GVA08 }) -join ','
+  if ($cols -contains 'ID_GVA08') {
+    $out.renglones = Q "SELECT r.*, a.DESCRIPCIO AS DESC_ARTICULO FROM GVA09 r LEFT JOIN STA11 a ON a.COD_ARTICU = r.COD_ARTICU WHERE r.ID_GVA08 IN ($ids)"
+  } else {
+    $out.renglones = Q "SELECT q.ID_GVA08 AS ID_GVA08, r.*, a.DESCRIPCIO AS DESC_ARTICULO FROM GVA09 r JOIN GVA08 q ON q.N_COTIZ COLLATE DATABASE_DEFAULT = r.N_COTIZ COLLATE DATABASE_DEFAULT LEFT JOIN STA11 a ON a.COD_ARTICU = r.COD_ARTICU WHERE q.ID_GVA08 IN ($ids)"
+  }
+} else { $out.renglones = @() }
+$out | ConvertTo-Json -Depth 4 -Compress
+"""
+
+
+def _cotizaciones_desde_local(desde_id: int) -> dict:
+    datos = _correr(_COTIZACIONES_DESDE.replace("__DESDE__", str(int(desde_id))))
+    renglones: dict[int, list[dict]] = {}
+    for r in _como_lista(datos.get("renglones")):
+        precio = _num(_campo(r, "PRECIO", "PRECIO_LISTA", "PRECIO_PAN"))
+        renglones.setdefault(int(r.get("ID_GVA08") or 0), []).append({
+            "codigo": str(r.get("COD_ARTICU") or "").strip(), "descripcion": str(r.get("DESC_ARTICULO") or "").strip(),
+            "precio": round(precio, 4) if precio is not None else None,
+            "bonificacion": _num(_campo(r, "PORC_BONIF", "BONIFICACI", "PORC_DTO", defecto=0)) or 0,
+            "renglon": _campo(r, "N_RENGLON", "N_RENGL_V", defecto=0)})
+    cotizaciones = []
+    for c in _como_lista(datos.get("cabeceras")):
+        i = int(c.get("ID_GVA08") or 0)
+        cotizaciones.append({"id": i, "numero": str(c.get("N_COTIZ") or "").strip(), "estado": c.get("ESTADO"),
+                             "id_lista": c.get("ID_GVA10"), "codigo_cliente": str(c.get("COD_CLIENT") or "").strip(),
+                             "id_cliente": c.get("ID_GVA14"), "fecha": c.get("FECHA_EMIS"),
+                             "en_pesos": _en_pesos(_campo(c, "MON_CTE", "MONEDA", defecto=True)),
+                             "renglones": sorted(renglones.get(i, []), key=lambda x: x["renglon"] or 0)})
+    return {"maximo": int(datos.get("maximo") or 0), "cotizaciones": cotizaciones}
+
+
+def cotizaciones_desde(desde_id: int) -> dict:
+    """Cotizaciones con ID_GVA08 > desde_id (hasta 40), con sus renglones, y el ID mas alto (base, solo lectura).
+    Solo se usa en la Herramienta del servidor."""
+    return _cotizaciones_desde_local(desde_id)
+
+
 # ------------------------------------------------------------------ desde otras PCs
 # La base esta solo en el servidor de Tango. Una Herramienta que corre en otra PC
 # no la puede leer: le pide el dato a la Herramienta del servidor (/api/base/...),

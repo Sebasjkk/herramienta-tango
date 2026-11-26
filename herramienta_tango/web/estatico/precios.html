@@ -118,6 +118,8 @@
   .alcance label { display: flex; gap: 6px; align-items: center; font-size: .92rem; }
   .vista-previa ul { margin: 4px 0 8px; padding-left: 20px; font-size: .9rem; }
   textarea#aj-c { width: 100%; box-sizing: border-box; font: inherit; }
+  .auto-cot { margin-bottom: 10px; font-size: .9rem; }
+  .auto-cot summary { cursor: pointer; font-weight: 600; }
 </style>
 </head>
 <body>
@@ -194,7 +196,25 @@
       const acc = el("div", "acciones");
       const b = el("button", "boton", "Cerrar"); b.type = "button"; b.addEventListener("click", cerrar);
       acc.append(b);
-      d.append(ul, acc);
+      const auto = el("details", "auto-cot");
+      d.append(auto, ul, acc);
+      // Precios tomados de las cotizaciones (los hace la Herramienta del servidor sola)
+      pedir("/api/precios/automaticos", true).then(({ datos: pa }) => {
+        auto.append(el("summary", "", pa.activo ? "Precios automáticos desde las cotizaciones: activos" : "Precios automáticos desde las cotizaciones: no corren en este equipo"));
+        auto.append(el("p", "nota", "Cuando se emite una cotización con un precio más alto que el de la lista propia del cliente, la lista toma ese precio; " +
+          "si el artículo no estaba, se agrega. No toca listas generales ni cotizaciones en otra moneda. Se revisa cada 10 minutos." +
+          (pa.ultima_revision ? ` Última revisión: ${new Date(pa.ultima_revision).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })}.` : "")));
+        const l = el("ul", "copia-lista");
+        for (const h of pa.historial || []) {
+          const partes = [];
+          if (h.cambios && h.cambios.length) partes.push(`subió ${h.cambios.map(x => `${x.articulo} ${fmtPrecio.format(x.antes)} → ${fmtPrecio.format(x.despues)}`).join(", ")}`);
+          if (h.agregados && h.agregados.length) partes.push(`agregó ${h.agregados.map(x => `${x.articulo} ${fmtPrecio.format(x.precio)}`).join(", ")}`);
+          if (h.omitidos && h.omitidos.length) partes.push(`sin cambios: ${h.omitidos.map(x => `${x.articulo} (${x.motivo})`).join(", ")}`);
+          l.append(el("li", "", `${h.cotizacion} · ${h.cliente}${h.lista ? " · " + h.lista : ""}: ${h.motivo || partes.join(" · ") || "nada para cambiar"}`));
+        }
+        if (pa.activo && !(pa.historial || []).length) l.append(el("li", "", "Todavía no se emitió ninguna cotización desde que se activó."));
+        auto.append(l);
+      }, () => auto.remove());
       try {
         const { datos } = await pedir("/api/precios/cambios", true);
         ul.replaceChildren();

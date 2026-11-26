@@ -233,6 +233,13 @@ def main(argv: list[str] | None = None) -> int:
                 contexto.servicio().precargar()
         threading.Thread(target=conectar_y_precargar, name="conexion-tango", daemon=True).start()
 
+    # Precios automaticos desde las cotizaciones: solo en la Herramienta del servidor de Tango
+    from . import base_tango
+    if configurado and sys.platform == "win32" and os.environ.get("HERRAMIENTA_TANGO_DEMO") != "1" and base_tango.es_servidor():
+        from .precios_auto import PreciosDesdeCotizaciones
+        contexto.precios_auto = PreciosDesdeCotizaciones(contexto.servicio)
+        contexto.precios_auto.iniciar()
+
     if cfg.repo_actualizaciones:
         actualizador.iniciar()
     else:
