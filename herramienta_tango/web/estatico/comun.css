@@ -470,3 +470,99 @@ dialog::backdrop { backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px
 @media (max-width: 959px) { .atajo { display: none; } }
 
 @media (prefers-reduced-motion: reduce) { .app .cifra:hover { transform: none; } }
+
+/* =====================================================================
+   Capa "vidrio" (26/11/2026): superficies translucidas con desenfoque sobre un
+   fondo con color suave, menos bordes y lo secundario mas tenue. Va al final para
+   pisar lo anterior. Con "reducir transparencia" del equipo vuelve a superficies solidas.
+   ===================================================================== */
+:root {
+  --vidrio: color-mix(in srgb, #FFFFFF 52%, transparent);
+  --vidrio-fuerte: color-mix(in srgb, #FFFFFF 78%, transparent);
+  --vidrio-borde: color-mix(in srgb, #FFFFFF 75%, transparent);
+  --vidrio-linea: color-mix(in srgb, var(--grafito) 7%, transparent);
+  --desenfoque: blur(24px) saturate(170%);
+  --sombra: 0 1px 1px rgba(15, 27, 34, .03), 0 12px 32px -16px rgba(15, 27, 34, .22);
+  --zinc: #EEF3F4;
+  --fondo-ambiente:
+    radial-gradient(820px 560px at 92% -6%, rgba(20, 184, 166, .38), transparent 62%),
+    radial-gradient(700px 560px at -4% 104%, rgba(59, 130, 246, .26), transparent 62%),
+    radial-gradient(640px 420px at 50% 58%, rgba(45, 212, 191, .14), transparent 70%),
+    linear-gradient(160deg, #F1F6F6 0%, #E9F0F3 100%);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-tema="claro"]) {
+    --vidrio: color-mix(in srgb, #15232C 52%, transparent);
+    --vidrio-fuerte: color-mix(in srgb, #15232C 84%, transparent);
+    --vidrio-borde: rgba(255, 255, 255, .08);
+    --vidrio-linea: rgba(255, 255, 255, .06);
+    --sombra: 0 1px 1px rgba(0, 0, 0, .3), 0 16px 36px -18px rgba(0, 0, 0, .75);
+    --fondo-ambiente:
+      radial-gradient(820px 560px at 92% -6%, rgba(45, 212, 191, .24), transparent 62%),
+      radial-gradient(700px 560px at -4% 104%, rgba(59, 130, 246, .2), transparent 62%),
+      linear-gradient(160deg, #0A1216 0%, #081014 100%);
+  }
+}
+:root[data-tema="oscuro"] {
+  --vidrio: color-mix(in srgb, #15232C 52%, transparent);
+  --vidrio-fuerte: color-mix(in srgb, #15232C 84%, transparent);
+  --vidrio-borde: rgba(255, 255, 255, .08);
+  --vidrio-linea: rgba(255, 255, 255, .06);
+  --sombra: 0 1px 1px rgba(0, 0, 0, .3), 0 16px 36px -18px rgba(0, 0, 0, .75);
+  --fondo-ambiente:
+    radial-gradient(820px 560px at 92% -6%, rgba(45, 212, 191, .24), transparent 62%),
+    radial-gradient(700px 560px at -4% 104%, rgba(59, 130, 246, .2), transparent 62%),
+    linear-gradient(160deg, #0A1216 0%, #081014 100%);
+}
+body { background: var(--fondo-ambiente); background-attachment: fixed; }
+
+/* Superficies de vidrio (tarjetas, renglones de listas, buscador, pestañas, ventanas) */
+.tarjeta, .app .cifra, .app .panel, .cabecera .datos, .filtro, .pestana, .boton:not(.primario):not(.peligro),
+.buscador input, dialog, .paleta, button.cot, button.seg-cot, button.cli, button.rem, button.car, button.reciente {
+  background: var(--vidrio) !important;
+  -webkit-backdrop-filter: var(--desenfoque); backdrop-filter: var(--desenfoque);
+  border-color: var(--vidrio-borde) !important;
+}
+.tarjeta, .app .cifra, .app .panel, button.cot, button.cli, button.rem, button.car { box-shadow: var(--sombra), inset 0 1px 0 var(--vidrio-borde); }
+dialog, .paleta, .buscador input:focus { background: var(--vidrio-fuerte) !important; }
+:is(button.cot, button.cli, button.rem, button.car):hover { border-color: color-mix(in srgb, var(--patina) 45%, transparent) !important; }
+:is(button.cot, button.cli, button.rem, button.car)[aria-pressed="true"] { background: color-mix(in srgb, var(--patina) 12%, var(--vidrio)) !important;
+  border-color: color-mix(in srgb, var(--patina) 55%, transparent) !important; }
+.tarjeta .tarjeta, button.seg-cot { box-shadow: none; }
+.buscador svg { z-index: 1; }
+.barra { background: none; }
+
+/* Menu lateral: oscuro, con un poco del fondo detras */
+@media (min-width: 960px) {
+  .app-nav { background: linear-gradient(180deg, rgba(7, 22, 26, .95), rgba(7, 30, 30, .93));
+    -webkit-backdrop-filter: var(--desenfoque); backdrop-filter: var(--desenfoque); }
+}
+
+/* Menos lineas: separadores casi invisibles, tablas sin fondo en el encabezado */
+.tabla th { background: transparent; color: var(--plomo); font-weight: 600; }
+.tabla td, .tabla th { border-color: var(--vidrio-linea) !important; }
+.tabla tbody tr:hover td { background: color-mix(in srgb, var(--patina) 5%, transparent); }
+.app .filas li + li a, .lista-mini li, .seccion { border-color: var(--vidrio-linea) !important; }
+.app .filas a:hover { background: color-mix(in srgb, var(--patina) 7%, transparent); }
+
+/* Lo secundario mas tenue: la ayuda debajo de las pestañas, notas y pies */
+.explica, .pie { font-size: .82rem; color: color-mix(in srgb, var(--plomo) 85%, transparent); }
+.pie { opacity: .8; }
+
+/* Pestañas y filtros elegidos: color lleno */
+.filtro[aria-pressed="true"], .pestana[aria-selected="true"] {
+  background: color-mix(in srgb, var(--patina) 90%, transparent) !important; color: var(--sobre-color) !important;
+  border-color: transparent !important; box-shadow: 0 6px 18px -8px var(--patina);
+}
+.filtro[aria-pressed="true"] b, .pestana[aria-selected="true"] b { color: inherit !important; opacity: .85; }
+
+/* Sin desenfoque si el equipo pide reducir transparencia, o si el navegador no lo soporta */
+@media (prefers-reduced-transparency: reduce) {
+  .tarjeta, .app .cifra, .app .panel, .cabecera .datos, .filtro, .pestana, .boton:not(.primario):not(.peligro),
+  .buscador input, dialog, .paleta, button.cot, button.seg-cot, button.cli, button.rem, button.car, button.reciente {
+    background: var(--papel) !important; -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .tarjeta, .app .cifra, .app .panel, .cabecera .datos, .filtro, .pestana, .boton:not(.primario):not(.peligro),
+  .buscador input, dialog, .paleta, button.cot, button.seg-cot, button.cli, button.rem, button.car, button.reciente { background: var(--papel) !important; }
+}
