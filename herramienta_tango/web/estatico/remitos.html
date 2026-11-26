@@ -209,7 +209,9 @@
       ped.append(el("span", "con", r.pedidos.length > 1 ? "Pedidos " : "Pedido "));
       r.pedidos.forEach((p, k) => {
         if (k) ped.append(", ");
-        ped.append(linkPdf(corto(p.numero), p.id ? `/pedido/${p.id}.pdf` : null), p.orden_compra ? ` · OC ${p.orden_compra}` : "");
+        // Sin enlace al PDF: Tango no genera el PDF de pedidos por la API (19845 y 12481 responden
+        // "no implementado", 26/11/2026). La ruta /pedido/<id>.pdf queda por si aparece una ficha que lo haga.
+        ped.append(corto(p.numero), p.orden_compra ? ` · OC ${p.orden_compra}` : "");
       });
     } else ped.append(el("span", "sin", "Sin pedido"));
     if (Array.isArray(r.facturas)) {

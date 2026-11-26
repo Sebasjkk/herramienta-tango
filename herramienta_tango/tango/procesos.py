@@ -32,7 +32,8 @@ LIVE_COTIZACIONES_DETALLE = 12481  # Ventas > Consultas > Cotizaciones > Detalle
 PDF_FACTURA = (14077,)                        # Ficha Live de facturas, creditos y debitos (id = ID_GVA12).
                                               # 17965/17839/11663 responden "GetPdfContentById no implementado"
 PDF_REMITO = (14093,)                         # Ficha Live de remitos (id = ID_STA14)
-PDF_PEDIDO = (19845, 2007, 12481)             # id = ID_GVA21
+PDF_PEDIDO = (19845, 12481)                   # id = ID_GVA21. Ninguno genera PDF ("no implementado",
+                                              # 26/11/2026): la pantalla no ofrece el enlace
 TABLERO_FICHA_COTIZACION = 14062   # Ficha Live de cotizaciones: Api/GetPdf con este proceso
                                    # devuelve el PDF del formulario 128 (id = ID_GVA08)
 LIVE_COMPROBANTES_VENTA = 17965   # comprobantes de venta, uno por fila (remitos: TIPO_COMPROBANTE = REM)
