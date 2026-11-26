@@ -63,6 +63,7 @@ class TestBase(unittest.TestCase):
         with self.correr(js) as run:
             d = base_tango.remitos_con_pedido()
         self.assertIn("REFERENCIA_REMITO", run.call_args[0][0][-1])
+        self.assertIn("FROM GVA54 f", run.call_args[0][0][-1])
         self.assertEqual(len(d["remitos"]["R0000800000110"]), 2)
         self.assertEqual(d["facturas"]["R0000800000110"], [{"tipo": "Factura", "numero": "A 0003-00013009"}])
 
