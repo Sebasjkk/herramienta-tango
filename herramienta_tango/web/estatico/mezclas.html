@@ -53,6 +53,11 @@
   .mz .acciones { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
   .pasos { margin: 8px 0 0; padding-left: 20px; font-size: .88rem; color: var(--plomo); }
   .listo { border-left: 3px solid var(--patina); background: var(--seleccion); padding: 10px 12px; border-radius: 6px; margin-top: 12px; font-size: .92rem; }
+  .lote + .aviso-saldo { margin-top: 4px; }
+  .producto .lote ~ .lote { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--linea); }
+  .fila-pc.lote { align-items: start; }
+  .quitar-lote { margin-top: 4px; font-size: .82rem; color: var(--oxido); }
+  .subtotal { margin: 8px 0 0; font-size: .88rem; font-weight: 600; text-align: right; }
 </style>
 </head>
 <body>
@@ -91,7 +96,9 @@
   let productos = [nuevoProducto(), nuevoProducto()];
   let recienGuardada = null;
 
-  function nuevoProducto() { return { art: null, partida: "", cantidad: "", sugerida: false }; }
+  // Un producto puede salir de varios lotes (ej.: se termina uno y se sigue con otro)
+  function nuevoLote(partida = "", cantidad = "") { return { partida, cantidad, sugerida: false }; }
+  function nuevoProducto() { return { art: null, lotes: [nuevoLote()] }; }
 
   // Ultima partida que se uso de un polvo en las mezclas cargadas, si todavia tiene stock.
   // Es solo una sugerencia: el que carga confirma mirando la etiqueta del tambor.
@@ -107,25 +114,27 @@
     p.art = a;
     const ps = partidasDe.get(a.codigo) || [];
     const ultima = ps.length > 1 ? ultimaPartida(a.codigo) : "";
-    p.partida = ps.length === 1 ? ps[0].partida : ultima;
-    p.sugerida = !!ultima;
+    p.lotes = [nuevoLote(ps.length === 1 ? ps[0].partida : ultima)];
+    p.lotes[0].sugerida = !!ultima;
   }
 
   // Repetir: copia los polvos y kilos de una mezcla anterior; el remito se escribe de nuevo
   function repetir(m) {
     if (!articulos.length) { HT.avisar("Esperá a que terminen de cargar los artículos de Tango"); return; }
     const faltan = [];
-    productos = m.renglones.map(x => {
+    const porCodigo = new Map();
+    for (const x of m.renglones) {
       const a = articulos.find(y => y.codigo === x.codigo);
-      if (!a) { faltan.push(x.codigo); return null; }
-      const p = nuevoProducto();
-      p.art = a;
+      if (!a) { if (!faltan.includes(x.codigo)) faltan.push(x.codigo); continue; }
+      if (!porCodigo.has(a.codigo)) porCodigo.set(a.codigo, { art: a, lotes: [] });
+      const p = porCodigo.get(a.codigo);
       const ps = partidasDe.get(a.codigo) || [];
-      if (x.partida && ps.some(y => y.partida === x.partida)) { p.partida = x.partida; p.sugerida = ps.length > 1; }
-      else if (ps.length === 1) p.partida = ps[0].partida;
-      p.cantidad = String(x.cantidad).replace(".", ",");
-      return p;
-    }).filter(Boolean);
+      const lote = nuevoLote("", String(x.cantidad).replace(".", ","));
+      if (x.partida && ps.some(y => y.partida === x.partida)) { lote.partida = x.partida; lote.sugerida = ps.length > 1; }
+      else if (ps.length === 1) lote.partida = ps[0].partida;
+      p.lotes.push(lote);
+    }
+    productos = [...porCodigo.values()];
     if (!productos.length) productos = [nuevoProducto()];
     referencia = ""; recienGuardada = null;
     dibujarNueva();
@@ -249,61 +258,118 @@
     const a = p.art;
     const eleg = el("div", "elegido"); eleg.append(a.descripcion, el("small", "", a.codigo));
     const cambiar = el("button", "boton-texto", "Cambiar"); cambiar.type = "button";
-    cambiar.addEventListener("click", () => { p.art = null; p.partida = ""; p.sugerida = false; dibujarNueva(); });
+    cambiar.addEventListener("click", () => { p.art = null; p.lotes = [nuevoLote()]; dibujarNueva(); });
     eleg.append(cambiar);
     c.append(eleg);
 
-    const fila = el("div", "fila-pc");
-    const cajaP = el("div");
-    if (a.usa_partidas) {
-      const ps = partidasDe.get(a.codigo) || [];
-      const l = el("label", "etiqueta", "Partida"); l.htmlFor = "p" + i;
-      const sel = el("select", "campo"); sel.id = "p" + i;
-      sel.append(new Option(ps.length ? "Elegí la partida" : "No tiene partidas con stock", ""));
-      for (const x of ps) sel.append(new Option(`${x.partida} — ${num(x.saldo)} ${unidad(x.unidad)} · ${titulo(x.deposito)}`, x.partida));
-      sel.value = p.partida;
-      sel.addEventListener("change", () => { p.partida = sel.value; p.sugerida = false; dibujarNueva(); });
-      cajaP.append(l, sel);
-      if (p.sugerida && p.partida) cajaP.append(el("p", "nota sugerida", "Es la última partida que se usó de este polvo. Fijate que coincida con la etiqueta del tambor."));
-    } else {
-      cajaP.append(el("p", "nota", "No lleva partidas."));
+    const u = unidad(a.unidad) || "kg";
+    if (!a.usa_partidas) {
+      // Sin partidas: un solo renglon con la cantidad
+      const lote = p.lotes[0];
+      const fila = el("div", "fila-pc");
+      const cajaP = el("div"); cajaP.append(el("p", "nota", "No lleva partidas."));
+      fila.append(cajaP, campoCantidad(lote, `c${i}-0`, `Cantidad (${u})`));
+      c.append(fila);
+      return c;
     }
-    const cajaC = el("div");
-    const lc = el("label", "etiqueta", "Cantidad (" + (unidad(a.unidad) || "kg") + ")"); lc.htmlFor = "c" + i;
-    const n = el("input", "campo"); n.id = "c" + i; n.inputMode = "decimal"; n.value = p.cantidad; n.placeholder = "0";
-    n.addEventListener("input", () => { p.cantidad = n.value; actualizarTotal(); });
-    cajaC.append(lc, n);
-    fila.append(cajaP, cajaC);
-    c.append(fila);
-    const av = el("p", "aviso-saldo"); av.hidden = true; av.dataset.i = i;
-    c.append(av);
+
+    const ps = partidasDe.get(a.codigo) || [];
+    p.lotes.forEach((lote, j) => {
+      const fila = el("div", "fila-pc lote");
+      const cajaP = el("div");
+      const l = el("label", "etiqueta", p.lotes.length > 1 ? `Partida ${j + 1}` : "Partida"); l.htmlFor = `p${i}-${j}`;
+      const sel = el("select", "campo"); sel.id = `p${i}-${j}`;
+      const usadas = new Set(p.lotes.filter((_, k) => k !== j).map(x => x.partida).filter(Boolean));
+      sel.append(new Option(ps.length ? "Elegí la partida" : "No tiene partidas con stock", ""));
+      for (const x of ps) if (!usadas.has(x.partida))
+        sel.append(new Option(`${x.partida} — ${num(x.saldo)} ${unidad(x.unidad)} · ${titulo(x.deposito)}`, x.partida));
+      sel.value = lote.partida;
+      sel.addEventListener("change", () => { lote.partida = sel.value; lote.sugerida = false; dibujarNueva(); });
+      cajaP.append(l, sel);
+      if (lote.sugerida && lote.partida) cajaP.append(el("p", "nota sugerida", "Es la última partida que se usó de este polvo. Fijate que coincida con la etiqueta del tambor."));
+      const cajaC = campoCantidad(lote, `c${i}-${j}`, `Cantidad (${u})`);
+      if (p.lotes.length > 1) {
+        const q = el("button", "boton-texto quitar-lote", "Quitar lote"); q.type = "button";
+        q.addEventListener("click", () => { p.lotes.splice(j, 1); dibujarNueva(); });
+        cajaC.append(q);
+      }
+      fila.append(cajaP, cajaC);
+      c.append(fila);
+      const av = el("p", "aviso-saldo"); av.hidden = true; av.dataset.i = i; av.dataset.j = j;
+      c.append(av);
+    });
+    const libres = ps.filter(x => !p.lotes.some(l => l.partida === x.partida));
+    if (libres.length) {
+      const mas = el("button", "boton chico", "+ Otro lote de este producto"); mas.type = "button";
+      mas.addEventListener("click", () => { agregarLote(p); dibujarNueva();
+        const s = document.getElementById(`p${i}-${p.lotes.length - 1}`); s && s.focus(); });
+      c.append(mas);
+    }
+    if (p.lotes.length > 1) { const st = el("p", "subtotal"); st.dataset.i = i; c.append(st); }
     return c;
   }
 
+  function campoCantidad(lote, id, texto) {
+    const caja = el("div");
+    const lc = el("label", "etiqueta", texto); lc.htmlFor = id;
+    const n = el("input", "campo"); n.id = id; n.inputMode = "decimal"; n.value = lote.cantidad; n.placeholder = "0";
+    n.addEventListener("input", () => { lote.cantidad = n.value; actualizarTotal(); });
+    caja.append(lc, n);
+    return caja;
+  }
+
+  // Agregar un lote. Si el ultimo lote tiene mas kilos que su saldo, lo que sobra pasa al nuevo
+  // (y se propone la partida con stock que sigue, en el orden de la lista).
+  function agregarLote(p) {
+    const ps = partidasDe.get(p.art.codigo) || [];
+    const ult = p.lotes[p.lotes.length - 1];
+    const x = ps.find(y => y.partida === ult.partida);
+    const n = leerNumero(ult.cantidad);
+    const nuevo = nuevoLote();
+    if (x && n > x.saldo + EPS) {
+      ult.cantidad = String(+x.saldo.toFixed(4)).replace(".", ",");
+      nuevo.cantidad = String(+(n - x.saldo).toFixed(4)).replace(".", ",");
+    }
+    p.lotes.push(nuevo);
+  }
+
   function actualizarTotal() {
-    let total = 0, unid = new Set(), completos = 0;
+    let total = 0, unid = new Set(), completos = 0, cargados = 0;
     document.querySelectorAll(".aviso-saldo").forEach(av => {
       const p = productos[+av.dataset.i]; av.hidden = true;
-      if (!p || !p.art) return;
-      const n = leerNumero(p.cantidad);
-      const x = (partidasDe.get(p.art.codigo) || []).find(y => y.partida === p.partida);
+      const lote = p && p.lotes[+av.dataset.j];
+      if (!p || !p.art || !lote) return;
+      const n = leerNumero(lote.cantidad);
+      const x = (partidasDe.get(p.art.codigo) || []).find(y => y.partida === lote.partida);
       if (x && n > x.saldo + EPS) {
-        av.textContent = `En Tango esa partida tiene ${num(x.saldo)} ${unidad(x.unidad)}: quedaría en negativo. Revisá la partida o la cantidad.`;
+        const hayOtro = (partidasDe.get(p.art.codigo) || []).some(y => !p.lotes.some(l => l.partida === y.partida));
+        av.textContent = `En Tango esa partida tiene ${num(x.saldo)} ${unidad(x.unidad)}: quedaría en negativo.` +
+          (hayOtro ? " Si lo que falta salió de otro lote, tocá «+ Otro lote de este producto» y se pasa solo lo que sobra." : " Revisá la partida o la cantidad.");
         av.hidden = false;
       }
     });
     for (const p of productos) {
-      const n = leerNumero(p.cantidad);
-      if (p.art && n > 0) { total += n; unid.add(unidad(p.art.unidad) || "kg"); }
-      if (p.art && n > 0 && (!p.art.usa_partidas || p.partida)) completos++;
+      if (!p.art) { if (p.lotes.some(l => l.cantidad)) cargados++; continue; }
+      for (const l of p.lotes) {
+        const n = leerNumero(l.cantidad);
+        cargados++;
+        if (n > 0) { total += n; unid.add(unidad(p.art.unidad) || "kg"); }
+        if (n > 0 && (!p.art.usa_partidas || l.partida)) completos++;
+      }
     }
+    document.querySelectorAll(".subtotal").forEach(st => {
+      const p = productos[+st.dataset.i];
+      if (!p || !p.art) return;
+      const sub = p.lotes.reduce((t, l) => t + (leerNumero(l.cantidad) || 0), 0);
+      st.textContent = `Total de ${p.art.descripcion}: ${num(sub)} ${unidad(p.art.unidad) || "kg"}`;
+    });
     const tot = $("total");
     if (tot) {
       tot.replaceChildren(el("span", "", "Total de la mezcla"),
         el("b", "", total ? `${num(total)} ${unid.size === 1 ? [...unid][0] : ""}` : "—"));
     }
     const g = $("guardar");
-    if (g) g.disabled = !completos || completos !== productos.filter(p => p.art || p.cantidad).length;
+    if (g) g.disabled = !completos || completos !== cargados;
   }
 
   async function guardarMezcla() {
@@ -313,7 +379,7 @@
     const g = $("guardar"); g.disabled = true; g.textContent = "Guardando…";
     try {
       const d = await HT.escribir("/api/mezclas/crear", {
-        referencia, renglones: usados.map(p => ({ articulo: p.art.codigo, partida: p.partida, cantidad: leerNumero(p.cantidad) })) });
+        referencia, renglones: usados.flatMap(p => p.lotes.map(l => ({ articulo: p.art.codigo, partida: p.art.usa_partidas ? l.partida : "", cantidad: leerNumero(l.cantidad) }))) });
       recienGuardada = d.datos;
       referencia = ""; productos = [nuevoProducto(), nuevoProducto()];
       dibujarNueva();

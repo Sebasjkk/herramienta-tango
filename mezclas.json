@@ -1,0 +1,31 @@
+[
+ {
+  "fecha": "2026-11-26T13:17:19",
+  "quien": "Seba (127.0.0.1)",
+  "referencia": "Cliente prueba",
+  "renglones": [
+   {
+    "codigo": "PA0007",
+    "descripcion": "POLVO ALUMINIO 1.6 MM",
+    "partida": "715",
+    "deposito": "02",
+    "deposito_nombre": "TALLER",
+    "unidad": "KG",
+    "cantidad": 211.36,
+    "saldo_antes": 211.36
+   },
+   {
+    "codigo": "PA0007",
+    "descripcion": "POLVO ALUMINIO 1.6 MM",
+    "partida": "716",
+    "deposito": "02",
+    "deposito_nombre": "TALLER",
+    "unidad": "KG",
+    "cantidad": 38.64,
+    "saldo_antes": 166.83
+   }
+  ],
+  "estado": "pendiente",
+  "id": 1
+ }
+]
