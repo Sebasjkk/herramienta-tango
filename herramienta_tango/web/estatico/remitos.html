@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0B6E69">
+<title>Remitos | Herramienta Sianco</title>
+<link rel="icon" href="/icono-192.png">
+<link rel="apple-touch-icon" href="/icono-192.png">
+<link rel="manifest" href="/manifest.json">
+<link rel="stylesheet" href="/comun.css">
+<script>try{var t=localStorage.getItem("ht_tema");if(t==="claro"||t==="oscuro")document.documentElement.dataset.tema=t}catch(e){}</script>
+<style>
+  .explica { margin: 8px 0 0; font-size: .86rem; max-width: 70ch; }
+  .pestanas { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .pestana { font: inherit; font-size: .88rem; font-weight: 600; min-height: 36px; padding: 4px 14px; border-radius: 999px;
+    border: 1px solid var(--linea); background: var(--papel); color: var(--plomo); cursor: pointer; }
+  .pestana b { font-variant-numeric: tabular-nums; margin-left: 4px; color: var(--grafito); }
+  .pestana[aria-selected="true"] { background: var(--patina); border-color: var(--patina); color: var(--sobre-color); }
+  .pestana[aria-selected="true"] b { color: var(--sobre-color); }
+  @media (max-width: 599px) {
+    .pestanas { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+    .pestanas::-webkit-scrollbar { display: none; }
+    .pestana { flex: none; }
+  }
+  .remitos { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 8px; }
+  .remito { padding: 0; overflow: hidden; }
+  .remito > summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: auto 1fr auto; gap: 2px 14px;
+    padding: 12px 16px; align-items: baseline; }
+  .remito > summary::-webkit-details-marker { display: none; }
+  .remito > summary:hover .cli { color: var(--patina); }
+  .remito .num { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .remito .cli { font-weight: 600; overflow-wrap: anywhere; }
+  .remito .fec { color: var(--plomo); font-size: .88rem; white-space: nowrap; text-align: right; }
+  .remito .ped { grid-column: 2 / span 2; font-size: .85rem; color: var(--plomo); }
+  .ped .sin { color: var(--oxido); font-weight: 600; }
+  .ped .con { color: var(--grafito); font-weight: 600; }
+  .remito[open] > summary { border-bottom: 1px solid var(--linea-suave); }
+  .remito .cuerpo { padding: 10px 16px 14px; }
+  .remito table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+  .remito td, .remito th { padding: 6px 4px; border-bottom: 1px solid var(--linea-suave); text-align: left; vertical-align: top; }
+  .remito th { font-size: .78rem; color: var(--plomo); font-weight: 600; }
+  .remito .der { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .remito .partidas { display: block; font-size: .8rem; color: var(--plomo); }
+  .remito .cod { display: block; font-size: .78rem; color: var(--plomo); }
+  .mas { text-align: center; color: var(--plomo); font-size: .88rem; }
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="app-nav" id="app-nav"></nav>
+  <div class="app-principal">
+    <div class="pagina">
+      <header class="cabecera">
+        <div class="cabecera-sup">
+          <h1>Remitos</h1>
+          <div class="datos"><span id="estado">Consultando Tango…</span><button type="button" class="boton-texto" id="actualizar">Actualizar</button></div>
+        </div>
+      </header>
+      <div class="barra">
+        <div class="buscador">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>
+          <label for="q" style="position:absolute;left:-9999px">Buscar remito</label>
+          <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="Número, cliente, pedido u orden de compra" enterkeyhint="search">
+          <button type="button" class="limpiar" id="limpiar" aria-label="Borrar búsqueda" hidden>×</button>
+        </div>
+        <div class="pestanas" id="pestanas" role="tablist"></div>
+        <p class="nota explica" id="explica"></p>
+      </div>
+      <p class="mensaje-error" id="aviso" hidden></p>
+      <ul class="remitos" id="lista" aria-live="polite"></ul>
+      <p class="pie">Solo lectura: los remitos del último año. Se hacen y se anulan en Tango.</p>
+    </div>
+  </div>
+</div>
+
+<script src="/comun.js"></script>
+<script>
+(() => {
+  "use strict";
+  HT.iniciar("remitos");
+  const { $, el, norm, tokens, sinCeros, fmt, fecha, pedir, textoError, cajaError } = HT;
+  const MAX = 150;
+  const GRUPOS = [
+    { id: "todos", titulo: "Todos", f: () => true, ayuda: "Todos los remitos de venta del último año." },
+    { id: "con", titulo: "Con pedido", f: r => r.pedidos.length > 0,
+      ayuda: "Con pedido: se hicieron desde un pedido de Tango. Si un pedido se entregó en partes, cada remito aparece con el mismo pedido." },
+    { id: "sin", titulo: "Sin pedido", f: r => !r.pedidos.length,
+      ayuda: "Sin pedido: se hicieron directo, sin un pedido detrás. No tienen orden de compra del cliente asociada en Tango." },
+  ];
+  let remitos = [], grupo = "todos", mostrar = MAX;
+  const renglones = new Map();   // id -> datos | Promise
+
+  const textoBusqueda = r => norm([r.numero_corto, r.numero, r.cliente, r.codigo_cliente,
+    ...r.pedidos.flatMap(p => [p.numero, p.orden_compra])].join(" "));
+
+  async function cargar(forzar) {
+    $("estado").textContent = "Consultando Tango…";
+    try {
+      const d = await pedir("/api/remitos/vista", forzar);
+      remitos = d.datos.remitos.map(r => ({ ...r, _t: textoBusqueda(r) }));
+      $("aviso").hidden = !d.datos.aviso; $("aviso").textContent = d.datos.aviso || "";
+      $("estado").textContent = HT.textoDatos(d);
+      if (forzar) renglones.clear();
+      render();
+    } catch (e) {
+      $("estado").textContent = "Sin datos";
+      $("lista").replaceChildren(cajaError(e, () => cargar(true)));
+    }
+  }
+
+  function coincide(r, ts) {
+    return ts.every(t => r._t.includes(t) || sinCeros(solo(r.numero)).includes(sinCeros(solo(t)) || "\u0000"));
+  }
+  const solo = t => String(t || "").replace(/\D/g, "");
+
+  function render() {
+    const ts = tokens($("q").value);
+    const vis = remitos.filter(r => coincide(r, ts));
+    const p = $("pestanas"); p.replaceChildren();
+    for (const g of GRUPOS) {
+      const b = el("button", "pestana", g.titulo); b.type = "button"; b.setAttribute("role", "tab");
+      b.setAttribute("aria-selected", String(g.id === grupo));
+      b.append(el("b", "", fmt.format(vis.filter(g.f).length)));
+      b.addEventListener("click", () => { grupo = g.id; mostrar = MAX; render(); });
+      p.append(b);
+    }
+    const g = GRUPOS.find(x => x.id === grupo);
+    $("explica").textContent = g.ayuda;
+    const filas = vis.filter(g.f);
+    const ul = $("lista");
+    if (!filas.length) { ul.replaceChildren(el("li", "aviso", remitos.length ? "No hay remitos que coincidan." : "No hay remitos en el último año.")); return; }
+    ul.replaceChildren(...filas.slice(0, mostrar).map(itemRemito));
+    if (filas.length > mostrar) {
+      const li = el("li", "mas"); const b = el("button", "boton chico", `Ver ${fmt.format(Math.min(MAX, filas.length - mostrar))} más (de ${fmt.format(filas.length - mostrar)})`);
+      b.type = "button"; b.addEventListener("click", () => { mostrar += MAX; render(); }); li.append(b); ul.append(li);
+    }
+  }
+
+  function itemRemito(r) {
+    const li = el("li");
+    const d = el("details", "tarjeta remito");
+    const s = el("summary");
+    const ped = el("span", "ped");
+    if (r.pedidos.length) {
+      ped.append(el("span", "con", r.pedidos.length > 1 ? "Pedidos " : "Pedido "),
+        r.pedidos.map(p => `${p.numero.replace(/^0+/, "") || p.numero}${p.orden_compra ? ` (OC ${p.orden_compra})` : ""}`).join(", "));
+    } else ped.append(el("span", "sin", "Sin pedido"));
+    if (r.estado) ped.append(` · ${r.estado}`);
+    s.append(el("span", "num", r.numero_corto), el("span", "cli", r.cliente || r.codigo_cliente), el("span", "fec", fecha(r.fecha)), ped);
+    d.append(s);
+    const cuerpo = el("div", "cuerpo"); d.append(cuerpo);
+    d.addEventListener("toggle", () => { if (d.open) detalle(r, cuerpo); });
+    li.append(d);
+    return li;
+  }
+
+  async function detalle(r, cuerpo) {
+    if (!r.id) { cuerpo.replaceChildren(el("p", "nota", "Tango no informó el número interno de este remito: no se pueden leer sus artículos.")); return; }
+    if (!renglones.has(r.id)) renglones.set(r.id, pedir(`/api/remitos/${r.id}/renglones`, true).then(x => x.datos));
+    cuerpo.replaceChildren(el("p", "nota", "Leyendo los artículos…"));
+    try {
+      const d = await renglones.get(r.id);
+      if (!d.renglones.length) { cuerpo.replaceChildren(el("p", "nota", "No se encontraron artículos para este remito.")); return; }
+      const t = el("table"); const th = el("tr");
+      th.append(el("th", "", "Artículo"), el("th", "der", "Cantidad"));
+      const thead = el("thead"); thead.append(th); const tb = el("tbody");
+      for (const x of d.renglones) {
+        const tr = el("tr"); const a = el("td");
+        a.append(x.descripcion || x.codigo, el("span", "cod", x.codigo));
+        if (x.partidas.length) a.append(el("span", "partidas", "Partida " + x.partidas.map(p => `${p.partida} (${fmt.format(p.cantidad)})`).join(", ")));
+        tr.append(a, el("td", "der", fmt.format(x.cantidad)));
+        tb.append(tr);
+      }
+      t.append(thead, tb);
+      cuerpo.replaceChildren(t);
+      if (!d.partidas_leidas) cuerpo.append(el("p", "nota", "No se pudieron leer las partidas de este remito."));
+    } catch (e) {
+      renglones.delete(r.id);
+      cuerpo.replaceChildren(el("p", "mensaje-error", textoError(e)));
+    }
+  }
+
+  HT.conectarBuscador($("q"), $("limpiar"), () => { mostrar = MAX; render(); });
+  $("actualizar").addEventListener("click", () => cargar(true));
+  cargar(false);
+})();
+</script>
+</body>
+</html>

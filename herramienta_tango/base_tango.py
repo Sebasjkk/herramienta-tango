@@ -422,6 +422,110 @@ def _remitos_pedido_local(id_pedido: int) -> dict:
     return res
 
 
+# ------------------------------------------------------------------ remitos: pedido de cada uno y renglones
+# Que pedido (o pedidos) tiene cada remito del ultimo año. Misma deteccion de columnas que
+# _REMITOS_PEDIDO: la relacion puede estar en STA20 o STA14, por ID_GVA21 o por numero.
+_REMITOS_CON_PEDIDO = r"""
+$out = [ordered]@{}
+$cols = Q "SELECT TABLE_NAME AS t, COLUMN_NAME AS c FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME IN ('STA14','STA20') AND (COLUMN_NAME LIKE '%PEDI%' OR COLUMN_NAME LIKE '%GVA21%' OR COLUMN_NAME = 'ID_STA14')"
+$tiene = { param($t, $c) [bool]($cols | Where-Object { $_.t -eq $t -and $_.c -eq $c }) }
+$union = if (& $tiene 'STA20' 'ID_STA14') { "c.ID_STA14 = r.ID_STA14" } else { "c.TCOMP_IN_S = r.TCOMP_IN_S AND c.NCOMP_IN_S = r.NCOMP_IN_S" }
+$sel = "SELECT DISTINCT c.N_COMP AS N_COMP, p.ID_GVA21 AS ID_PEDIDO, p.NRO_PEDIDO AS NRO_PEDIDO"
+$donde = "WHERE c.T_COMP = 'REM' AND c.FECHA_MOV >= DATEADD(day, -400, GETDATE())"
+$sql = $null
+if (& $tiene 'STA20' 'ID_GVA21') { $sql = "$sel FROM STA20 r JOIN STA14 c ON $union JOIN GVA21 p ON p.ID_GVA21 = r.ID_GVA21 $donde" }
+elseif (& $tiene 'STA14' 'ID_GVA21') { $sql = "$sel FROM STA14 c JOIN GVA21 p ON p.ID_GVA21 = c.ID_GVA21 $donde" }
+else {
+  foreach ($c in @('NRO_PEDIDO', 'N_PEDIDO', 'NRO_PEDI')) {
+    if (& $tiene 'STA20' $c) { $sql = "$sel FROM STA20 r JOIN STA14 c ON $union JOIN GVA21 p ON p.NRO_PEDIDO = r.$c $donde"; break }
+    if (& $tiene 'STA14' $c) { $sql = "$sel FROM STA14 c JOIN GVA21 p ON p.NRO_PEDIDO = c.$c $donde"; break }
+  }
+}
+if ($sql) { $out.filas = Q $sql; $out.relacion = $true } else { $out.filas = @(); $out.relacion = $false }
+$out | ConvertTo-Json -Depth 4 -Compress
+"""
+
+# Renglones de un remito (por ID_STA14) con su descripcion y, si se encuentra la tabla, sus partidas.
+_RENGLONES_REMITO = r"""
+$out = [ordered]@{}
+$cols = Q "SELECT TABLE_NAME AS t, COLUMN_NAME AS c FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME LIKE 'STA%' AND COLUMN_NAME IN ('ID_STA14','N_PARTIDA','NCOMP_IN_S','TCOMP_IN_S','COD_ARTICU','CANTIDAD')"
+$tiene = { param($t, $c) [bool]($cols | Where-Object { $_.t -eq $t -and $_.c -eq $c }) }
+$union = if (& $tiene 'STA20' 'ID_STA14') { "c.ID_STA14 = r.ID_STA14" } else { "c.TCOMP_IN_S = r.TCOMP_IN_S AND c.NCOMP_IN_S = r.NCOMP_IN_S" }
+$out.renglones = Q "SELECT r.COD_ARTICU AS COD_ARTICU, a.DESCRIPCIO AS DESCRIPCION, r.CANTIDAD AS CANTIDAD, r.TIPO_MOV AS TIPO_MOV FROM STA20 r JOIN STA14 c ON $union LEFT JOIN STA11 a ON a.COD_ARTICU = r.COD_ARTICU WHERE c.ID_STA14 = __ID__"
+# Partidas: una tabla STA (que no sea STA20) con N_PARTIDA, COD_ARTICU, CANTIDAD y el comprobante interno
+$t = @($cols | Where-Object { $_.c -eq 'N_PARTIDA' -and $_.t -ne 'STA20' -and $_.t -ne 'STA08' } | ForEach-Object { $_.t } | Select-Object -Unique |
+       Where-Object { (& $tiene $_ 'NCOMP_IN_S') -and (& $tiene $_ 'TCOMP_IN_S') -and (& $tiene $_ 'COD_ARTICU') -and (& $tiene $_ 'CANTIDAD') })
+$out.tabla_partidas = if ($t.Count) { $t[0] } else { $null }
+if ($t.Count) {
+  try { $out.partidas = Q ("SELECT x.COD_ARTICU AS COD_ARTICU, x.N_PARTIDA AS N_PARTIDA, x.CANTIDAD AS CANTIDAD FROM " + $t[0] + " x JOIN STA14 c ON c.TCOMP_IN_S = x.TCOMP_IN_S AND c.NCOMP_IN_S = x.NCOMP_IN_S WHERE c.ID_STA14 = __ID__") }
+  catch { $out.partidas = @(); $out.partidas_error = $_.Exception.Message }
+} else { $out.partidas = @() }
+$out | ConvertTo-Json -Depth 4 -Compress
+"""
+
+
+def _como_lista(v) -> list[dict]:
+    """ConvertTo-Json devuelve un objeto suelto cuando hay una sola fila."""
+    if isinstance(v, dict):
+        return [v]
+    return [x for x in v if isinstance(x, dict)] if isinstance(v, list) else []
+
+
+def _remitos_con_pedido_local() -> dict:
+    clave = ("remitos_con_pedido",)
+    if clave in _cache and time.time() - _cache[clave][0] < VIGENCIA:
+        return _cache[clave][1]
+    datos = _correr(_REMITOS_CON_PEDIDO)
+    por_remito: dict[str, list[dict]] = {}
+    for f in _filas(datos):
+        n = str(f.get("N_COMP") or "").strip()
+        lista = por_remito.setdefault(n, [])
+        x = {"id": f.get("ID_PEDIDO"), "numero": str(f.get("NRO_PEDIDO") or "").strip()}
+        if x not in lista:
+            lista.append(x)
+    res = {"relacion": bool(datos.get("relacion")), "remitos": por_remito}
+    _cache[clave] = (time.time(), res)
+    return res
+
+
+def remitos_con_pedido() -> dict:
+    """{numero de remito tal cual Tango: [pedidos]} para los remitos del ultimo año (base, solo lectura)."""
+    if es_servidor():
+        return _remitos_con_pedido_local()
+    return _remoto("remitos_con_pedido", {})
+
+
+def _renglones_remito_local(id_remito: int) -> dict:
+    id_remito = int(id_remito)
+    clave = ("renglones_remito", id_remito)
+    if clave in _cache and time.time() - _cache[clave][0] < VIGENCIA:
+        return _cache[clave][1]
+    datos = _correr(_RENGLONES_REMITO.replace("__ID__", str(id_remito)))
+    partidas: dict[str, list[dict]] = {}
+    for f in _como_lista(datos.get("partidas")):
+        cod = str(f.get("COD_ARTICU") or "").strip()
+        partidas.setdefault(cod, []).append({"partida": str(f.get("N_PARTIDA") or "").strip(),
+                                             "cantidad": round(abs(_num(f.get("CANTIDAD")) or 0), 4)})
+    renglones = []
+    for f in _como_lista(datos.get("renglones")):
+        cod = str(f.get("COD_ARTICU") or "").strip()
+        signo = 1 if str(f.get("TIPO_MOV") or "S").strip().upper() == "S" else -1
+        renglones.append({"codigo": cod, "descripcion": str(f.get("DESCRIPCION") or "").strip(),
+                          "cantidad": round(abs(_num(f.get("CANTIDAD")) or 0) * signo, 4),
+                          "partidas": partidas.get(cod, [])})
+    res = {"renglones": renglones, "partidas_leidas": bool(datos.get("tabla_partidas")) and not datos.get("partidas_error")}
+    _cache[clave] = (time.time(), res)
+    return res
+
+
+def renglones_remito(id_remito: int) -> dict:
+    """Articulos (y partidas, si se encuentran) de un remito, por su ID_STA14 (base, solo lectura)."""
+    id_remito = int(id_remito)
+    if es_servidor():
+        return _renglones_remito_local(id_remito)
+    return _remoto("renglones_remito", {"id": id_remito})
+
+
 def remitos_pedido(id_pedido: int) -> dict:
     """Remitos y devoluciones hechos contra un pedido (base, solo lectura)."""
     id_pedido = int(id_pedido)
@@ -779,6 +883,10 @@ def responder_remoto(ruta: str, qs: dict):
         return _ventas_articulo_local(p("art"))
     if ruta == "aduana":
         return _aduana_local(int(p("carpeta")))
+    if ruta == "remitos_con_pedido":
+        return _remitos_con_pedido_local()
+    if ruta == "renglones_remito":
+        return _renglones_remito_local(int(p("id")))
     if ruta == "remitos_pedido":
         return _remitos_pedido_local(int(p("id")))
     raise ValueError("Consulta desconocida.")

@@ -42,6 +42,8 @@ Listas de precios (leidas de las tablas de Tango, no de la consulta 12742):
     GET /api/comprobantes/renglones?t=&n=   renglones de un comprobante (base, solo lectura)
     GET /cotizacion/<id>.pdf         el PDF del formulario 128, como lo imprime Tango
     GET /api/remitos                 remitos del ultimo año (consulta 17965), con la OC del pedido
+    GET /api/remitos/vista           los mismos, con todos sus pedidos (relacion leida de la base)
+    GET /api/remitos/<id>/renglones  articulos y partidas de un remito (base, solo lectura)
     GET /api/clientes/<id>/envio     direcciones de entrega y contacto, para las etiquetas
     GET /api/precios/cambios         registro de cambios hechos desde la herramienta
     GET /api/mezclas                 mezclas de polvos cargadas (historial)
@@ -208,6 +210,10 @@ def crear_rutas(contexto) -> dict[str, Callable[[dict, bool], tuple]]:
             raise PedidoInvalido("Falta el artículo.")
         return ps.costo(s(), art), time.time()
 
+    def _remitos_vista(forzar: bool):
+        from .. import remitos as rem
+        return rem.vista(s(), forzar)
+
     return {
         "/api/stock/partidas": lambda qs, f: s().saldos_por_partida(f),
         "/api/stock/articulos": lambda qs, f: s().saldos_por_articulo(f),
@@ -222,6 +228,7 @@ def crear_rutas(contexto) -> dict[str, Callable[[dict, bool], tuple]]:
         "/api/listas": lambda qs, f: (s().editor.listas(f), time.time()),
         "/api/cotizaciones": lambda qs, f: s().cotizaciones(f),
         "/api/remitos": lambda qs, f: s().remitos(f),
+        "/api/remitos/vista": lambda qs, f: _remitos_vista(f),
         "/api/precios/cambios": lambda qs, f: (s().editor.registro.ultimos(300), time.time()),
         "/api/mezclas": lambda qs, f: (s().mezclas.registro.todas(), time.time()),
         "/api/listas/importar/estado": lambda qs, f: (s().importador.estado(), time.time()),
@@ -267,6 +274,15 @@ def ruta_variable(contexto, ruta: str):
         return base
     if partes == ["api", "comprobantes", "renglones"]:
         return lambda qs, f: (contexto.servicio().editor.renglones_comprobante((qs.get("t") or [""])[0], (qs.get("n") or [""])[0]), time.time())
+    if len(partes) == 4 and partes[:2] == ["api", "remitos"] and partes[2].isdigit() and partes[3] == "renglones":
+        id_remito = int(partes[2])
+        def renglones_remito(qs, f):
+            from .. import base_tango, remitos as rem
+            try:
+                return rem.renglones(id_remito), time.time()
+            except base_tango.BaseNoDisponible as e:
+                raise PedidoInvalido(str(e)) from None
+        return renglones_remito
     if len(partes) == 4 and partes[:2] == ["api", "pedidos"] and partes[2].isdigit() and partes[3] == "remitos":
         from .. import base_tango
         id_pedido = int(partes[2])
