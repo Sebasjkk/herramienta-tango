@@ -175,6 +175,7 @@ class TestReferenciaDesdeInventario(unittest.TestCase):
             self.assertEqual((ref["1000300"]["estado"], ref["1000300"]["diferencia"], ref["1000300"]["excel"]),
                              ("Tango tiene menos", -2.0, 10.5))
             self.assertEqual(ref["1000500"]["estado"], "Revisar unidad")
+            self.assertEqual((ref["1000300"]["tipo"], ref["0039812"]["tipo"], ref["ZINC9"]["tipo"]), ("Polvo", "Repuesto", ""))
             self.assertEqual(ref["01000125"]["estado"], "Coincide")
             self.assertEqual(ref["ZINC9"]["estado"], "Solo en Tango")
             self.assertEqual(r["con_diferencia"], 2)

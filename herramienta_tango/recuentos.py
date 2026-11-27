@@ -189,7 +189,8 @@ class Recuentos:
                 no_en_tango += estado == "No está en Tango"
                 continue
             x = ref.setdefault(codigo, {"excel": None, "ubicacion": "", "estado": "", "diferencia": None,
-                                        "cantidad_excel": None, "unidad_excel": "", "notas": ""})
+                                        "cantidad_excel": None, "unidad_excel": "", "notas": "", "tipo": ""})
+            x["tipo"] = x["tipo"] or str(f.get("tipo") or "").strip()
             if estado and (not x["estado"] or estado in ESTADOS_DIFERENCIA):
                 x["estado"] = estado
             if estado in ESTADOS_DIFERENCIA and isinstance(f.get("diferencia"), (int, float)):
@@ -265,7 +266,7 @@ def _filas_comparacion(contenido: bytes) -> list[dict] | None:
         return next((i for i, t in enumerate(enc) if t == nombre), None)
     columnas = {"estado": col("estado"), "codigo_tango": col("codigo tango"), "excel_en_unidad_tango": col("excel en unidad de tango"),
                 "ubicacion": col("ubicacion"), "cantidad_excel": col("cantidad excel"), "unidad_excel": col("unidad excel"),
-                "notas": col("notas"), "diferencia": next((i for i, t in enumerate(enc) if t.startswith("diferencia")), None)}
+                "notas": col("notas"), "tipo": col("tipo"), "diferencia": next((i for i, t in enumerate(enc) if t.startswith("diferencia")), None)}
     if columnas["codigo_tango"] is None or columnas["excel_en_unidad_tango"] is None:
         return None
     salida = []

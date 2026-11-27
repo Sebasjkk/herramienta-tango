@@ -56,6 +56,13 @@
   .seccion.todo[aria-pressed="true"] { background: var(--patina-suave); box-shadow: inset 0 0 0 1.5px var(--patina); }
   .secciones .seccion { border-radius: 10px; padding: 10px 12px; min-height: 0; }
   .seccion:focus-visible { outline: 2px solid var(--patina); outline-offset: 2px; }
+  .grupos { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; margin: -4px 0 12px; border-bottom: 1px solid var(--linea); }
+  .grupos::-webkit-scrollbar { display: none; }
+  .grupo { flex: none; font: inherit; font-size: .92rem; font-weight: 600; border: 0; background: none; color: var(--plomo);
+           padding: 8px 12px 10px; cursor: pointer; border-bottom: 2.5px solid transparent; margin-bottom: -1px; }
+  .grupo b { font-weight: 600; margin-left: 4px; font-variant-numeric: tabular-nums; }
+  .grupos .grupo[aria-pressed="true"] { color: var(--patina); border-bottom: 3px solid var(--patina); }
+  .grupo:hover { color: var(--grafito); }
   .pista-excel { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 12px; }
   .lote { display: grid; grid-template-columns: minmax(0, 1fr) 112px auto; gap: 6px 10px; align-items: center;
           padding: 9px 0; border-top: 1px dashed var(--linea); margin-top: 8px; }
@@ -120,7 +127,10 @@
   let items = [];                   // [{codigo, descripcion, unidad, partidas, lotes: [{partida, tango}], _t}]
   let articulos = new Map();
   let filtro = "todos", mostrar = POR_PAGINA;
-  let seccion = null;               // "dif": solo lo que difiere con el inventario Excel · "todo": todo el stock
+  let seccion = null;
+  let grupo = "todos";              // Polvos / Alambres / Repuestos / ... (tipo de la hoja del inventario Excel)
+  try { grupo = localStorage.getItem("ht_recuento_grupo") || "todos"; } catch {}
+  const ORDEN_GRUPOS = ["Polvos", "Alambres", "Repuestos", "Soldadura"];               // "dif": solo lo que difiere con el inventario Excel · "todo": todo el stock
   let conCeros = false;
   try { conCeros = localStorage.getItem("ht_recuento_ceros") === "1"; } catch {}
   let actualizadoTango = null;
@@ -274,7 +284,20 @@
   }
 
   // estado de un lote: null (sin contar) o diferencia
-  const enSeccion = x => seccion !== "dif" || difiereExcel(x);
+  // grupo de un articulo: la hoja del inventario Excel (Inv. Polvo, Inv. Alambre...); si el Excel no lo
+  // tiene, se deduce de la descripcion de Tango
+  function grupoDe(x) {
+    if (x._grupo) return x._grupo;
+    const t = norm(((refDe(x) || {}).tipo) || "");
+    const d = norm(x.descripcion);
+    let g = t.startsWith("rep") ? "Repuestos" : t.startsWith("pol") ? "Polvos" : t.startsWith("ala") ? "Alambres"
+          : t.startsWith("sold") ? "Soldadura" : t ? t.charAt(0).toUpperCase() + t.slice(1) : "";
+    if (!g) g = /^polvo|\bpolvo\b/.test(d) ? "Polvos" : /^alam|\balambre\b/.test(d) ? "Alambres" : "Otros";
+    return (x._grupo = g);
+  }
+  // al buscar o escanear se busca en todos los grupos de la seccion
+  const buscando = () => !!($("q") && $("q").value.trim());
+  const enSeccion = x => (seccion !== "dif" || difiereExcel(x)) && (grupo === "todos" || buscando() || grupoDe(x) === grupo);
   const deSeccion = () => items.filter(enSeccion);
   const difLote = (x, l) => { const c = conteo(x.codigo, l.partida); return c ? Math.round((c.cantidad - c.tango) * 1e4) / 1e4 : null; };
   function cuentaLotes() {
@@ -314,6 +337,30 @@
         sec.append(b);
       }
       frag.push(sec);
+    }
+    {
+      const base = items.filter(x => seccion !== "dif" || difiereExcel(x));
+      const cuenta = new Map();
+      for (const x of base) cuenta.set(grupoDe(x), (cuenta.get(grupoDe(x)) || 0) + 1);
+      const nombres = [...cuenta.keys()].sort((a, b) => {
+        const ia = ORDEN_GRUPOS.indexOf(a), ib = ORDEN_GRUPOS.indexOf(b);
+        return (a === "Otros") - (b === "Otros") || (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b, "es");
+      });
+      if (grupo !== "todos" && !cuenta.has(grupo)) grupo = "todos";
+      if (nombres.length > 1) {
+        const gs = el("div", "grupos"); gs.setAttribute("role", "group"); gs.setAttribute("aria-label", "Tipo de artículo");
+        for (const [id, n] of [["todos", base.length], ...nombres.map(g => [g, cuenta.get(g)])]) {
+          const b = el("button", "grupo", id === "todos" ? "Todos" : id); b.type = "button";
+          b.append(el("b", "", String(n))); b.setAttribute("aria-pressed", String(grupo === id));
+          b.addEventListener("click", () => {
+            grupo = id; filtro = "todos"; mostrar = POR_PAGINA;
+            try { localStorage.setItem("ht_recuento_grupo", grupo); } catch {}
+            dibujarRecuento();
+          });
+          gs.append(b);
+        }
+        frag.push(gs);
+      }
     }
     const barra = el("div", "barra");
     const br = el("div", "barra-rc");
