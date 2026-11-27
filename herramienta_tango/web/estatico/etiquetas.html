@@ -10,6 +10,7 @@
 <link rel="manifest" href="/manifest.json">
 <link rel="stylesheet" href="/comun.css">
 <script>try{var t=localStorage.getItem("ht_tema");if(t==="claro"||t==="oscuro")document.documentElement.dataset.tema=t}catch(e){}</script>
+<style id="estilo-pagina"></style>
 <style>
   .contenido-et { display: grid; gap: 16px; }
   @media (min-width: 1100px) { .contenido-et { grid-template-columns: minmax(280px, 360px) 1fr; align-items: start; } }
@@ -74,18 +75,42 @@
   .s-bulto { margin-top: auto; text-align: center; font-weight: 700; line-height: 1; padding-bottom: 1mm; }
   .s-bulto small { display: block; font-size: 9pt; font-weight: 600; margin-bottom: 1mm; }
   .s-bulto span { font-size: 20pt; }
+  /* 20 x 20 cm (la Zebra nueva): mismo armado, todo mas grande */
+  .rotulo.t20 { width: 200mm; height: 200mm; padding: 10mm 10mm 8mm; }
+  .rotulo.t20 .et-nombre { margin-bottom: 4mm; }
+  .rotulo.t20 .et-dir { font-size: 26pt; }
+  .rotulo.t20 .et-extra { font-size: 20pt; margin-top: 5mm; }
+  .rotulo.t20 .et-retira { font-size: 22pt; margin-top: 4mm; padding: 1.5mm 4mm; }
+  .rotulo.t20 .et-pie { left: 10mm; right: 10mm; bottom: 8mm; border-top-width: .7mm; padding-top: 3mm; }
+  .rotulo.t20 .et-rte { font-size: 13pt; }
+  .rotulo.t20 .et-rte b { font-size: 14pt; }
+  .rotulo.t20 .et-bulto small { font-size: 14pt; }
+  .rotulo.t20 .et-bulto span { font-size: 34pt; }
+  .rotulo.sianco.t20 { padding: 4mm; }
+  .t20 .s-marco { border-radius: 14mm; grid-template-columns: 1fr 58mm; gap: 6mm; padding: 8mm; }
+  .t20 .s-marco::before { inset: 2.8mm; border-width: .5mm; border-radius: 11.5mm; }
+  .t20 .s-caja { border-radius: 11mm; padding: 9mm 9mm 8mm; }
+  .t20 .s-caja .et-dir { font-size: 24pt; }
+  .t20 .s-caja .et-extra { font-size: 21pt; }
+  .t20 .s-caja .et-retira { font-size: 20pt; }
+  .t20 .s-rem { font-size: 15pt; padding-top: 3mm; }
+  .t20 .s-lado { padding: 2mm 1mm 0 0; }
+  .t20 .s-raya { border-top-width: .6mm; margin: 6mm 0 5mm; }
+  .t20 .s-datos { font-size: 11.5pt; }
+  .t20 .s-bulto small { font-size: 13pt; }
+  .t20 .s-bulto span { font-size: 30pt; }
   .disenos { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 8px; }
   .disenos label { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: .92rem; }
   .disenos input { width: 18px; height: 18px; accent-color: var(--patina); margin: 0; }
 
   #impresion { display: none; }
   @media print {
-    @page { size: 150mm 100mm; margin: 0; }
     html, body { background: #fff !important; margin: 0; }
     .app { display: none !important; }
     #impresion { display: block; }
-    /* 96 mm y no 100: Chrome deja un margen de redondeo y con 100 se corta a la hoja siguiente */
-    #impresion .rotulo { height: 96mm; break-inside: avoid; }
+    /* el alto va 4 mm menos que el papel (ver estilo-pagina): Chrome deja un margen de redondeo y
+       con el alto justo se corta a la hoja siguiente */
+    #impresion .rotulo { break-inside: avoid; }
     #impresion .rotulo + .rotulo { break-before: page; page-break-before: always; }
   }
 </style>
@@ -113,7 +138,7 @@
         </div>
         <div id="armado"></div>
       </div>
-      <p class="pie">La etiqueta mide 10 × 15 cm en horizontal. Al imprimir, elegí la Zebra; en sus preferencias tiene que estar el papel de 100 × 150 mm.</p>
+      <p class="pie" id="pie-tamano"></p>
     </div>
   </div>
 </div>
@@ -128,6 +153,20 @@
   const REMITENTE = ["SIANCO S.A.", "Heredia 478 – C.A.B.A."];
   // Datos de la empresa del diseño Sianco (tal cual las etiquetas de alambres)
   const EMPRESA = ["Heredia 478 - CABA", "1427 - Tel: 11 4555-3393", "www.sianco.com.ar", "Email: ventas@sianco.com.ar"];
+  // Tamaño del papel. 20 x 20 cm es la Zebra nueva; 10 x 15 cm la ZD220.
+  const TAMANOS = {
+    "20x20": { ancho: 200, alto: 200, clase: "t20", texto: "20 × 20 cm", escala: 1.7 },
+    "15x10": { ancho: 150, alto: 100, clase: "", texto: "10 × 15 cm (horizontal)", escala: 1 },
+  };
+  let tamano = "20x20";
+  try { tamano = localStorage.getItem("ht_etiqueta_tamano") || "20x20"; } catch {}
+  if (!TAMANOS[tamano]) tamano = "20x20";
+  const T = () => TAMANOS[tamano];
+  function aplicarTamano() {
+    const t = T();
+    $("estilo-pagina").textContent = `@media print { @page { size: ${t.ancho}mm ${t.alto}mm; margin: 0; } #impresion .rotulo { height: ${t.alto - 4}mm; } }`;
+    $("pie-tamano").textContent = `La etiqueta mide ${t.texto}. Al imprimir, elegí la Zebra; en sus preferencias tiene que estar el papel de ${t.ancho} × ${t.alto} mm.`;
+  }
   let diseno = "sianco";
   try { diseno = localStorage.getItem("ht_etiqueta_diseno") || "sianco"; } catch {}
   const MAX = 80;
@@ -272,6 +311,13 @@
       l.append(i, t); ds.append(l);
     }
     s5.append(ds);
+    const ts = el("div", "disenos");
+    for (const [id, x] of Object.entries(TAMANOS)) {
+      const l = el("label"); const i = el("input"); i.type = "radio"; i.name = "tamano"; i.checked = tamano === id;
+      i.addEventListener("change", () => { tamano = id; try { localStorage.setItem("ht_etiqueta_tamano", id); } catch {} aplicarTamano(); vista(); });
+      l.append(i, x.texto); ts.append(l);
+    }
+    s5.append(el("h3", "", "Tamaño"), ts);
     t.append(s5);
 
     const s4 = el("div", "seccion-et"); s4.append(el("h3", "", "Vista previa"));
@@ -291,7 +337,7 @@
   function datosDestino(e, tamanos) {
     const nom = el("div", "et-nombre", f.nombre);
     const largo = (f.nombre || "").length;
-    nom.style.fontSize = (largo > 42 ? tamanos[0] : largo > 30 ? tamanos[1] : tamanos[2]) + "pt";
+    nom.style.fontSize = Math.round((largo > 42 ? tamanos[0] : largo > 30 ? tamanos[1] : tamanos[2]) * T().escala) + "pt";
     e.append(nom);
     const dir = el("div", "et-dir");
     if (f.direccion) dir.append(f.direccion, el("br"));
@@ -307,7 +353,7 @@
   }
 
   function etiquetaSianco(nBulto, total) {
-    const e = el("div", "rotulo sianco");
+    const e = el("div", "rotulo sianco " + T().clase);
     const marco = el("div", "s-marco");
     const caja = el("div", "s-caja");
     datosDestino(caja, [15, 17, 20]);
@@ -325,10 +371,10 @@
 
   function etiqueta(nBulto, total) {
     if (diseno === "sianco") return etiquetaSianco(nBulto, total);
-    const e = el("div", "rotulo");
+    const e = el("div", "rotulo " + T().clase);
     const nom = el("div", "et-nombre", f.nombre);
     const largo = (f.nombre || "").length;
-    nom.style.fontSize = (largo > 42 ? 18 : largo > 30 ? 21 : 25) + "pt";
+    nom.style.fontSize = Math.round((largo > 42 ? 18 : largo > 30 ? 21 : 25) * T().escala) + "pt";
     e.append(nom);
     const dir = el("div", "et-dir");
     if (f.direccion) dir.append(f.direccion, el("br"));
@@ -356,10 +402,11 @@
     const total = f.porBulto ? f.bultos : 1;
     const e = etiqueta(1, total);
     v.replaceChildren(e);
-    // Achicar la vista para que entre en la pantalla (150 mm ≈ 567 px)
-    const escala = Math.min(1, (v.clientWidth - 4) / 567);
+    // Achicar la vista para que entre en la pantalla (1 mm ≈ 3,78 px)
+    const ancho = T().ancho * 3.7795, alto = T().alto * 3.7795;
+    const escala = Math.min(1, (v.clientWidth - 4) / ancho, tamano === "20x20" ? 560 / alto : 1);
     e.style.transform = `scale(${escala})`;
-    v.style.height = Math.ceil(378 * escala + 10) + "px";
+    v.style.height = Math.ceil(alto * escala + 10) + "px";
     $("cuantas").textContent = total === 1 ? "Sale 1 etiqueta." : `Salen ${total} etiquetas (bulto 1 de ${total} a ${total} de ${total}).`;
   }
 
@@ -375,6 +422,7 @@
   window.addEventListener("resize", vista);
   HT.conectarBuscador($("q"), $("limpiar"), dibujarLista);
   $("actualizar").addEventListener("click", () => cargar(true));
+  aplicarTamano();
   cargar(false);
 })();
 </script>
