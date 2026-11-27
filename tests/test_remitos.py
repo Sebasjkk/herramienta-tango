@@ -128,6 +128,24 @@ class TestPosibleFactura(unittest.TestCase):
         self.assertTrue(d["posibles"]["R0000800000596"][0]["sin_entregar"])
 
 
+class TestAnulados(unittest.TestCase):
+    def test_suma_los_anulados_que_no_trae_tango(self):
+        base = {"relacion": True, "remitos": {}, "facturas": {}, "facturas_leidas": True, "estado_f": [], "posibles": {},
+                "anulados": [{"id": 40, "numero": "R0000800000500", "fecha": "2026-10-01", "fecha_anulacion": "2026-10-02",
+                              "usuario_anulacion": "SUPERVISOR", "codigo_cliente": "C9", "id_cliente": 9, "cliente": "ANULADO SA"},
+                             {"id": 3, "numero": "R0000800000112", "fecha": "2026-11-01", "fecha_anulacion": "2026-11-02",
+                              "usuario_anulacion": "", "codigo_cliente": "C1", "id_cliente": 1, "cliente": "CLIENTE"}]}
+        with mock.patch.object(base_tango, "remitos_con_pedido", return_value=base):
+            d, _ = remitos.vista(Servicio())
+        r = {x["numero"]: x for x in d["remitos"]}
+        self.assertEqual(len(d["remitos"]), 4)                       # 3 de Tango + 1 anulado que no venia
+        self.assertTrue(r["R0000800000500"]["anulado"])
+        self.assertEqual(r["R0000800000500"]["numero_corto"], "R 00008-00000500")
+        self.assertTrue(r["R0000800000112"]["anulado"])              # venia en la lista: se marca
+        self.assertFalse(r["R0000800000112"]["sin_facturar"])         # un anulado nunca figura sin facturar
+        self.assertFalse(r["R0000800000110"]["anulado"])
+
+
 class TestDiagFactura(unittest.TestCase):
     def test_solo_lectura(self):
         self.assertNotRegex(base_tango._DIAG_FACTURA_REMITO.upper(), r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|EXEC)\b")

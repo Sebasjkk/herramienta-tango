@@ -445,6 +445,10 @@ $out.relacion = $true
 # renglon de la factura, para los demas). Encontradas con los diagnosticos del 26/11/2026.
 try { $out.facturas = Q "SELECT DISTINCT c.N_COMP COLLATE DATABASE_DEFAULT AS N_COMP, f.TCOMP_V COLLATE DATABASE_DEFAULT AS T_COMP, f.NCOMP_V COLLATE DATABASE_DEFAULT AS N_FAC FROM GVA107 f JOIN STA14 c ON c.TCOMP_IN_S COLLATE DATABASE_DEFAULT = f.TCOMP_IN_S COLLATE DATABASE_DEFAULT AND c.NCOMP_IN_S COLLATE DATABASE_DEFAULT = f.NCOMP_IN_S COLLATE DATABASE_DEFAULT WHERE c.T_COMP = 'REM' AND c.FECHA_MOV >= $desde UNION SELECT DISTINCT c.N_COMP COLLATE DATABASE_DEFAULT, f.T_COMP_V COLLATE DATABASE_DEFAULT, f.N_COMP COLLATE DATABASE_DEFAULT FROM GVA54 f JOIN STA14 c ON c.TCOMP_IN_S COLLATE DATABASE_DEFAULT = f.TCOMP_IN_S COLLATE DATABASE_DEFAULT AND c.NCOMP_IN_S COLLATE DATABASE_DEFAULT = f.NCOMP_IN_S COLLATE DATABASE_DEFAULT WHERE c.T_COMP = 'REM' AND c.FECHA_MOV >= $desde" }
 catch { $out.facturas = @(); $out.facturas_error = $_.Exception.Message }
+# Remitos anulados: la consulta Live de comprobantes de venta no los trae. Anulado = FECHA_ANU cargada
+# (los vigentes tienen 1800-01-01) o ESTADO_MOV = A.
+try { $out.anulados = Q "SELECT c.ID_STA14 AS ID_STA14, c.N_COMP AS N_COMP, c.FECHA_MOV AS FECHA, c.FECHA_ANU AS FECHA_ANU, c.USUARIO_ANU AS USUARIO_ANU, c.COD_PRO_CL AS COD_CLIENT, c.ID_GVA14 AS ID_GVA14, cl.RAZON_SOCI AS RAZON_SOCI FROM STA14 c LEFT JOIN GVA14 cl ON cl.COD_CLIENT COLLATE DATABASE_DEFAULT = c.COD_PRO_CL COLLATE DATABASE_DEFAULT WHERE c.T_COMP = 'REM' AND c.FECHA_MOV >= $desde AND (c.FECHA_ANU > '1900-01-01' OR c.ESTADO_MOV = 'A')" }
+catch { $out.anulados = @(); $out.anulados_error = $_.Exception.Message }
 # Remitos que Tango ya marca como facturados (STA14.ESTADO_MOV = F), aunque no se encuentre la factura
 try { $out.estado_f = Q "SELECT c.N_COMP COLLATE DATABASE_DEFAULT AS N_COMP FROM STA14 c WHERE c.T_COMP = 'REM' AND c.ESTADO_MOV = 'F' AND c.FECHA_MOV >= $desde" }
 catch { $out.estado_f = @() }
@@ -610,7 +614,12 @@ def _remitos_con_pedido_local() -> dict:
     res = {"relacion": bool(datos.get("relacion")), "remitos": por_remito, "facturas": facturas,
            "facturas_leidas": not datos.get("facturas_error"),
            "estado_f": sorted({str(f.get("N_COMP") or "").strip() for f in _como_lista(datos.get("estado_f"))}),
-           "posibles": posibles}
+           "posibles": posibles,
+           "anulados": [{"id": f.get("ID_STA14"), "numero": str(f.get("N_COMP") or "").strip(), "fecha": f.get("FECHA"),
+                         "fecha_anulacion": f.get("FECHA_ANU") if str(f.get("FECHA_ANU") or "") > "1900" else None,
+                         "usuario_anulacion": str(f.get("USUARIO_ANU") or "").strip(),
+                         "codigo_cliente": str(f.get("COD_CLIENT") or "").strip(), "id_cliente": f.get("ID_GVA14"),
+                         "cliente": str(f.get("RAZON_SOCI") or "").strip()} for f in _como_lista(datos.get("anulados"))]}
     _cache[clave] = (time.time(), res)
     return res
 

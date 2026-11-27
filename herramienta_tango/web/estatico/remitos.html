@@ -45,6 +45,8 @@
   .remito .partidas { display: block; font-size: .8rem; color: var(--plomo); }
   .remito .cod { display: block; font-size: .78rem; color: var(--plomo); }
   .aviso-posible { margin: 10px 0 0; padding: 8px 10px; border-radius: var(--radio); background: color-mix(in srgb, var(--advertencia, #B7791F) 12%, transparent); }
+  .remito.anulado { opacity: .62; }
+  .remito.anulado .num { text-decoration: line-through; text-decoration-thickness: 1px; }
   .acciones-rem { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
   .mas { text-align: center; color: var(--plomo); font-size: .88rem; }
 </style>
@@ -85,13 +87,15 @@
   const { $, el, norm, tokens, sinCeros, fmt, fecha, pedir, textoError, cajaError } = HT;
   const MAX = 150;
   const GRUPOS = [
-    { id: "todos", titulo: "Todos", f: () => true, ayuda: "Todos los remitos de venta del último año." },
-    { id: "con", titulo: "Con pedido", f: r => r.pedidos.length > 0,
+    { id: "todos", titulo: "Todos", f: () => true, ayuda: "Todos los remitos de venta del último año, incluidos los anulados (atenuados)." },
+    { id: "con", titulo: "Con pedido", f: r => !r.anulado && r.pedidos.length > 0,
       ayuda: "Con pedido: se hicieron desde un pedido de Tango. Si un pedido se entregó en partes, cada remito aparece con el mismo pedido." },
-    { id: "sin", titulo: "Sin pedido", f: r => !r.pedidos.length,
+    { id: "sin", titulo: "Sin pedido", f: r => !r.anulado && !r.pedidos.length,
       ayuda: "Sin pedido: se hicieron directo, sin un pedido detrás. No tienen orden de compra del cliente asociada en Tango." },
     { id: "sinfac", titulo: "Sin facturar", f: r => r.sin_facturar === true,
       ayuda: "Sin facturar: ninguna factura está hecha con este remito y Tango lo tiene pendiente. Si aparece una «posible factura», es una del mismo cliente y por el mismo importe que se hizo sin elegir el remito." },
+    { id: "anulados", titulo: "Anulados", f: r => r.anulado === true,
+      ayuda: "Anulados: remitos que se anularon en Tango. La mercadería volvió al stock; no se entregaron ni se facturan." },
   ];
   let remitos = [], grupo = "todos", mostrar = MAX;
   const params = new URLSearchParams(location.search);
@@ -209,9 +213,11 @@
 
   function itemRemito(r) {
     const li = el("li");
-    const d = el("details", "tarjeta remito");
+    const d = el("details", "tarjeta remito" + (r.anulado ? " anulado" : ""));
     const s = el("summary");
     const ped = el("span", "ped");
+    if (r.anulado) ped.append(el("span", "sin", "Anulado"), r.fecha_anulacion ? ` el ${fecha(r.fecha_anulacion)}` : "",
+                              r.usuario_anulacion ? ` por ${r.usuario_anulacion}` : "", " · ");
     if (r.pedidos.length) {
       ped.append(el("span", "con", r.pedidos.length > 1 ? "Pedidos " : "Pedido "));
       r.pedidos.forEach((p, k) => {
@@ -278,12 +284,11 @@
         cuerpo.append(el("p", "nota", "Tango lo tiene como facturado, pero no se encontró con qué factura."));
       }
       const acc = el("div", "acciones-rem");
-      const et = el("a", "boton chico", "Etiqueta de envío"); et.href = "/etiquetas?remito=" + r.id;
-      acc.append(et);
+      if (!r.anulado) { const et = el("a", "boton chico", "Etiqueta de envío"); et.href = "/etiquetas?remito=" + r.id; acc.append(et); }
       if (r.codigo_cliente) { const cl = el("a", "boton chico", "Ver cliente"); cl.href = "/clientes?ver=" + encodeURIComponent(r.codigo_cliente); acc.append(cl); }
       cuerpo.append(acc);
       if (!d.partidas_leidas) cuerpo.append(el("p", "nota", "No se pudieron leer las partidas de este remito."));
-      if (!(r.facturas && r.facturas.length)) cuerpo.append(botonDiagFactura(r));
+      if (!r.anulado && !(r.facturas && r.facturas.length)) cuerpo.append(botonDiagFactura(r));
     } catch (e) {
       renglones.delete(r.id);
       cuerpo.replaceChildren(el("p", "mensaje-error", textoError(e)));
