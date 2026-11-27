@@ -7,6 +7,11 @@ de la empresa consulte Tango sin conocer su API:
     GET /api/estado                  version y estado de las actualizaciones
     GET /api/stock/partidas          saldos por partida
     GET /api/stock/articulos         saldos por articulo y deposito (tambien los que no llevan partidas)
+    GET /api/recuentos               recuentos de stock guardados (y si ya esta la plantilla de Ajustes)
+    GET /api/recuentos/<id>          un recuento con todos sus conteos
+    GET /recuentos/<id>.xlsx         Excel del recuento (diferencias y todo lo contado)
+    GET /recuentos/<id>/ajuste.xlsx  planilla de Ajustes de stock para importar en Tango (solo diferencias)
+    POST /api/recuentos/{crear,contar,estado,borrar,plantilla,referencia}
     GET /api/articulos
     GET /api/depositos
     GET /api/clientes
@@ -138,7 +143,35 @@ RUTAS_APP = {"/api/precios/cambiar", "/api/precios/agregar", "/api/precios/quita
              "/api/mezclas/crear", "/api/mezclas/subidas", "/api/mezclas/borrar",
              "/api/listas/importar/analizar", "/api/listas/importar/aplicar", "/api/listas/restaurar",
              "/api/pedidos/eliminar", "/api/pedidos/cerrar", "/api/opciones",
-             "/api/precios/ajuste/vista-previa", "/api/precios/ajuste", "/api/precios/ajuste/revertir"}
+             "/api/precios/ajuste/vista-previa", "/api/precios/ajuste", "/api/precios/ajuste/revertir",
+             "/api/recuentos/crear", "/api/recuentos/contar", "/api/recuentos/estado", "/api/recuentos/borrar",
+             "/api/recuentos/plantilla", "/api/recuentos/referencia"}
+RUTAS_ARCHIVO = {"/api/listas/importar/analizar", "/api/recuentos/plantilla", "/api/recuentos/referencia"}
+
+_recuentos = None
+_recuentos_lock = threading.Lock()
+
+
+def recuentos():
+    global _recuentos
+    with _recuentos_lock:
+        if _recuentos is None:
+            from ..recuentos import Recuentos
+            _recuentos = Recuentos()
+        return _recuentos
+
+
+def es_ruta_recuento(ruta: str) -> bool:
+    return ruta == "/api/recuentos" or ruta.startswith("/api/recuentos/") or ruta.startswith("/recuentos/")
+
+
+def _recuentos_en_otra_pc() -> tuple[str, int] | None:
+    """Los recuentos se guardan en la Herramienta del servidor de Tango, asi todos los equipos ven
+    los mismos. Las otras PCs le reenvian el pedido. None = se atiende aca."""
+    from .. import base_tango
+    if base_tango.es_servidor():
+        return None
+    return base_tango._servidor_tango()
 
 
 def _a_json(valor) -> object:
@@ -251,6 +284,7 @@ def crear_rutas(contexto) -> dict[str, Callable[[dict, bool], tuple]]:
         "/api/remitos/diagnostico": lambda qs, f: _remitos_diag(),
         "/api/precios/cambios": lambda qs, f: (s().editor.registro.ultimos(300), time.time()),
         "/api/mezclas": lambda qs, f: (s().mezclas.registro.todas(), time.time()),
+        "/api/recuentos": lambda qs, f: (_lista_recuentos(), time.time()),
         "/api/listas/importar/estado": lambda qs, f: (s().importador.estado(), time.time()),
         "/api/listas/restaurar/estado": lambda qs, f: (s().editor.estado_restauracion(), time.time()),
         "/api/precios/ajuste/estado": lambda qs, f: (s().editor.estado_ajuste(), time.time()),
@@ -264,9 +298,24 @@ def crear_rutas(contexto) -> dict[str, Callable[[dict, bool], tuple]]:
     }
 
 
+def _lista_recuentos() -> dict:
+    from ..recuentos import describir_plantilla, ruta_plantilla
+    plantilla = None
+    if ruta_plantilla().exists():
+        try:
+            info = describir_plantilla(ruta_plantilla().read_bytes())
+            plantilla = {"hoja": info["hoja"], "cargada": datetime.fromtimestamp(ruta_plantilla().stat().st_mtime).isoformat(timespec="seconds")}
+        except DatoInvalido:
+            plantilla = None
+    return {"recuentos": recuentos().todos(), "plantilla": plantilla}
+
+
 def ruta_variable(contexto, ruta: str):
     """/api/listas/<id> y /api/articulos/<codigo>/precios"""
     partes = ruta.strip("/").split("/")
+    if len(partes) == 3 and partes[:2] == ["api", "recuentos"] and partes[2].isdigit():
+        id_recuento = int(partes[2])
+        return lambda qs, f: (recuentos().uno(id_recuento), time.time())
     if len(partes) == 3 and partes[:2] == ["api", "listas"] and partes[2].isdigit():
         id_lista = int(partes[2])
         return lambda qs, f: (contexto.servicio().editor.lista(id_lista, f), time.time())
@@ -474,9 +523,38 @@ def crear_manejador(contexto):
                             {"Content-Disposition": 'attachment; filename="Herramienta Sianco.url"'})
 
         # --------------------------------------------------------- GET
+        def _reenviar(self, destino: tuple[str, int], cuerpo: bytes | None = None) -> None:
+            """Pasa el pedido tal cual a la Herramienta del servidor y devuelve su respuesta."""
+            import urllib.error
+            import urllib.request
+            encabezados = {k: v for k, v in (("Content-Type", self.headers.get("Content-Type")),
+                                               (ENCABEZADO_NOMBRE, self.headers.get(ENCABEZADO_NOMBRE))) if v}
+            pedido = urllib.request.Request(f"http://{destino[0]}:{destino[1]}{self.path}", data=cuerpo,
+                                            headers=encabezados, method=self.command)
+            try:
+                with urllib.request.urlopen(pedido, timeout=60) as r:
+                    estado, tipo, disp, datos = r.status, r.headers.get("Content-Type"), r.headers.get("Content-Disposition"), r.read()
+            except urllib.error.HTTPError as e:
+                estado, tipo, disp, datos = e.code, e.headers.get("Content-Type"), None, e.read()
+                if estado == 404 and not (tipo or "").startswith("application/json"):
+                    datos = json.dumps({"ok": False, "error": "La Herramienta del servidor tiene una versión anterior sin "
+                                        "recuentos. Se actualiza sola en hasta 15 minutos."}).encode()
+                    tipo = "application/json; charset=utf-8"
+            except (urllib.error.URLError, OSError) as e:
+                self._json(502, {"ok": False, "error": f"Los recuentos se guardan en la Herramienta del servidor "
+                                 f"({destino[0]}) y no respondió. ¿Está prendida? {e}"})
+                return
+            self._responder(estado, tipo or "application/octet-stream", datos,
+                            {"Content-Disposition": disp} if disp else None)
+
         def do_GET(self):
             url = urllib.parse.urlparse(self.path)
             qs = urllib.parse.parse_qs(url.query)
+            if es_ruta_recuento(url.path):
+                destino = _recuentos_en_otra_pc()
+                if destino:
+                    self._reenviar(destino)
+                    return
             try:
                 if url.path == "/api/estado":
                     act = contexto.actualizador.estado.como_dict() if contexto.actualizador else None
@@ -542,6 +620,18 @@ def crear_manejador(contexto):
                     nombre = nombre.replace('"', "").encode("ascii", "replace").decode()
                     self._responder(200, "application/pdf", contenido,
                                     {"Content-Disposition": f'inline; filename="{nombre}"'})
+                elif url.path.startswith("/recuentos/") and url.path.endswith(".xlsx"):
+                    resto = url.path[len("/recuentos/"):-5]
+                    ajuste = resto.endswith("/ajuste")
+                    id_texto = resto[:-len("/ajuste")] if ajuste else resto
+                    if not id_texto.isdigit():
+                        raise PedidoInvalido("Recuento inválido.")
+                    r = recuentos().uno(int(id_texto))
+                    nombre = f"{'Ajuste de stock' if ajuste else 'Recuento'} {r['nombre']} {time.strftime('%d-%m-%Y')}.xlsx"
+                    nombre = "".join(ch for ch in nombre if ch not in '\\/:*?"<>|')
+                    contenido = recuentos().planilla_ajuste(int(id_texto)) if ajuste else recuentos().excel(int(id_texto))
+                    self._responder(200, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", contenido,
+                                    {"Content-Disposition": "attachment; filename*=UTF-8''" + urllib.parse.quote(nombre)})
                 elif url.path == "/mezclas/planilla.xlsx":
                     try:
                         ids = [int(x) for x in (qs.get("ids") or [""])[0].split(",") if x.strip()]
@@ -607,7 +697,7 @@ def crear_manejador(contexto):
             return f"{nombre} ({self.client_address[0]})" if nombre else self.client_address[0]
 
         def _post_app(self, ruta: str) -> None:
-            datos = self._leer_cuerpo(MAX_CUERPO_ARCHIVO if ruta == "/api/listas/importar/analizar" else MAX_CUERPO)
+            datos = self._leer_cuerpo(MAX_CUERPO_ARCHIVO if ruta in RUTAS_ARCHIVO else MAX_CUERPO)
             if datos is None:
                 return
             texto = lambda clave: str(datos.get(clave) or "")
@@ -659,6 +749,8 @@ def crear_manejador(contexto):
                 elif ruta == "/api/listas/importar/aplicar":
                     r = contexto.servicio().importador.aplicar(texto("plan"), quien, bool(datos.get("actualizar_distintos")),
                                                                bool(datos.get("saltear_observaciones")))
+                elif ruta.startswith("/api/recuentos/"):
+                    r = self._post_recuento(ruta, datos, texto, entero, quien)
                 elif ruta == "/api/mezclas/crear":
                     r = contexto.servicio().mezclas.crear(texto("referencia"), datos.get("renglones"), quien)
                 elif ruta == "/api/mezclas/subidas":
@@ -680,6 +772,40 @@ def crear_manejador(contexto):
             except Exception as e:
                 log.exception("Error al modificar")
                 self._json(500, {"ok": False, "error": f"Error inesperado: {e.__class__.__name__}"})
+
+        def _post_recuento(self, ruta, datos, texto, entero, quien):
+            reg = recuentos()
+            def archivo() -> bytes:
+                try:
+                    return base64.b64decode(texto("archivo"), validate=True)
+                except (binascii.Error, ValueError):
+                    raise DatoInvalido("No se pudo leer el archivo.") from None
+            if ruta == "/api/recuentos/crear":
+                r = reg.crear(texto("nombre"), quien)
+                log.info(f"Recuentos: {quien} creó «{r['nombre']}»")
+                return r
+            if ruta == "/api/recuentos/contar":
+                return reg.contar(entero("id"), texto("codigo"), texto("partida"), datos.get("cantidad"), datos.get("tango"),
+                                  quien, texto("nota"), texto("unidad"), texto("descripcion"), bool(datos.get("nueva")))
+            if ruta == "/api/recuentos/estado":
+                return reg.cambiar_estado(entero("id"), texto("estado"), quien)
+            if ruta == "/api/recuentos/borrar":
+                r = reg.borrar(entero("id"), texto("confirmar"))
+                log.info(f"Recuentos: {quien} borró «{r['borrado']}»")
+                return r
+            if ruta == "/api/recuentos/referencia":
+                return reg.cargar_referencia(entero("id"), archivo())
+            # plantilla de Ajustes de stock: se valida y queda en la carpeta del programa
+            from ..recuentos import describir_plantilla, ruta_plantilla
+            contenido = archivo()
+            info = describir_plantilla(contenido)
+            destino = ruta_plantilla()
+            destino.parent.mkdir(parents=True, exist_ok=True)
+            tmp = destino.with_suffix(".tmp")
+            tmp.write_bytes(contenido)
+            tmp.replace(destino)
+            log.info(f"Recuentos: {quien} cargó la plantilla de Ajustes de stock (hoja {info['hoja']})")
+            return {"hoja": info["hoja"], "columnas": info["columnas"]}
 
         def _exportar(self) -> None:
             """Arma un .xlsx con lo que manda la pagina (lo que se ve en pantalla). No toca Tango."""
@@ -740,6 +866,15 @@ def crear_manejador(contexto):
 
         def do_POST(self):
             url = urllib.parse.urlparse(self.path)
+            if es_ruta_recuento(url.path) and url.path in RUTAS_APP:
+                destino = _recuentos_en_otra_pc()
+                if destino:
+                    largo = int(self.headers.get("Content-Length") or 0)
+                    if largo > MAX_CUERPO_ARCHIVO:
+                        self._json(413, {"ok": False, "error": "Pedido demasiado grande."})
+                        return
+                    self._reenviar(destino, self.rfile.read(largo) if largo else b"{}")
+                    return
             if url.path == "/api/inventario/comparar":
                 self._comparar_inventario()
                 return

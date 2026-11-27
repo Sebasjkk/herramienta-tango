@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0B6E69">
+<title>Recuento de stock | Herramienta Sianco</title>
+<link rel="icon" href="/icono-192.png">
+<link rel="apple-touch-icon" href="/icono-192.png">
+<link rel="manifest" href="/manifest.json">
+<link rel="stylesheet" href="/comun.css">
+<script>try{var t=localStorage.getItem("ht_tema");if(t==="claro"||t==="oscuro")document.documentElement.dataset.tema=t}catch(e){}</script>
+<style>
+  .lista-rc { list-style: none; margin: 0; padding: 0; }
+  .rc { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 18px; border-top: 1px solid var(--linea); }
+  .rc:first-child { border-top: 0; }
+  .rc a { font-weight: 600; color: inherit; text-decoration: none; overflow-wrap: anywhere; }
+  .rc a:hover { color: var(--patina); }
+  .rc small { display: block; color: var(--plomo); font-size: .8rem; margin-top: 2px; }
+  .nuevo-rc { display: flex; gap: 10px; padding: 16px 18px; border-top: 1px solid var(--linea); flex-wrap: wrap; }
+  .nuevo-rc .campo { flex: 1 1 220px; width: auto; }
+  .bloque { padding: 4px 0; margin-bottom: 16px; }
+  .bloque h2 { font-size: 1rem; margin: 12px 18px 4px; }
+  .bloque > .nota { margin: 0 18px 10px; }
+
+  .barra-rc { display: flex; gap: 8px; align-items: stretch; }
+  .barra-rc .buscador { flex: 1; }
+  .escanear { display: inline-flex; align-items: center; gap: 6px; border-radius: var(--radio); border-width: 2px; padding: 0 14px; font-weight: 600; }
+  .escanear svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; }
+  @media (max-width: 599px) { .escanear span { position: absolute; left: -9999px; } .escanear { padding: 0 12px; } }
+  .escaneo { margin: 6px 2px 0; }
+  .barra-filtros { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+  .ceros { font-size: .85rem; display: inline-flex; gap: 6px; align-items: center; color: var(--plomo); cursor: pointer; }
+
+  .avance-rc { display: flex; align-items: center; gap: 12px; margin: 4px 2px 14px; font-size: .88rem; color: var(--plomo); }
+  .avance-rc .avance { flex: 1; max-width: 280px; }
+  .avance-rc b { color: var(--grafito); font-variant-numeric: tabular-nums; }
+
+  .art { padding: 12px 16px 10px; margin-bottom: 10px; }
+  .art-cab { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+  .art-cab h3 { font-size: .98rem; margin: 0; overflow-wrap: anywhere; }
+  .art-cab h3 small { display: block; font-weight: 400; color: var(--plomo); font-size: .8rem; margin-top: 1px; }
+  .art-cab .tot { white-space: nowrap; font-size: .85rem; color: var(--plomo); text-align: right; }
+  .art-cab .tot b { color: var(--grafito); font-variant-numeric: tabular-nums; }
+  .ref { font-size: .8rem; color: var(--plomo); margin: 4px 0 0; }
+  .lote { display: grid; grid-template-columns: minmax(0, 1fr) 112px auto; gap: 6px 10px; align-items: center;
+          padding: 9px 0; border-top: 1px dashed var(--linea); margin-top: 8px; }
+  .lote .nom { min-width: 0; }
+  .lote .nom b { display: block; font-size: .92rem; overflow-wrap: anywhere; }
+  .lote .nom small { color: var(--plomo); font-size: .8rem; }
+  .lote input { text-align: right; font-variant-numeric: tabular-nums; padding: 8px 10px; }
+  .lote input.guardando { opacity: .6; }
+  .lote .coincide { min-height: 38px; padding: 4px 12px; font-size: .82rem; }
+  .lote .info-c { grid-column: 1 / -1; font-size: .78rem; color: var(--plomo); display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .dif { font-weight: 700; font-size: .76rem; padding: 1px 8px; border-radius: 99px; font-variant-numeric: tabular-nums; }
+  .dif.ok { background: var(--patina-suave); color: var(--patina-oscura); }
+  .dif.mas { background: var(--ambar-suave); color: var(--ambar); }
+  .dif.menos { background: var(--oxido-suave); color: var(--oxido); }
+  .lote.contado .nom b::after { content: " ✓"; color: var(--patina); }
+  .agregar-lote { margin-top: 8px; font-size: .82rem; }
+  @media (max-width: 480px) { .lote { grid-template-columns: minmax(0, 1fr) 96px; } .lote .coincide { grid-column: 1 / -1; justify-self: start; } }
+
+  .acciones-rc { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0 6px; }
+  .menu-rc { display: grid; gap: 10px; }
+  .menu-rc .boton { justify-content: flex-start; }
+  .menu-rc p { margin: 0; font-size: .85rem; color: var(--plomo); }
+  .estado-rc { font-size: .75rem; font-weight: 700; padding: 2px 8px; border-radius: 99px; white-space: nowrap; }
+  .estado-rc.abierto { background: var(--patina-suave); color: var(--patina-oscura); }
+  .estado-rc.cerrado { background: var(--zinc); color: var(--plomo); }
+  .volver { font-size: .85rem; }
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="app-nav" id="app-nav"></nav>
+  <div class="app-principal">
+    <div class="pagina">
+      <header class="cabecera">
+        <div class="cabecera-sup">
+          <h1 id="titulo">Recuento de stock</h1>
+          <div class="datos"><span id="estado">Consultando…</span><button type="button" class="boton-texto" id="actualizar">Actualizar</button></div>
+        </div>
+      </header>
+      <div id="contenido"></div>
+      <p class="pie">Se cuenta el depósito Central, lote por lote. Cada conteo guarda cuánto decía Tango en ese momento, quién contó y cuándo; la diferencia es contado − Tango. Los recuentos quedan guardados en la Herramienta del servidor para volver a usarlos. Tango no cambia hasta que se importa la planilla de Ajustes de stock.</p>
+    </div>
+  </div>
+</div>
+<input type="file" id="foto" accept="image/*" capture="environment" hidden>
+
+<script src="/comun.js"></script>
+<script src="/escaner.js"></script>
+<script>
+(() => {
+  "use strict";
+  HT.iniciar("recuento");
+  const { $, el, norm, tokens, num, unidad, pedir, cajaError, escribir, ventana, campo, botones, avisar } = HT;
+  const EPS = 0.0001;
+  const POR_PAGINA = 40;
+  const params = new URLSearchParams(location.search);
+
+  let lista = null;                 // {recuentos, plantilla}
+  let rc = null;                    // recuento abierto (con conteos)
+  let items = [];                   // [{codigo, descripcion, unidad, partidas, lotes: [{partida, tango}], _t}]
+  let articulos = new Map();
+  let filtro = "todos", mostrar = POR_PAGINA;
+  let conCeros = false;
+  try { conCeros = localStorage.getItem("ht_recuento_ceros") === "1"; } catch {}
+  let actualizadoTango = null;
+
+  const leerNumero = t => { t = String(t ?? "").trim(); if (!t) return NaN; return Number(t.includes(",") ? t.replace(/\./g, "").replace(",", ".") : t); };
+  const fechaHora = iso => iso ? new Date(iso).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" }) : "";
+  const clave = (c, p) => `${c}|${p || ""}`;
+  const conteo = (c, p) => rc && rc.conteos[clave(c, p)];
+  const quienCorto = q => (q || "").replace(/\s*\([^)]*\)\s*$/, "");
+  const idActual = () => Number(params.get("id")) || null;
+
+  // ---------------------------------------------------------------- listado de recuentos
+  async function cargarLista() {
+    $("estado").textContent = "Consultando…";
+    try {
+      lista = (await pedir("/api/recuentos", true)).datos;
+      $("estado").textContent = "";
+      dibujarLista();
+    } catch (e) { $("estado").textContent = "Sin datos"; $("contenido").replaceChildren(cajaError(e, cargarLista)); }
+  }
+
+  function dibujarLista() {
+    $("titulo").textContent = "Recuento de stock";
+    const caja = el("section", "tarjeta bloque");
+    caja.append(el("h2", "", "Recuentos"));
+    if (!lista.recuentos.length) caja.append(el("p", "nota", "Todavía no hay recuentos. Creá uno para empezar a contar."));
+    const ul = el("ul", "lista-rc");
+    for (const r of lista.recuentos) {
+      const li = el("li", "rc");
+      const izq = el("div");
+      const a = el("a", "", r.nombre); a.href = "/recuento?id=" + r.id;
+      izq.append(a, el("small", "", `${fechaHora(r.creado)} · ${quienCorto(r.creado_por)} · ${r.contados} contados · ${r.con_diferencia} con diferencia`));
+      li.append(izq, el("span", "estado-rc " + r.estado, r.estado === "abierto" ? "Abierto" : "Cerrado"));
+      ul.append(li);
+    }
+    caja.append(ul);
+    const f = el("form", "nuevo-rc");
+    const inp = el("input", "campo"); inp.placeholder = "Nombre (ej.: Recuento diciembre 2026)"; inp.maxLength = 60;
+    inp.setAttribute("aria-label", "Nombre del recuento nuevo");
+    const b = el("button", "boton primario", "Crear recuento"); b.type = "submit";
+    const err = el("p", "mensaje-error"); err.hidden = true; err.style.flexBasis = "100%";
+    f.append(inp, b, err);
+    f.addEventListener("submit", async ev => {
+      ev.preventDefault(); err.hidden = true; b.disabled = true;
+      try {
+        const r = (await escribir("/api/recuentos/crear", { nombre: inp.value })).datos;
+        location.href = "/recuento?id=" + r.id;
+      } catch (e) { err.textContent = e.message; err.hidden = false; b.disabled = false; }
+    });
+    caja.append(f);
+    $("contenido").replaceChildren(caja, plantillaCaja());
+  }
+
+  function plantillaCaja() {
+    const caja = el("section", "tarjeta bloque");
+    caja.append(el("h2", "", "Plantilla de Ajustes de stock"));
+    const p = lista.plantilla;
+    caja.append(el("p", "nota", p
+      ? `Cargada el ${fechaHora(p.cargada)}. Con ella se arma la planilla para importar las diferencias en Tango.`
+      : "Falta cargarla una vez. En Tango: Stock > Movimientos masivos > Ajustes de stock > Exportar plantilla vacía, y subí ese archivo acá sin modificarlo."));
+    const acc = el("div", "acciones-rc"); acc.style.margin = "0 18px 14px";
+    const b = el("button", "boton" + (p ? "" : " primario"), p ? "Reemplazar plantilla" : "Cargar plantilla"); b.type = "button";
+    b.addEventListener("click", () => elegirArchivo(".xlsx", async archivo => {
+      const d = (await escribir("/api/recuentos/plantilla", { archivo })).datos;
+      avisar(`Plantilla cargada (hoja «${d.hoja}»)`);
+      lista = (await pedir("/api/recuentos", true)).datos;
+    }, () => idActual() ? null : dibujarLista()));
+    acc.append(b); caja.append(acc);
+    return caja;
+  }
+
+  function elegirArchivo(accept, usar, despues) {
+    const i = el("input"); i.type = "file"; i.accept = accept;
+    i.addEventListener("change", async () => {
+      const f = i.files[0]; if (!f) return;
+      try {
+        const b64 = await new Promise((ok, mal) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1] || ""); r.onerror = () => mal(new Error("No se pudo leer el archivo.")); r.readAsDataURL(f); });
+        await usar(b64);
+        if (despues) despues();
+      } catch (e) { avisar(e.message); }
+    });
+    i.click();
+  }
+
+  // ---------------------------------------------------------------- un recuento
+  async function cargarRecuento(forzar) {
+    $("estado").textContent = "Consultando Tango…";
+    try {
+      const [r, l, sp, sa, ar] = await Promise.all([
+        pedir("/api/recuentos/" + idActual(), true), pedir("/api/recuentos", true),
+        pedir("/api/stock/partidas", forzar), pedir("/api/stock/articulos", forzar), pedir("/api/articulos", forzar)]);
+      rc = r.datos; lista = l.datos;
+      articulos = new Map(ar.datos.map(a => [a.codigo, a]));
+      armarItems(sp.datos, sa.datos);
+      actualizadoTango = new Date(sp.actualizado);
+      $("estado").textContent = "Tango de las " + HT.hora(actualizadoTango) + " h";
+      dibujarRecuento();
+    } catch (e) { $("estado").textContent = "Sin datos"; $("contenido").replaceChildren(cajaError(e, () => cargarRecuento(true))); }
+  }
+
+  const esCentral = d => norm(d).replace(/^\d+\s*/, "") === "central";
+
+  function armarItems(partidas, saldosArt) {
+    const porCodigo = new Map();
+    const item = (codigo, conPartidas) => {
+      let x = porCodigo.get(codigo);
+      if (!x) {
+        const a = articulos.get(codigo) || {};
+        x = { codigo, descripcion: a.descripcion || "", unidad: a.unidad || "", partidas: conPartidas ?? !!a.usa_partidas, lotes: new Map() };
+        porCodigo.set(codigo, x);
+      }
+      return x;
+    };
+    const conPartidas = new Set(partidas.map(p => p.codigo_articulo));
+    for (const p of partidas) {
+      if (!esCentral(p.deposito)) continue;
+      const x = item(p.codigo_articulo, true);
+      if (!x.descripcion) x.descripcion = p.descripcion || "";
+      if (!x.unidad) x.unidad = p.unidad || "";
+      if (Math.abs(p.saldo) > EPS) x.lotes.set(p.partida, (x.lotes.get(p.partida) || 0) + p.saldo);
+    }
+    for (const s of saldosArt) {
+      if (!esCentral(s.deposito) || conPartidas.has(s.codigo_articulo)) continue;
+      const a = articulos.get(s.codigo_articulo);
+      if (a && a.usa_partidas) continue;
+      const x = item(s.codigo_articulo, false);
+      if (!x.descripcion) x.descripcion = s.descripcion || "";
+      if (!x.unidad) x.unidad = s.unidad || "";
+      if (Math.abs(s.saldo) > EPS) x.lotes.set("", (x.lotes.get("") || 0) + s.saldo);
+    }
+    // lo ya contado en este recuento siempre aparece (aunque Tango ahora diga 0 o el lote sea nuevo)
+    for (const c of Object.values(rc.conteos)) {
+      const x = item(c.codigo, c.partida ? true : undefined);
+      if (!x.descripcion) x.descripcion = c.descripcion || "";
+      if (!x.unidad) x.unidad = c.unidad || "";
+      if (!x.lotes.has(c.partida)) x.lotes.set(c.partida, 0);
+    }
+    if (conCeros) {
+      for (const a of articulos.values()) if (a.lleva_stock !== false) item(a.codigo);
+    }
+    items = [...porCodigo.values()].filter(x => x.lotes.size || conCeros).map(x => {
+      const t = norm([x.codigo, x.descripcion, (articulos.get(x.codigo) || {}).sinonimo, ...x.lotes.keys()].join(" "));
+      return { ...x, lotes: [...x.lotes].map(([partida, tango]) => ({ partida, tango: Math.round(tango * 1e4) / 1e4 }))
+                                  .sort((a, b) => a.partida.localeCompare(b.partida, "es", { numeric: true })),
+               _t: t + " " + t.replace(/[^\p{L}\p{N} ]/gu, "") };
+    }).sort((a, b) => a.codigo.localeCompare(b.codigo, "es", { numeric: true }));
+  }
+
+  // estado de un lote: null (sin contar) o diferencia
+  const difLote = (x, l) => { const c = conteo(x.codigo, l.partida); return c ? Math.round((c.cantidad - c.tango) * 1e4) / 1e4 : null; };
+  function cuentaLotes() {
+    let total = 0, contados = 0, conDif = 0;
+    for (const x of items) for (const l of x.lotes) { total++; const d = difLote(x, l); if (d !== null) { contados++; if (Math.abs(d) > EPS) conDif++; } }
+    return { total, contados, conDif };
+  }
+  function pasaFiltro(x) {
+    if (filtro === "todos") return true;
+    const ds = x.lotes.map(l => difLote(x, l));
+    if (filtro === "sin") return !x.lotes.length || ds.some(d => d === null);
+    if (filtro === "contados") return x.lotes.length && ds.every(d => d !== null);
+    return ds.some(d => d !== null && Math.abs(d) > EPS);
+  }
+
+  function dibujarRecuento() {
+    $("titulo").textContent = rc.nombre;
+    document.title = rc.nombre + " | Recuento de stock";
+    const abierto = rc.estado === "abierto";
+    const frag = [];
+
+    const volver = el("p", "volver"); const a = el("a", "boton-texto", "← Todos los recuentos"); a.href = "/recuento";
+    volver.append(a, " ", el("span", "estado-rc " + rc.estado, abierto ? "Abierto" : "Cerrado"));
+    frag.push(volver);
+
+    if (!abierto) frag.push(el("p", "info", "Este recuento está cerrado: se puede ver y descargar, pero para seguir contando hay que reabrirlo (Más opciones)."));
+
+    const barra = el("div", "barra");
+    const br = el("div", "barra-rc");
+    const busc = el("div", "buscador");
+    busc.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>';
+    const q = el("input"); q.id = "q"; q.type = "search"; q.autocomplete = "off"; q.spellcheck = false; q.enterKeyHint = "search";
+    q.placeholder = "Código, descripción o partida"; q.setAttribute("aria-label", "Buscar artículo o partida");
+    const limpiar = el("button", "limpiar", "×"); limpiar.type = "button"; limpiar.hidden = true; limpiar.setAttribute("aria-label", "Borrar búsqueda");
+    busc.append(q, limpiar);
+    const esc = el("button", "boton escanear"); esc.type = "button"; esc.title = "Sacale una foto a la etiqueta del tambor";
+    esc.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8V5.5A1.5 1.5 0 0 1 4.5 4H7M17 4h2.5A1.5 1.5 0 0 1 21 5.5V8M21 16v2.5a1.5 1.5 0 0 1-1.5 1.5H17M7 20H4.5A1.5 1.5 0 0 1 3 18.5V16"/><path d="M7 8v8M10 8v8M13.5 8v8M17 8v8"/></svg><span>Escanear</span>';
+    esc.addEventListener("click", () => $("foto").click());
+    br.append(busc, esc);
+    const aviso = el("p", "nota escaneo"); aviso.id = "escaneo"; aviso.hidden = true;
+    const bf = el("div", "barra-filtros");
+    const fs = el("div", "filtros"); fs.id = "filtros"; fs.setAttribute("role", "group"); fs.setAttribute("aria-label", "Filtros");
+    const lab = el("label", "ceros"); const chk = el("input"); chk.type = "checkbox"; chk.checked = conCeros;
+    chk.addEventListener("change", () => { conCeros = chk.checked; try { localStorage.setItem("ht_recuento_ceros", conCeros ? "1" : "0"); } catch {} cargarRecuento(false); });
+    lab.append(chk, "Incluir artículos en cero");
+    bf.append(fs, lab);
+    barra.append(br, aviso, bf);
+    frag.push(barra);
+
+    const av = el("div", "avance-rc"); av.id = "avance"; frag.push(av);
+    const cont = el("div"); cont.id = "articulos"; frag.push(cont);
+
+    const acc = el("div", "acciones-rc");
+    const bx = el("a", "boton", "Descargar Excel del recuento"); bx.href = `/recuentos/${rc.id}.xlsx`;
+    const ba = el("button", "boton primario", "Planilla de ajuste para Tango"); ba.type = "button";
+    ba.addEventListener("click", descargarAjuste);
+    const bm = el("button", "boton", "Más opciones"); bm.type = "button"; bm.addEventListener("click", masOpciones);
+    acc.append(ba, bx, bm);
+    frag.push(acc);
+
+    $("contenido").replaceChildren(...frag);
+    HT.conectarBuscador(q, limpiar, () => { mostrar = POR_PAGINA; dibujarArticulos(); });
+    if (params.get("q")) { q.value = params.get("q"); limpiar.hidden = false; }
+    dibujarArticulos();
+  }
+
+  function dibujarFiltros() {
+    const n = { todos: items.length, sin: 0, contados: 0, dif: 0 };
+    for (const x of items) {
+      const ds = x.lotes.map(l => difLote(x, l));
+      if (!x.lotes.length || ds.some(d => d === null)) n.sin++;
+      if (x.lotes.length && ds.every(d => d !== null)) n.contados++;
+      if (ds.some(d => d !== null && Math.abs(d) > EPS)) n.dif++;
+    }
+    const fs = $("filtros"); fs.replaceChildren();
+    for (const [id, t] of [["todos", "Todos"], ["sin", "Sin contar"], ["contados", "Contados"], ["dif", "Con diferencia"]]) {
+      const b = el("button", "filtro" + (id === "dif" ? " alerta" : ""), t); b.type = "button";
+      b.append(el("b", "", String(n[id]))); b.setAttribute("aria-pressed", String(filtro === id));
+      b.addEventListener("click", () => { filtro = id; mostrar = POR_PAGINA; dibujarArticulos(); });
+      fs.append(b);
+    }
+    const c = cuentaLotes();
+    const av = $("avance");
+    const barra = el("span", "avance"); const lleno = el("i"); lleno.style.width = (c.total ? 100 * c.contados / c.total : 0) + "%";
+    barra.append(lleno);
+    const t = el("span"); t.append(el("b", "", `${c.contados} de ${c.total}`), " lotes contados · ", el("b", "", String(c.conDif)), " con diferencia");
+    av.replaceChildren(barra, t);
+  }
+
+  function dibujarArticulos() {
+    dibujarFiltros();
+    const ts = tokens($("q").value);
+    const vis = items.filter(x => pasaFiltro(x) && ts.every(t => x._t.includes(t)));
+    const cont = $("articulos"); cont.replaceChildren();
+    if (!vis.length) {
+      const p = el("p", "aviso", ts.length ? "No hay artículos que coincidan." : filtro === "dif" ? "Ningún lote contado tiene diferencia." : "No hay nada en esta vista.");
+      cont.append(p);
+      if (ts.length && rc.estado === "abierto") {
+        const b = el("button", "boton chico", "Agregar un artículo que no está en la lista"); b.type = "button";
+        b.addEventListener("click", () => agregarArticulo($("q").value)); cont.append(b);
+      }
+      return;
+    }
+    for (const x of vis.slice(0, mostrar)) cont.append(tarjetaArticulo(x));
+    if (vis.length > mostrar) {
+      const b = el("button", "boton", `Mostrar más (${vis.length - mostrar} restantes)`); b.type = "button";
+      b.style.margin = "4px auto"; b.style.display = "flex";
+      b.addEventListener("click", () => { mostrar += POR_PAGINA * 2; dibujarArticulos(); });
+      cont.append(b);
+    }
+  }
+
+  function tarjetaArticulo(x) {
+    const t = el("section", "tarjeta art"); t.dataset.codigo = x.codigo;
+    const cab = el("div", "art-cab");
+    const h = el("h3", "", x.codigo); h.append(el("small", "", x.descripcion));
+    const totT = x.lotes.reduce((s, l) => s + l.tango, 0);
+    const cont = x.lotes.map(l => conteo(x.codigo, l.partida));
+    const tot = el("div", "tot"); tot.append("Tango ", el("b", "", `${num(totT)} ${unidad(x.unidad)}`));
+    if (cont.length && cont.every(Boolean)) { tot.append(el("br"), "Contado ", el("b", "", `${num(cont.reduce((s, c) => s + c.cantidad, 0))} ${unidad(x.unidad)}`)); }
+    cab.append(h, tot); t.append(cab);
+    const ref = rc.referencia && rc.referencia[x.codigo];
+    if (ref) {
+      const partes = [];
+      if (ref.excel !== null && ref.excel !== undefined) partes.push(`Excel de inventario: ${num(ref.excel)} ${unidad(x.unidad)}`);
+      if (ref.ubicacion) partes.push(`Ubicación: ${ref.ubicacion}`);
+      if (partes.length) t.append(el("p", "ref", partes.join(" · ")));
+    }
+    if (!x.lotes.length) t.append(el("p", "ref", x.partidas ? "Tango no tiene lotes con saldo en Central." : "Tango tiene 0 en Central."));
+    for (const l of x.lotes) t.append(filaLote(x, l));
+    if (rc.estado === "abierto") {
+      if (x.partidas) {
+        const b = el("button", "boton-texto agregar-lote", "+ Lote que no está en Tango"); b.type = "button";
+        b.addEventListener("click", () => agregarLote(x)); t.append(b);
+      } else if (!x.lotes.length) {
+        const b = el("button", "boton-texto agregar-lote", "+ Contar este artículo"); b.type = "button";
+        b.addEventListener("click", () => { x.lotes.push({ partida: "", tango: 0 }); redibujarTarjeta(x); }); t.append(b);
+      }
+    }
+    return t;
+  }
+
+  function redibujarTarjeta(x, enfocar) {
+    const vieja = [...document.querySelectorAll(".art")].find(n => n.dataset.codigo === x.codigo);
+    const nueva = tarjetaArticulo(x);
+    if (vieja) vieja.replaceWith(nueva); else $("articulos").prepend(nueva);
+    if (enfocar !== undefined) { const i = [...nueva.querySelectorAll(".lote")].find(n => n.dataset.partida === enfocar); if (i) i.querySelector("input").focus(); }
+    dibujarFiltros();
+  }
+
+  function filaLote(x, l) {
+    const c = conteo(x.codigo, l.partida);
+    const f = el("div", "lote" + (c ? " contado" : "")); f.dataset.partida = l.partida;
+    const nom = el("div", "nom");
+    nom.append(el("b", "", l.partida || (x.partidas ? "(sin partida)" : "Sin partidas")),
+               el("small", "", `Tango: ${num(c ? c.tango : l.tango)} ${unidad(x.unidad)}` + (c && Math.abs(c.tango - l.tango) > EPS ? ` (ahora ${num(l.tango)})` : "")));
+    const inp = el("input", "campo"); inp.inputMode = "decimal"; inp.autocomplete = "off"; inp.placeholder = "Contado";
+    inp.setAttribute("aria-label", `Cantidad contada de ${x.codigo} ${l.partida}`);
+    inp.value = c ? String(c.cantidad).replace(".", ",") : "";
+    inp.disabled = rc.estado !== "abierto";
+    const guardarSiCambio = () => {
+      const v = inp.value.trim();
+      const actual = c ? c.cantidad : null;
+      if (v === "" && actual === null) return;
+      const n = v === "" ? null : leerNumero(v);
+      if (v !== "" && (!isFinite(n) || n < 0)) { avisar("Escribí una cantidad válida (0 o más)"); inp.focus(); return; }
+      if (n !== null && actual !== null && Math.abs(n - actual) < EPS) return;
+      guardar(x, l, n, inp);
+    };
+    inp.addEventListener("change", guardarSiCambio);
+    inp.addEventListener("keydown", ev => {
+      if (ev.key !== "Enter") return;
+      ev.preventDefault(); inp.blur();
+      // pasar al siguiente lote sin contar
+      const todos = [...document.querySelectorAll(".lote input:not(:disabled)")];
+      const sig = todos.slice(todos.indexOf(inp) + 1).find(i => !i.value);
+      if (sig) sig.focus();
+    });
+    const ok = el("button", "boton chico coincide", "Coincide"); ok.type = "button";
+    ok.title = "El físico es igual a lo que dice Tango";
+    ok.disabled = rc.estado !== "abierto" || l.tango < -EPS;
+    if (l.tango < -EPS) ok.title = "Tango tiene saldo negativo: escribí lo que hay";
+    ok.addEventListener("click", () => guardar(x, l, Math.max(0, l.tango), inp));
+    f.append(nom, inp, ok);
+    if (c) {
+      const d = Math.round((c.cantidad - c.tango) * 1e4) / 1e4;
+      const info = el("div", "info-c");
+      info.append(el("span", "dif " + (Math.abs(d) < EPS ? "ok" : d > 0 ? "mas" : "menos"),
+                     Math.abs(d) < EPS ? "Coincide" : (d > 0 ? "+" : "") + num(d) + " " + unidad(x.unidad)));
+      info.append(`${quienCorto(c.quien)} · ${fechaHora(c.cuando)}` + (c.nueva ? " · lote nuevo" : ""));
+      if (c.nota) info.append(el("span", "", "· " + c.nota));
+      if (rc.estado === "abierto") {
+        const bn = el("button", "boton-texto", c.nota ? "Editar nota" : "Nota"); bn.type = "button";
+        bn.addEventListener("click", () => editarNota(x, l, c)); info.append(bn);
+      }
+      f.append(info);
+    }
+    return f;
+  }
+
+  async function guardar(x, l, cantidad, inp, nota) {
+    const c = conteo(x.codigo, l.partida);
+    inp.classList.add("guardando");
+    try {
+      const r = (await escribir("/api/recuentos/contar", {
+        id: rc.id, codigo: x.codigo, partida: l.partida, cantidad, tango: l.tango, unidad: x.unidad,
+        descripcion: x.descripcion, nueva: !!l.nueva || (c && c.nueva), nota: nota ?? (c ? c.nota : "") })).datos;
+      const k = clave(x.codigo, l.partida);
+      if (r.borrado) delete rc.conteos[k]; else rc.conteos[k] = r;
+      redibujarTarjeta(x);
+    } catch (e) {
+      inp.classList.remove("guardando");
+      avisar(e.message);
+    }
+  }
+
+  function editarNota(x, l, c) {
+    ventana("Nota del conteo", (d, cerrar) => {
+      d.append(el("p", "", `${x.codigo} · ${l.partida || "sin partida"}`));
+      const f = el("form");
+      const n = campo(f, "Nota (ej.: tambor abierto, etiqueta rota)", { value: c.nota || "", maxLength: 200 });
+      const { error } = botones(f, "Guardar", cerrar);
+      f.addEventListener("submit", async ev => {
+        ev.preventDefault();
+        try { await guardar(x, l, c.cantidad, el("input"), n.value); cerrar(); } catch (e) { error(e.message); }
+      });
+      d.append(f); setTimeout(() => n.focus(), 50);
+    });
+  }
+
+  function agregarLote(x, partidaInicial) {
+    ventana("Lote que no está en Tango", (d, cerrar) => {
+      d.append(el("p", "", `${x.codigo} · ${x.descripcion}. Escribí el número de partida tal cual figura en la etiqueta. Si no se puede saber, para repuestos usá HIST-PO000.`));
+      const f = el("form");
+      const p = campo(f, "Número de partida", { value: partidaInicial || "", maxLength: 30, autocomplete: "off", autocapitalize: "characters" });
+      const { error } = botones(f, "Agregar", cerrar);
+      f.addEventListener("submit", ev => {
+        ev.preventDefault();
+        const v = p.value.trim().toUpperCase();
+        if (!v) { error("Escribí la partida."); return; }
+        if (x.lotes.some(l => l.partida.toUpperCase() === v)) { error("Ese lote ya está en la lista."); return; }
+        x.lotes.push({ partida: v, tango: 0, nueva: true });
+        cerrar(); redibujarTarjeta(x, v);
+      });
+      d.append(f); setTimeout(() => p.focus(), 50);
+    });
+  }
+
+  function agregarArticulo(texto) {
+    const ts = tokens(texto);
+    const encontrados = [...articulos.values()].filter(a => {
+      const t = norm(a.codigo + " " + a.descripcion + " " + (a.sinonimo || "")); return ts.every(k => t.includes(k));
+    }).slice(0, 20);
+    ventana("Agregar artículo", (d, cerrar) => {
+      if (!encontrados.length) { d.append(el("p", "", "No hay ningún artículo de Tango con ese código o descripción.")); }
+      const ul = el("ul", "lista-rc");
+      for (const a of encontrados) {
+        const li = el("li", "rc"); const b = el("button", "boton-texto", `${a.codigo} · ${a.descripcion}`); b.type = "button";
+        b.style.textAlign = "left";
+        b.addEventListener("click", () => {
+          cerrar();
+          let x = items.find(y => y.codigo === a.codigo);
+          if (!x) {
+            const t = norm(a.codigo + " " + a.descripcion);
+            x = { codigo: a.codigo, descripcion: a.descripcion, unidad: a.unidad, partidas: !!a.usa_partidas, lotes: [], _t: t };
+            items.unshift(x);
+          }
+          $("q").value = a.codigo; filtro = "todos"; dibujarArticulos();
+          if (x.partidas) agregarLote(x); else if (!x.lotes.length) { x.lotes.push({ partida: "", tango: 0 }); redibujarTarjeta(x, ""); }
+        });
+        li.append(b); ul.append(li);
+      }
+      d.append(ul);
+      const acc = el("div", "acciones"); const c = el("button", "boton", "Cerrar"); c.type = "button"; c.addEventListener("click", cerrar);
+      acc.append(c); d.append(acc);
+    });
+  }
+
+  async function descargarAjuste() {
+    const c = cuentaLotes();
+    if (!lista.plantilla) {
+      ventana("Falta la plantilla de Tango", (d, cerrar) => {
+        d.append(el("p", "", "La planilla se arma sobre la plantilla original de Tango (tiene una hoja de control que no se puede inventar). Hay que cargarla una sola vez:"));
+        d.append(el("p", "", "En Tango: Stock > Movimientos masivos > Ajustes de stock > Exportar plantilla vacía. Después tocá «Cargar plantilla» y elegí ese archivo, sin modificarlo."));
+        const acc = el("div", "acciones");
+        const x = el("button", "boton", "Cancelar"); x.type = "button"; x.addEventListener("click", cerrar);
+        const b = el("button", "boton primario", "Cargar plantilla"); b.type = "button";
+        b.addEventListener("click", () => { cerrar(); elegirArchivo(".xlsx", async archivo => {
+          const r = (await escribir("/api/recuentos/plantilla", { archivo })).datos;
+          lista = (await pedir("/api/recuentos", true)).datos;
+          avisar(`Plantilla cargada (hoja «${r.hoja}»)`);
+        }); });
+        acc.append(x, b); d.append(acc);
+      });
+      return;
+    }
+    if (!c.conDif) { avisar("No hay diferencias: no hace falta ajustar nada"); return; }
+    ventana("Planilla de ajuste", (d, cerrar) => {
+      d.append(el("p", "", `Lleva ${c.conDif} ${c.conDif === 1 ? "renglón" : "renglones"}: lo que sobra entra y lo que falta sale, en el depósito Central. Los lotes que no se contaron no se tocan.`));
+      const pasos = el("ol", "nota");
+      for (const t of ["En Tango: Stock > Movimientos masivos > Ajustes de stock > Registrar ajuste.",
+                       "Elegí el tipo de comprobante (AJU no valorizado) y subí la planilla.",
+                       "Si Tango devuelve una planilla de errores, mirá la columna Error y avisá."]) pasos.append(el("li", "", t));
+      d.append(pasos);
+      if (c.contados < c.total) d.append(el("p", "nota", `Ojo: faltan contar ${c.total - c.contados} lotes. Se puede ajustar igual lo contado y seguir después.`));
+      const acc = el("div", "acciones");
+      const x = el("button", "boton", "Cancelar"); x.type = "button"; x.addEventListener("click", cerrar);
+      const a = el("a", "boton primario", "Descargar planilla"); a.href = `/recuentos/${rc.id}/ajuste.xlsx`;
+      a.addEventListener("click", () => setTimeout(cerrar, 300));
+      acc.append(x, a); d.append(acc);
+    });
+  }
+
+  function masOpciones() {
+    ventana("Más opciones", (d, cerrar) => {
+      const m = el("div", "menu-rc");
+      const abierto = rc.estado === "abierto";
+      const b1 = el("button", "boton", abierto ? "Cerrar recuento" : "Reabrir recuento"); b1.type = "button";
+      b1.addEventListener("click", async () => {
+        try { await escribir("/api/recuentos/estado", { id: rc.id, estado: abierto ? "cerrado" : "abierto" }); cerrar(); cargarRecuento(false); }
+        catch (e) { avisar(e.message); }
+      });
+      m.append(b1, el("p", "", abierto ? "Cerrado no se puede seguir contando por error. Se puede reabrir cuando haga falta." : "Para volver a contar sobre este mismo recuento."));
+      const b2 = el("button", "boton", rc.referencia ? "Reemplazar Excel de comparación" : "Cargar Excel de comparación"); b2.type = "button";
+      b2.addEventListener("click", () => { cerrar(); elegirArchivo(".xlsx", async archivo => {
+        const r = (await escribir("/api/recuentos/referencia", { id: rc.id, archivo })).datos;
+        avisar(`Listo: ${r.articulos} artículos con cantidad y ubicación del Excel`);
+      }, () => cargarRecuento(false)); });
+      m.append(b2, el("p", "", "El que baja Stock > Comparar con inventario Excel. Muestra en cada artículo cuánto dice el Excel y dónde está, como guía para contar. No cambia ningún conteo."));
+      const b3 = el("button", "boton", lista.plantilla ? "Reemplazar plantilla de Ajustes" : "Cargar plantilla de Ajustes"); b3.type = "button";
+      b3.addEventListener("click", () => { cerrar(); elegirArchivo(".xlsx", async archivo => {
+        const r = (await escribir("/api/recuentos/plantilla", { archivo })).datos;
+        lista = (await pedir("/api/recuentos", true)).datos;
+        avisar(`Plantilla cargada (hoja «${r.hoja}»)`);
+      }); });
+      m.append(b3);
+      const b4 = el("button", "boton peligro", "Borrar recuento"); b4.type = "button";
+      b4.addEventListener("click", () => { cerrar(); borrar(); });
+      m.append(b4);
+      d.append(m);
+      const acc = el("div", "acciones"); const c = el("button", "boton", "Cerrar"); c.type = "button"; c.addEventListener("click", cerrar);
+      acc.append(c); d.append(acc);
+    });
+  }
+
+  function borrar() {
+    ventana("Borrar recuento", (d, cerrar) => {
+      d.append(el("p", "", `Se borran todos los conteos de «${rc.nombre}». Tango no cambia. Para confirmar, escribí el nombre del recuento.`));
+      const f = el("form");
+      const n = campo(f, "Nombre", { autocomplete: "off" });
+      const { error } = botones(f, "Borrar", cerrar, true);
+      f.addEventListener("submit", async ev => {
+        ev.preventDefault();
+        try { await escribir("/api/recuentos/borrar", { id: rc.id, confirmar: n.value }); location.href = "/recuento"; }
+        catch (e) { error(e.message); }
+      });
+      d.append(f);
+    });
+  }
+
+  // ---------------------------------------------------------------- escaner (etiqueta con articulo y partida)
+  $("foto").addEventListener("change", async () => {
+    const archivo = $("foto").files[0]; $("foto").value = "";
+    const aviso = $("escaneo");
+    if (!archivo || !aviso) return;
+    aviso.hidden = false; aviso.className = "nota escaneo"; aviso.textContent = "Leyendo la etiqueta…";
+    try {
+      const textos = (await Escaner.leerFoto(archivo)).map(t => String(t).trim()).filter(Boolean);
+      if (!textos.length) { aviso.className = "mensaje-error escaneo"; aviso.textContent = "No se pudo leer ningún código. Probá más cerca, derecho y con buena luz."; return; }
+      const n = s => norm(s).replace(/[^\p{L}\p{N}]/gu, "");
+      let art = null, partida = null;
+      for (const t of textos) {
+        const x = items.find(y => n(y.codigo) === n(t)) || null;
+        if (x && !art) art = x;
+      }
+      for (const t of textos) for (const x of (art ? [art] : items)) {
+        const l = x.lotes.find(y => y.partida && n(y.partida) === n(t));
+        if (l && !partida) { partida = l.partida; art = art || x; }
+      }
+      filtro = "todos";
+      if (art) {
+        $("q").value = partida || art.codigo;
+        aviso.textContent = `Leído: ${textos.join(" · ")}`;
+        dibujarArticulos();
+        const fila = document.querySelector(`.art[data-codigo="${CSS.escape(art.codigo)}"] .lote[data-partida="${CSS.escape(partida || "")}"] input`)
+                  || document.querySelector(`.art[data-codigo="${CSS.escape(art.codigo)}"] .lote input`);
+        if (fila) fila.focus();
+        if (!partida && art.partidas && rc.estado === "abierto") {
+          const otro = textos.find(t => n(t) !== n(art.codigo));
+          if (otro) { aviso.textContent += `. La partida ${otro} no está en Tango para este artículo.`; agregarLote(art, otro.toUpperCase()); }
+        }
+      } else {
+        aviso.className = "mensaje-error escaneo";
+        aviso.textContent = `Leído: ${textos.join(" · ")}. No coincide con ningún artículo de la lista.`;
+        $("q").value = textos[0]; dibujarArticulos();
+      }
+      const lim = document.querySelector(".barra .limpiar"); if (lim) lim.hidden = !$("q").value;
+    } catch (e) { aviso.className = "mensaje-error escaneo"; aviso.textContent = e.message; }
+  });
+
+  $("actualizar").addEventListener("click", () => idActual() ? cargarRecuento(true) : cargarLista());
+  if (idActual()) cargarRecuento(false); else cargarLista();
+})();
+</script>
+</body>
+</html>

@@ -13,3 +13,7 @@ __pycache__/
 usuarios.json
 cambios_precios.jsonl
 usuarios.tmp
+recuentos.json
+recuentos.tmp
+plantilla_ajuste_stock.xlsx
+plantilla_ajuste_stock.tmp
