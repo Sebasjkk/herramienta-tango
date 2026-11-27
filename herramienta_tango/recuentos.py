@@ -164,48 +164,45 @@ class Recuentos:
             self._guardar([x for x in datos if x["id"] != id_recuento])
             return {"borrado": r["nombre"]}
 
-    def cargar_referencia(self, id_recuento: int, contenido: bytes) -> dict:
-        """Toma la "Comparación de inventario" que arma la pantalla de Stock y guarda, por artículo,
-        cuánto dice el Excel y la ubicación: sirve de guía al contar. No cambia ningún conteo."""
-        try:
-            hojas = xlsx.leer(contenido)
-        except xlsx.ExcelInvalido as e:
-            raise PedidoInvalido(str(e)) from None
-        filas = hojas.get("Todo") or next(iter(hojas.values()), [])
-        if not filas:
-            raise PedidoInvalido("El Excel está vacío.")
-        enc = [_sin_acentos(str(x or "")) for x in filas[0]]
-        def col(*nombres):
-            return next((i for i, t in enumerate(enc) if t in nombres), None)
-        c_cod, c_exc, c_ubi = col("codigo tango"), col("excel en unidad de tango"), col("ubicacion")
-        c_est = col("estado")
-        c_dif = next((i for i, t in enumerate(enc) if t.startswith("diferencia")), None)
-        if c_cod is None or c_exc is None:
-            raise PedidoInvalido("Ese Excel no es la comparación de inventario: usá el que baja "
-                                 "Stock > Comparar con inventario Excel (hoja «Todo»).")
+    def cargar_referencia(self, id_recuento: int, contenido: bytes, servicio=None, nombre_archivo: str = "") -> dict:
+        """Guarda, por artículo, qué dice el inventario Excel frente a Tango: sirve para contar solo lo
+        que difiere. Acepta el Inventario Metco tal cual (.xls o .xlsx: se compara en el momento con
+        Tango, igual que Stock > Comparar con inventario Excel) o el Excel de esa comparación ya hecha.
+        No cambia ningún conteo."""
+        filas = _filas_comparacion(contenido)
+        origen = "comparación"
+        if filas is None:
+            if servicio is None:
+                raise PedidoInvalido("Ese Excel no es ni el inventario ni la comparación de inventario.")
+            from . import inventario
+            try:
+                filas = inventario.comparar(contenido, servicio, nombre_archivo)["filas"]
+            except inventario.InventarioInvalido as e:
+                raise PedidoInvalido(str(e)) from None
+            origen = "inventario"
         ref: dict[str, dict] = {}
-        for f in filas[1:]:
-            v = lambda i: f[i] if i is not None and i < len(f) else None
-            codigo = str(v(c_cod) or "").strip()
+        no_en_tango = 0
+        for f in filas:
+            codigo = str(f.get("codigo_tango") or "").strip()
+            estado = str(f.get("estado") or "").strip()
             if not codigo:
+                no_en_tango += estado == "No está en Tango"
                 continue
-            x = ref.setdefault(codigo, {"excel": None, "ubicacion": "", "estado": "", "diferencia": None})
-            estado = str(v(c_est) or "").strip()
+            x = ref.setdefault(codigo, {"excel": None, "ubicacion": "", "estado": "", "diferencia": None,
+                                        "cantidad_excel": None, "unidad_excel": "", "notas": ""})
             if estado and (not x["estado"] or estado in ESTADOS_DIFERENCIA):
                 x["estado"] = estado
-            if estado in ESTADOS_DIFERENCIA:
-                try:
-                    x["diferencia"] = round(float(v(c_dif)), 4)
-                except (TypeError, ValueError):
-                    pass
-            try:
-                if v(c_exc) not in (None, ""):
-                    x["excel"] = round((x["excel"] or 0) + float(v(c_exc)), 4)
-            except (TypeError, ValueError):
-                pass
-            u = str(v(c_ubi) or "").strip()
-            if u and u not in x["ubicacion"]:
-                x["ubicacion"] = ", ".join(filter(None, [x["ubicacion"], u]))
+            if estado in ESTADOS_DIFERENCIA and isinstance(f.get("diferencia"), (int, float)):
+                x["diferencia"] = round(float(f["diferencia"]), 4)
+            if isinstance(f.get("excel_en_unidad_tango"), (int, float)):
+                x["excel"] = round((x["excel"] or 0) + float(f["excel_en_unidad_tango"]), 4)
+            if isinstance(f.get("cantidad_excel"), (int, float)) and estado != "Solo en Tango":
+                x["cantidad_excel"] = round((x["cantidad_excel"] or 0) + float(f["cantidad_excel"]), 4)
+                x["unidad_excel"] = x["unidad_excel"] or str(f.get("unidad_excel") or "")
+            for campo in ("ubicacion", "notas"):
+                t = str(f.get(campo) or "").strip()
+                if t and t not in x[campo]:
+                    x[campo] = ("; " if campo == "notas" else ", ").join(filter(None, [x[campo], t]))[:300]
         if not ref:
             raise PedidoInvalido("No encontré artículos con código de Tango en ese Excel.")
         with self._lock:
@@ -213,8 +210,10 @@ class Recuentos:
             r = self._buscar(datos, id_recuento)
             r["referencia"] = ref
             r["referencia_cargada"] = datetime.now().isoformat(timespec="seconds")
+            r["referencia_archivo"] = (nombre_archivo or "")[:120]
             self._guardar(datos)
-        return {"articulos": len(ref), "con_diferencia": sum(1 for x in ref.values() if x["estado"] in ESTADOS_DIFERENCIA)}
+        return {"articulos": len(ref), "origen": origen, "no_en_tango": no_en_tango,
+                "con_diferencia": sum(1 for x in ref.values() if x["estado"] in ESTADOS_DIFERENCIA)}
 
     # ------------------------------------------------------------ salidas
     def diferencias(self, id_recuento: int) -> list[dict]:
@@ -250,6 +249,29 @@ class Recuentos:
         if not filas:
             raise PedidoInvalido("No hay diferencias: no hace falta ajustar nada.")
         return armar_planilla_ajuste(filas, plantilla)
+
+
+def _filas_comparacion(contenido: bytes) -> list[dict] | None:
+    """Filas del Excel de "Comparación de inventario" (hoja Todo). None si el archivo no es eso."""
+    try:
+        hojas = xlsx.leer(contenido)
+    except xlsx.ExcelInvalido:
+        return None                          # un .xls (el inventario) cae aca
+    filas = hojas.get("Todo") or []
+    if not filas:
+        return None
+    enc = [_sin_acentos(str(x or "")) for x in filas[0]]
+    def col(nombre):
+        return next((i for i, t in enumerate(enc) if t == nombre), None)
+    columnas = {"estado": col("estado"), "codigo_tango": col("codigo tango"), "excel_en_unidad_tango": col("excel en unidad de tango"),
+                "ubicacion": col("ubicacion"), "cantidad_excel": col("cantidad excel"), "unidad_excel": col("unidad excel"),
+                "notas": col("notas"), "diferencia": next((i for i, t in enumerate(enc) if t.startswith("diferencia")), None)}
+    if columnas["codigo_tango"] is None or columnas["excel_en_unidad_tango"] is None:
+        return None
+    salida = []
+    for f in filas[1:]:
+        salida.append({k: (f[i] if i is not None and i < len(f) else None) for k, i in columnas.items()})
+    return salida
 
 
 # ---------------------------------------------------------------- plantilla de Tango

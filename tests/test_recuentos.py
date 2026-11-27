@@ -6,12 +6,14 @@ identico, byte a byte.
 """
 
 import io
+import sys
 import re
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent))
 from herramienta_tango import xlsx
 from herramienta_tango.mezclas import PLANTILLA as PLANTILLA_EGRESO
 from herramienta_tango.precios import PedidoInvalido
@@ -97,9 +99,11 @@ class TestRecuentos(unittest.TestCase):
                 ("Diferencia (Tango − Excel)", "numero"), ("Ubicación", "texto")]
         comp = xlsx.escribir_libro([("Todo", cols, [["Coincide", "A", 5.0, 0.0, "Lab"], ["Tango tiene menos", "A", 2.0, -2.0, "Galpón"],
                                                     ["Solo en Tango", "B", None, 4.0, ""], ["Coincide", "C", 1.0, 0.0, ""]])])
-        self.assertEqual(self.reg.cargar_referencia(self.id, comp), {"articulos": 3, "con_diferencia": 1})
+        r = self.reg.cargar_referencia(self.id, comp)
+        self.assertEqual((r["articulos"], r["con_diferencia"], r["origen"]), (3, 1, "comparación"))
         ref = self.reg.uno(self.id)["referencia"]
-        self.assertEqual(ref["A"], {"excel": 7.0, "ubicacion": "Lab, Galpón", "estado": "Tango tiene menos", "diferencia": -2.0})
+        self.assertEqual({k: ref["A"][k] for k in ("excel", "ubicacion", "estado", "diferencia")},
+                         {"excel": 7.0, "ubicacion": "Lab, Galpón", "estado": "Tango tiene menos", "diferencia": -2.0})
         self.assertIsNone(ref["B"]["excel"])
         self.assertEqual((ref["B"]["estado"], ref["B"]["diferencia"]), ("Solo en Tango", None))
         self.assertEqual(ref["C"]["estado"], "Coincide")
@@ -155,3 +159,24 @@ class TestPlantillaAjuste(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestReferenciaDesdeInventario(unittest.TestCase):
+    """El Inventario Metco (.xls) se compara con Tango en el momento, sin pasar por la comparación."""
+    def test_inventario_xls(self):
+        from test_xls import INVENTARIO, Servicio, armar_xls
+        with tempfile.TemporaryDirectory() as d:
+            reg = Recuentos(Path(d) / "r.json")
+            i = reg.crear("R", "x")["id"]
+            r = reg.cargar_referencia(i, armar_xls(INVENTARIO), Servicio(), "Inventario_Metco_2026.xls")
+            self.assertEqual(r["origen"], "inventario")
+            self.assertEqual(r["no_en_tango"], 2)
+            ref = reg.uno(i)["referencia"]
+            self.assertEqual((ref["1000300"]["estado"], ref["1000300"]["diferencia"], ref["1000300"]["excel"]),
+                             ("Tango tiene menos", -2.0, 10.5))
+            self.assertEqual(ref["1000500"]["estado"], "Revisar unidad")
+            self.assertEqual(ref["01000125"]["estado"], "Coincide")
+            self.assertEqual(ref["ZINC9"]["estado"], "Solo en Tango")
+            self.assertEqual(r["con_diferencia"], 2)
+            with self.assertRaises(PedidoInvalido):
+                reg.cargar_referencia(i, armar_xls(INVENTARIO))        # sin Tango no se puede comparar

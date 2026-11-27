@@ -532,7 +532,7 @@ def crear_manejador(contexto):
             pedido = urllib.request.Request(f"http://{destino[0]}:{destino[1]}{self.path}", data=cuerpo,
                                             headers=encabezados, method=self.command)
             try:
-                with urllib.request.urlopen(pedido, timeout=60) as r:
+                with urllib.request.urlopen(pedido, timeout=240) as r:   # comparar el inventario tarda
                     estado, tipo, disp, datos = r.status, r.headers.get("Content-Type"), r.headers.get("Content-Disposition"), r.read()
             except urllib.error.HTTPError as e:
                 estado, tipo, disp, datos = e.code, e.headers.get("Content-Type"), None, e.read()
@@ -697,7 +697,8 @@ def crear_manejador(contexto):
             return f"{nombre} ({self.client_address[0]})" if nombre else self.client_address[0]
 
         def _post_app(self, ruta: str) -> None:
-            datos = self._leer_cuerpo(MAX_CUERPO_ARCHIVO if ruta in RUTAS_ARCHIVO else MAX_CUERPO)
+            datos = self._leer_cuerpo(MAX_CUERPO_INVENTARIO if ruta == "/api/recuentos/referencia"
+                                      else MAX_CUERPO_ARCHIVO if ruta in RUTAS_ARCHIVO else MAX_CUERPO)
             if datos is None:
                 return
             texto = lambda clave: str(datos.get(clave) or "")
@@ -794,7 +795,7 @@ def crear_manejador(contexto):
                 log.info(f"Recuentos: {quien} borró «{r['borrado']}»")
                 return r
             if ruta == "/api/recuentos/referencia":
-                return reg.cargar_referencia(entero("id"), archivo())
+                return reg.cargar_referencia(entero("id"), archivo(), contexto.servicio(), texto("nombre")[:120])
             # plantilla de Ajustes de stock: se valida y queda en la carpeta del programa
             from ..recuentos import describir_plantilla, ruta_plantilla
             contenido = archivo()
@@ -870,7 +871,7 @@ def crear_manejador(contexto):
                 destino = _recuentos_en_otra_pc()
                 if destino:
                     largo = int(self.headers.get("Content-Length") or 0)
-                    if largo > MAX_CUERPO_ARCHIVO:
+                    if largo > MAX_CUERPO_INVENTARIO:
                         self._json(413, {"ok": False, "error": "Pedido demasiado grande."})
                         return
                     self._reenviar(destino, self.rfile.read(largo) if largo else b"{}")
