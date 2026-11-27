@@ -33,7 +33,8 @@ Instalado en la PC queda así:
 
 ```
 C:\HerramientaTango\
-  Abrir Herramienta Tango.cmd    abre el programa (la primera vez crea los accesos directos)
+  Herramienta Tango.exe          abre el programa (la primera vez crea los accesos directos)
+  Abrir Herramienta Tango.cmd    lo mismo, por si el antivirus bloquea el .exe
   python\                        Python oficial embebido (no cambia)
   app\                           código del programa (es lo que se actualiza)
   config.ini, token.dat, herramienta_tango.log   datos (no se tocan al actualizar)
@@ -98,7 +99,7 @@ Cada vez que se sube un cambio a `main`, GitHub Actions corre las pruebas, arma 
 ## Instalarlo en la PC de la oficina
 
 1. Bajá `HerramientaTango.zip` de la última versión. Antes de descomprimirlo: clic derecho > Propiedades > tildá **Desbloquear** > Aceptar (así Windows no avisa por cada archivo).
-2. Descomprimilo en `C:\` (queda `C:\HerramientaTango`) y abrí **Abrir Herramienta Tango**. No aparece ninguna ventana negra: se abre el **panel** en el navegador, y se crea el acceso directo **Herramienta Tango** en el escritorio y en el menú Inicio. De ahí en adelante se abre desde ese acceso directo.
+2. Descomprimilo en `C:\` (queda `C:\HerramientaTango`) y abrí **Herramienta Tango.exe** (o **Abrir Herramienta Tango**, si el antivirus bloquea el .exe). No aparece ninguna ventana negra: se abre el **panel** en el navegador, y se crea el acceso directo **Herramienta Tango** en el escritorio y en el menú Inicio. De ahí en adelante se abre desde ese acceso directo.
 3. La primera vez, el panel pide dos datos y los prueba contra Tango antes de guardarlos:
    - **Dirección del servidor de Tango**: la que se ve en el navegador al abrir el Tango web (se puede pegar entera).
    - **Token de Tango**: en el Tango web, menú de usuario > Desarrollador > Generar > **Aceptar**.

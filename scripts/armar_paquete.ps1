@@ -1,7 +1,8 @@
-# Arma el paquete de Herramienta Tango para Windows, sin .exe propio:
+# Arma el paquete de Herramienta Tango para Windows (Python oficial embebido + lanzador .exe chico):
 #
 #   dist\HerramientaTango\
-#     Abrir Herramienta Tango.cmd   abre el programa (la primera vez crea los accesos directos)
+#     Herramienta Tango.exe         abre el programa (la primera vez crea los accesos directos)
+#     Abrir Herramienta Tango.cmd   lo mismo, por si el antivirus bloquea el .exe
 #     README.md
 #     python\                        Python oficial embebido (pythonw.exe firmado por la PSF)
 #     app\                           codigo del programa
@@ -46,6 +47,12 @@ Get-ChildItem $app -Recurse -Directory -Filter __pycache__ | Remove-Item -Recurs
 # --- Lanzador y README -------------------------------------------------------------
 $lanzador = "@echo off`r`nstart `"`" `"%~dp0python\pythonw.exe`" `"%~dp0app\HerramientaTango.pyw`"`r`n"
 [IO.File]::WriteAllText((Join-Path $raiz 'Abrir Herramienta Tango.cmd'), $lanzador, [Text.Encoding]::ASCII)
+
+# Lanzador .exe con icono (recursos/lanzador.cs): abre lo mismo que el .cmd, sin Python adentro
+$csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+$exe = Join-Path $raiz 'Herramienta Tango.exe'
+& $csc /nologo /target:winexe /optimize+ /win32icon:recursos\icono.ico /r:System.Windows.Forms.dll "/out:$exe" recursos\lanzador.cs
+if ($LASTEXITCODE -ne 0) { throw 'No se pudo compilar el lanzador .exe' }
 Copy-Item README.md $raiz
 
 # --- Zips ----------------------------------------------------------------------------

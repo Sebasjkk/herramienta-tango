@@ -2,8 +2,8 @@
 # cada vez que se sube un cambio a la rama main.
 #
 # El programa corre con el Python oficial embebido (pythonw.exe, firmado por la
-# Python Software Foundation). No hay un .exe propio: asi los antivirus no lo
-# confunden con algo peligroso.
+# Python Software Foundation). El "Herramienta Tango.exe" es solo un lanzador chico
+# (recursos/lanzador.cs) que abre ese Python; el .cmd queda por si un antivirus lo bloquea.
 #
 # El release trae:
 #   HerramientaTango.zip                  todo, para la primera instalacion
@@ -63,6 +63,16 @@ jobs:
           if ($salida -ne $env:VERSION) { throw "Version incorrecta: $salida" }
           Write-Output "Version: $salida"
 
+      - name: Probar que el .exe abre el programa
+        shell: pwsh
+        run: |
+          $archivo = Join-Path $env:RUNNER_TEMP 'version-exe.txt'
+          $p = Start-Process -FilePath 'dist\HerramientaTango\Herramienta Tango.exe' -ArgumentList '--escribir-version', $archivo -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "El .exe no arranca (codigo $($p.ExitCode))" }
+          $salida = Get-Content $archivo -Raw
+          if ($salida -ne $env:VERSION) { throw "Version incorrecta desde el .exe: $salida" }
+          Write-Output "El .exe abre la version $salida"
+
       - name: Probar instalacion y actualizacion automatica
         shell: pwsh
         run: ./tests/probar_actualizacion.ps1
@@ -79,7 +89,7 @@ jobs:
           body: |
             Generado desde el commit ${{ github.sha }}.
 
-            Primera instalacion: descargar HerramientaTango.zip, descomprimirlo y abrir "Abrir Herramienta Tango".
+            Primera instalacion: descargar HerramientaTango.zip, descomprimirlo y abrir "Herramienta Tango.exe" (o "Abrir Herramienta Tango.cmd").
             Las instalaciones existentes se actualizan solas con HerramientaTango-app.zip.
           files: |
             dist/HerramientaTango.zip
