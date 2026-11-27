@@ -43,6 +43,10 @@
   .art-cab .tot { white-space: nowrap; font-size: .85rem; color: var(--plomo); text-align: right; }
   .art-cab .tot b { color: var(--grafito); font-variant-numeric: tabular-nums; }
   .ref { font-size: .8rem; color: var(--plomo); margin: 4px 0 0; }
+  .art.difiere { border-color: var(--ambar); box-shadow: inset 4px 0 0 var(--ambar); }
+  .marca-excel { display: inline-block; font-size: .76rem; font-weight: 700; padding: 2px 9px; border-radius: 99px; margin: 6px 0 0;
+                 background: var(--ambar-suave); color: var(--ambar); font-variant-numeric: tabular-nums; }
+  .pista-excel { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 12px; }
   .lote { display: grid; grid-template-columns: minmax(0, 1fr) 112px auto; gap: 6px 10px; align-items: center;
           padding: 9px 0; border-top: 1px dashed var(--linea); margin-top: 8px; }
   .lote .nom { min-width: 0; }
@@ -96,6 +100,8 @@
   HT.iniciar("recuento");
   const { $, el, norm, tokens, num, unidad, pedir, cajaError, escribir, ventana, campo, botones, avisar } = HT;
   const EPS = 0.0001;
+  // estados de la comparacion con el inventario Excel que son diferencia
+  const DIF_EXCEL = ["Tango tiene más", "Tango tiene menos", "Revisar unidad"];
   const POR_PAGINA = 40;
   const params = new URLSearchParams(location.search);
 
@@ -114,6 +120,8 @@
   const conteo = (c, p) => rc && rc.conteos[clave(c, p)];
   const quienCorto = q => (q || "").replace(/\s*\([^)]*\)\s*$/, "");
   const idActual = () => Number(params.get("id")) || null;
+  const refDe = x => (rc && rc.referencia && rc.referencia[x.codigo]) || null;
+  const difiereExcel = x => { const r = refDe(x); return !!r && DIF_EXCEL.includes(r.estado); };
 
   // ---------------------------------------------------------------- listado de recuentos
   async function cargarLista() {
@@ -241,10 +249,12 @@
       if (!x.unidad) x.unidad = c.unidad || "";
       if (!x.lotes.has(c.partida)) x.lotes.set(c.partida, 0);
     }
+    // lo que difiere con el inventario Excel aparece siempre (aunque Tango tenga 0 en Central)
+    for (const [codigo, r] of Object.entries(rc.referencia || {})) if (DIF_EXCEL.includes(r.estado)) item(codigo);
     if (conCeros) {
       for (const a of articulos.values()) if (a.lleva_stock !== false) item(a.codigo);
     }
-    items = [...porCodigo.values()].filter(x => x.lotes.size || conCeros).map(x => {
+    items = [...porCodigo.values()].filter(x => x.lotes.size || conCeros || DIF_EXCEL.includes(((rc.referencia || {})[x.codigo] || {}).estado)).map(x => {
       const t = norm([x.codigo, x.descripcion, (articulos.get(x.codigo) || {}).sinonimo, ...x.lotes.keys()].join(" "));
       return { ...x, lotes: [...x.lotes].map(([partida, tango]) => ({ partida, tango: Math.round(tango * 1e4) / 1e4 }))
                                   .sort((a, b) => a.partida.localeCompare(b.partida, "es", { numeric: true })),
@@ -261,6 +271,7 @@
   }
   function pasaFiltro(x) {
     if (filtro === "todos") return true;
+    if (filtro === "excel") return difiereExcel(x);
     const ds = x.lotes.map(l => difLote(x, l));
     if (filtro === "sin") return !x.lotes.length || ds.some(d => d === null);
     if (filtro === "contados") return x.lotes.length && ds.every(d => d !== null);
@@ -301,6 +312,13 @@
     barra.append(br, aviso, bf);
     frag.push(barra);
 
+    if (!rc.referencia && abierto) {
+      const pista = el("div", "info pista-excel");
+      pista.append(el("span", "", "Cargá la comparación con el inventario Excel para marcar los artículos que difieren."));
+      const b = el("button", "boton chico", "Cargar comparación"); b.type = "button";
+      b.addEventListener("click", cargarComparacion);
+      pista.append(b); frag.push(pista);
+    }
     const av = el("div", "avance-rc"); av.id = "avance"; frag.push(av);
     const cont = el("div"); cont.id = "articulos"; frag.push(cont);
 
@@ -319,16 +337,19 @@
   }
 
   function dibujarFiltros() {
-    const n = { todos: items.length, sin: 0, contados: 0, dif: 0 };
+    const n = { todos: items.length, excel: 0, sin: 0, contados: 0, dif: 0 };
     for (const x of items) {
+      if (difiereExcel(x)) n.excel++;
       const ds = x.lotes.map(l => difLote(x, l));
       if (!x.lotes.length || ds.some(d => d === null)) n.sin++;
       if (x.lotes.length && ds.every(d => d !== null)) n.contados++;
       if (ds.some(d => d !== null && Math.abs(d) > EPS)) n.dif++;
     }
     const fs = $("filtros"); fs.replaceChildren();
-    for (const [id, t] of [["todos", "Todos"], ["sin", "Sin contar"], ["contados", "Contados"], ["dif", "Con diferencia"]]) {
-      const b = el("button", "filtro" + (id === "dif" ? " alerta" : ""), t); b.type = "button";
+    const opciones = [["todos", "Todos"], ["sin", "Sin contar"], ["contados", "Contados"], ["dif", "Con diferencia"]];
+    if (rc.referencia) opciones.splice(1, 0, ["excel", "Difieren con el Excel"]);
+    for (const [id, t] of opciones) {
+      const b = el("button", "filtro" + (id === "dif" || id === "excel" ? " alerta" : ""), t); b.type = "button";
       b.append(el("b", "", String(n[id]))); b.setAttribute("aria-pressed", String(filtro === id));
       b.addEventListener("click", () => { filtro = id; mostrar = POR_PAGINA; dibujarArticulos(); });
       fs.append(b);
@@ -365,7 +386,7 @@
   }
 
   function tarjetaArticulo(x) {
-    const t = el("section", "tarjeta art"); t.dataset.codigo = x.codigo;
+    const t = el("section", "tarjeta art" + (difiereExcel(x) ? " difiere" : "")); t.dataset.codigo = x.codigo;
     const cab = el("div", "art-cab");
     const h = el("h3", "", x.codigo); h.append(el("small", "", x.descripcion));
     const totT = x.lotes.reduce((s, l) => s + l.tango, 0);
@@ -373,7 +394,13 @@
     const tot = el("div", "tot"); tot.append("Tango ", el("b", "", `${num(totT)} ${unidad(x.unidad)}`));
     if (cont.length && cont.every(Boolean)) { tot.append(el("br"), "Contado ", el("b", "", `${num(cont.reduce((s, c) => s + c.cantidad, 0))} ${unidad(x.unidad)}`)); }
     cab.append(h, tot); t.append(cab);
-    const ref = rc.referencia && rc.referencia[x.codigo];
+    const ref = refDe(x);
+    if (difiereExcel(x)) {
+      const d = ref.diferencia;
+      const texto = ref.estado === "Revisar unidad" ? "Difiere con el Excel: revisar la unidad"
+        : `Difiere con el Excel: ${ref.estado}` + (typeof d === "number" ? ` (${d > 0 ? "+" : ""}${num(d)} ${unidad(x.unidad)}`.trimEnd() + ")" : "");
+      t.append(el("span", "marca-excel", texto));
+    }
     if (ref) {
       const partes = [];
       if (ref.excel !== null && ref.excel !== undefined) partes.push(`Excel de inventario: ${num(ref.excel)} ${unidad(x.unidad)}`);
@@ -565,6 +592,14 @@
     });
   }
 
+  function cargarComparacion() {
+    elegirArchivo(".xlsx", async archivo => {
+      const r = (await escribir("/api/recuentos/referencia", { id: rc.id, archivo })).datos;
+      avisar(`Listo: ${r.con_diferencia ?? 0} artículos difieren con el Excel`);
+      filtro = r.con_diferencia ? "excel" : filtro;
+    }, () => cargarRecuento(false));
+  }
+
   function masOpciones() {
     ventana("Más opciones", (d, cerrar) => {
       const m = el("div", "menu-rc");
@@ -576,11 +611,8 @@
       });
       m.append(b1, el("p", "", abierto ? "Cerrado no se puede seguir contando por error. Se puede reabrir cuando haga falta." : "Para volver a contar sobre este mismo recuento."));
       const b2 = el("button", "boton", rc.referencia ? "Reemplazar Excel de comparación" : "Cargar Excel de comparación"); b2.type = "button";
-      b2.addEventListener("click", () => { cerrar(); elegirArchivo(".xlsx", async archivo => {
-        const r = (await escribir("/api/recuentos/referencia", { id: rc.id, archivo })).datos;
-        avisar(`Listo: ${r.articulos} artículos con cantidad y ubicación del Excel`);
-      }, () => cargarRecuento(false)); });
-      m.append(b2, el("p", "", "El que baja Stock > Comparar con inventario Excel. Muestra en cada artículo cuánto dice el Excel y dónde está, como guía para contar. No cambia ningún conteo."));
+      b2.addEventListener("click", () => { cerrar(); cargarComparacion(); });
+      m.append(b2, el("p", "", "El que baja Stock > Comparar con inventario Excel. Marca los artículos que difieren y muestra cuánto dice el Excel y dónde está, como guía para contar. No cambia ningún conteo."));
       const b3 = el("button", "boton", lista.plantilla ? "Reemplazar plantilla de Ajustes" : "Cargar plantilla de Ajustes"); b3.type = "button";
       b3.addEventListener("click", () => { cerrar(); elegirArchivo(".xlsx", async archivo => {
         const r = (await escribir("/api/recuentos/plantilla", { archivo })).datos;

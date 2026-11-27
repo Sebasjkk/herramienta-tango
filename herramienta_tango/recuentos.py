@@ -32,6 +32,8 @@ from .precios import PedidoInvalido
 MAX_NOMBRE = 60
 MAX_NOTA = 200
 EPS = 0.0001
+# Estados de la comparacion con el inventario Excel que cuentan como diferencia (inventario.py)
+ESTADOS_DIFERENCIA = ("Tango tiene más", "Tango tiene menos", "Revisar unidad")
 
 
 def ruta_registro() -> Path:
@@ -176,6 +178,8 @@ class Recuentos:
         def col(*nombres):
             return next((i for i, t in enumerate(enc) if t in nombres), None)
         c_cod, c_exc, c_ubi = col("codigo tango"), col("excel en unidad de tango"), col("ubicacion")
+        c_est = col("estado")
+        c_dif = next((i for i, t in enumerate(enc) if t.startswith("diferencia")), None)
         if c_cod is None or c_exc is None:
             raise PedidoInvalido("Ese Excel no es la comparación de inventario: usá el que baja "
                                  "Stock > Comparar con inventario Excel (hoja «Todo»).")
@@ -185,7 +189,15 @@ class Recuentos:
             codigo = str(v(c_cod) or "").strip()
             if not codigo:
                 continue
-            x = ref.setdefault(codigo, {"excel": None, "ubicacion": ""})
+            x = ref.setdefault(codigo, {"excel": None, "ubicacion": "", "estado": "", "diferencia": None})
+            estado = str(v(c_est) or "").strip()
+            if estado and (not x["estado"] or estado in ESTADOS_DIFERENCIA):
+                x["estado"] = estado
+            if estado in ESTADOS_DIFERENCIA:
+                try:
+                    x["diferencia"] = round(float(v(c_dif)), 4)
+                except (TypeError, ValueError):
+                    pass
             try:
                 if v(c_exc) not in (None, ""):
                     x["excel"] = round((x["excel"] or 0) + float(v(c_exc)), 4)
@@ -202,7 +214,7 @@ class Recuentos:
             r["referencia"] = ref
             r["referencia_cargada"] = datetime.now().isoformat(timespec="seconds")
             self._guardar(datos)
-        return {"articulos": len(ref)}
+        return {"articulos": len(ref), "con_diferencia": sum(1 for x in ref.values() if x["estado"] in ESTADOS_DIFERENCIA)}
 
     # ------------------------------------------------------------ salidas
     def diferencias(self, id_recuento: int) -> list[dict]:
@@ -220,11 +232,12 @@ class Recuentos:
         cols = [("Artículo", "texto"), ("Descripción", "texto"), ("Partida", "texto"), ("Unidad", "texto"),
                 ("Tango al contar", "numero"), ("Contado", "numero"), ("Diferencia", "numero"),
                 ("Lote nuevo", "texto"), ("Nota", "texto"), ("Contó", "texto"), ("Cuándo", "texto"),
-                ("Excel inventario (artículo)", "numero"), ("Ubicación", "texto")]
+                ("Excel inventario (artículo)", "numero"), ("Ubicación", "texto"), ("Comparación con el Excel", "texto")]
         filas = [[c["codigo"], c.get("descripcion", ""), c["partida"], c.get("unidad", ""), c["tango"], c["cantidad"],
                   round(c["cantidad"] - c["tango"], 4), "Sí" if c.get("nueva") else "", c.get("nota", ""), c.get("quien", ""),
                   c.get("cuando", "").replace("T", " "),
-                  (ref.get(c["codigo"]) or {}).get("excel"), (ref.get(c["codigo"]) or {}).get("ubicacion", "")]
+                  (ref.get(c["codigo"]) or {}).get("excel"), (ref.get(c["codigo"]) or {}).get("ubicacion", ""),
+                  (ref.get(c["codigo"]) or {}).get("estado", "")]
                  for c in sorted(r["conteos"].values(), key=lambda x: (x["codigo"], x["partida"]))]
         dif = [f for f in filas if abs(f[6]) > EPS]
         return xlsx.escribir_libro([("Diferencias", cols, dif), ("Todo lo contado", cols, filas)])

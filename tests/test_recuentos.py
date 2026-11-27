@@ -93,12 +93,16 @@ class TestRecuentos(unittest.TestCase):
         self.assertEqual(len(hojas["Todo lo contado"]), 3)
 
     def test_referencia_desde_la_comparacion(self):
-        comp = xlsx.escribir_libro([("Todo", [("Código Tango", "texto"), ("Excel en unidad de Tango", "numero"), ("Ubicación", "texto")],
-                                     [["A", 5.0, "Lab"], ["A", 2.0, "Galpón"], ["B", None, ""]])])
-        self.assertEqual(self.reg.cargar_referencia(self.id, comp), {"articulos": 2})
+        cols = [("Estado", "texto"), ("Código Tango", "texto"), ("Excel en unidad de Tango", "numero"),
+                ("Diferencia (Tango − Excel)", "numero"), ("Ubicación", "texto")]
+        comp = xlsx.escribir_libro([("Todo", cols, [["Coincide", "A", 5.0, 0.0, "Lab"], ["Tango tiene menos", "A", 2.0, -2.0, "Galpón"],
+                                                    ["Solo en Tango", "B", None, 4.0, ""], ["Coincide", "C", 1.0, 0.0, ""]])])
+        self.assertEqual(self.reg.cargar_referencia(self.id, comp), {"articulos": 3, "con_diferencia": 1})
         ref = self.reg.uno(self.id)["referencia"]
-        self.assertEqual(ref["A"], {"excel": 7.0, "ubicacion": "Lab, Galpón"})
+        self.assertEqual(ref["A"], {"excel": 7.0, "ubicacion": "Lab, Galpón", "estado": "Tango tiene menos", "diferencia": -2.0})
         self.assertIsNone(ref["B"]["excel"])
+        self.assertEqual((ref["B"]["estado"], ref["B"]["diferencia"]), ("Solo en Tango", None))
+        self.assertEqual(ref["C"]["estado"], "Coincide")
         with self.assertRaises(PedidoInvalido):
             self.reg.cargar_referencia(self.id, xlsx.escribir([("Otra", "texto")], [["x"]]))
 
