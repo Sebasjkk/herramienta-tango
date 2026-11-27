@@ -54,6 +54,30 @@
   .et-bulto small { display: block; font-size: 10pt; font-weight: 600; margin-bottom: 1mm; }
   .et-bulto span { font-size: 22pt; }
 
+  /* Diseño Sianco (el de las etiquetas de alambres): marco negro redondeado con filete blanco, caja
+     blanca con los datos a la izquierda y a la derecha el logo, una raya y los datos de la empresa */
+  .rotulo.sianco { padding: 2.5mm; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .s-marco { position: relative; height: 100%; box-sizing: border-box; background: #000; border-radius: 9mm;
+    display: grid; grid-template-columns: 1fr 41mm; gap: 4mm; padding: 5mm 5mm 5mm 5mm; }
+  .s-marco::before { content: ""; position: absolute; inset: 1.8mm; border: .35mm solid #fff; border-radius: 7.5mm; pointer-events: none; }
+  .s-caja { position: relative; z-index: 1; background: #fff; border-radius: 7mm; padding: 5mm 5.5mm 4.5mm; overflow: hidden;
+    display: flex; flex-direction: column; min-width: 0; }
+  .s-caja .et-nombre { margin-bottom: 2mm; }
+  .s-caja .et-dir { font-size: 13pt; }
+  .s-caja .et-extra { font-size: 12pt; margin-top: 2.5mm; }
+  .s-caja .et-retira { font-size: 13pt; }
+  .s-rem { margin-top: auto; padding-top: 2mm; font-size: 10pt; font-weight: 600; }
+  .s-lado { position: relative; z-index: 1; color: #fff; display: flex; flex-direction: column; padding: 1.5mm 1mm 0 0; min-width: 0; }
+  .s-logo { width: 100%; height: auto; display: block; }
+  .s-raya { border-top: .4mm solid #fff; margin: 4mm 0 3mm; }
+  .s-datos { font-size: 8.2pt; line-height: 1.35; }
+  .s-bulto { margin-top: auto; text-align: center; font-weight: 700; line-height: 1; padding-bottom: 1mm; }
+  .s-bulto small { display: block; font-size: 9pt; font-weight: 600; margin-bottom: 1mm; }
+  .s-bulto span { font-size: 20pt; }
+  .disenos { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 8px; }
+  .disenos label { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: .92rem; }
+  .disenos input { width: 18px; height: 18px; accent-color: var(--patina); margin: 0; }
+
   #impresion { display: none; }
   @media print {
     @page { size: 150mm 100mm; margin: 0; }
@@ -102,6 +126,10 @@
   HT.iniciar("etiquetas");
   const { $, el, norm, tokens, sinCeros, fecha, pedir, textoError, cajaError } = HT;
   const REMITENTE = ["SIANCO S.A.", "Heredia 478 – C.A.B.A."];
+  // Datos de la empresa del diseño Sianco (tal cual las etiquetas de alambres)
+  const EMPRESA = ["Heredia 478 - CABA", "1427 - Tel: 11 4555-3393", "www.sianco.com.ar", "Email: ventas@sianco.com.ar"];
+  let diseno = "sianco";
+  try { diseno = localStorage.getItem("ht_etiqueta_diseno") || "sianco"; } catch {}
   const MAX = 80;
 
   let remitos = [];
@@ -236,6 +264,16 @@
     s3.append(c);
     t.append(s3);
 
+    const s5 = el("div", "seccion-et"); s5.append(el("h3", "", "Diseño"));
+    const ds = el("div", "disenos");
+    for (const [id, t] of [["sianco", "Sianco (marco negro con logo)"], ["simple", "Simple (sin fondo negro)"]]) {
+      const l = el("label"); const i = el("input"); i.type = "radio"; i.name = "diseno"; i.checked = diseno === id;
+      i.addEventListener("change", () => { diseno = id; try { localStorage.setItem("ht_etiqueta_diseno", id); } catch {} vista(); });
+      l.append(i, t); ds.append(l);
+    }
+    s5.append(ds);
+    t.append(s5);
+
     const s4 = el("div", "seccion-et"); s4.append(el("h3", "", "Vista previa"));
     const v = el("div", "vista"); v.id = "vista"; s4.append(v);
     const acc = el("div", "acciones-et");
@@ -249,7 +287,44 @@
     vista();
   }
 
+  // Lo que va adentro (nombre, direccion, OC, At., texto, retira): igual en los dos diseños
+  function datosDestino(e, tamanos) {
+    const nom = el("div", "et-nombre", f.nombre);
+    const largo = (f.nombre || "").length;
+    nom.style.fontSize = (largo > 42 ? tamanos[0] : largo > 30 ? tamanos[1] : tamanos[2]) + "pt";
+    e.append(nom);
+    const dir = el("div", "et-dir");
+    if (f.direccion) dir.append(f.direccion, el("br"));
+    const linea = [f.cp ? `(${f.cp})` : "", f.localidad].filter(Boolean).join(" ");
+    dir.append([linea, f.provincia].filter(Boolean).join(" – "));
+    e.append(dir);
+    const extra = el("div", "et-extra");
+    if (f.usarOc && f.oc) extra.append(el("div", "", "OC: " + f.oc));
+    if (f.usarAt && f.at) extra.append(el("div", "", "At.: " + f.at));
+    if (f.usarTexto && f.texto) extra.append(el("div", "", f.texto));
+    if (extra.childNodes.length) e.append(extra);
+    if (f.retira) { const r = el("div"); r.append(el("span", "et-retira", "RETIRA EN DEPÓSITO")); e.append(r); }
+  }
+
+  function etiquetaSianco(nBulto, total) {
+    const e = el("div", "rotulo sianco");
+    const marco = el("div", "s-marco");
+    const caja = el("div", "s-caja");
+    datosDestino(caja, [15, 17, 20]);
+    if (f.remito) caja.append(el("div", "s-rem", "Remito " + elegido.numero_corto));
+    const lado = el("div", "s-lado");
+    const logo = el("img", "s-logo"); logo.src = "/logo-sianco-etiqueta.png"; logo.alt = "sianco";
+    const datos = el("div", "s-datos");
+    EMPRESA.forEach((t, i) => { if (i) datos.append(el("br")); datos.append(t); });
+    lado.append(logo, el("div", "s-raya"), datos);
+    if (total > 1) { const b = el("div", "s-bulto"); b.append(el("small", "", "BULTO"), el("span", "", `${nBulto} de ${total}`)); lado.append(b); }
+    marco.append(caja, lado);
+    e.append(marco);
+    return e;
+  }
+
   function etiqueta(nBulto, total) {
+    if (diseno === "sianco") return etiquetaSianco(nBulto, total);
     const e = el("div", "rotulo");
     const nom = el("div", "et-nombre", f.nombre);
     const largo = (f.nombre || "").length;
@@ -288,10 +363,12 @@
     $("cuantas").textContent = total === 1 ? "Sale 1 etiqueta." : `Salen ${total} etiquetas (bulto 1 de ${total} a ${total} de ${total}).`;
   }
 
-  function imprimir() {
+  async function imprimir() {
     const total = f.porBulto ? f.bultos : 1;
     const cont = $("impresion");
     cont.replaceChildren(...Array.from({ length: total }, (_, i) => etiqueta(i + 1, total)));
+    // que el logo este cargado antes de abrir la ventana de impresion
+    await Promise.all([...cont.querySelectorAll("img")].map(i => i.complete ? null : new Promise(ok => { i.onload = i.onerror = ok; })));
     window.print();
   }
 
