@@ -276,11 +276,12 @@
     if (errorDe(remitosDe)) sr.append(errorDe(remitosDe));
     else if (!rems.length) sr.append(el("p", "nota", "No tiene remitos en el último año."));
     else {
-      const sinFac = rems.filter(r => Array.isArray(r.facturas) && !r.facturas.length).length;
+      const sinFac = rems.filter(r => r.sin_facturar === true).length;
       if (sinFac) sr.append(el("p", "nota", `${sinFac === 1 ? "1 remito" : sinFac + " remitos"} sin facturar.`));
       const ul = el("ul", "lista-mini");
       for (const r of rems.slice(0, 8)) {
-        const fac = Array.isArray(r.facturas) ? (r.facturas.length ? el("span", "etiqueta-estado e-cumplido", "Facturado") : el("span", "etiqueta-estado e-vencida", "Sin facturar")) : "";
+        const fac = r.sin_facturar ? el("span", "etiqueta-estado e-vencida", (r.posibles_facturas || []).length ? "Posible factura" : "Sin facturar")
+          : (r.facturas && r.facturas.length) || r.facturado_segun_tango ? el("span", "etiqueta-estado e-cumplido", "Facturado") : "";
         ul.append(filaLink("/remitos?q=" + encodeURIComponent(r.numero), "Remito " + r.numero_corto,
           [fecha(r.fecha), r.pedidos.length ? "Pedido " + r.pedidos.map(p => cortoPed(p.numero)).join(", ") : "sin pedido",
            ...(r.facturas || []).map(f => f.numero)].filter(Boolean).join(" · "), fac));

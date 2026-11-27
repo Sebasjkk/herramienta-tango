@@ -445,6 +445,14 @@ $out.relacion = $true
 # renglon de la factura, para los demas). Encontradas con los diagnosticos del 26/11/2026.
 try { $out.facturas = Q "SELECT DISTINCT c.N_COMP COLLATE DATABASE_DEFAULT AS N_COMP, f.TCOMP_V COLLATE DATABASE_DEFAULT AS T_COMP, f.NCOMP_V COLLATE DATABASE_DEFAULT AS N_FAC FROM GVA107 f JOIN STA14 c ON c.TCOMP_IN_S COLLATE DATABASE_DEFAULT = f.TCOMP_IN_S COLLATE DATABASE_DEFAULT AND c.NCOMP_IN_S COLLATE DATABASE_DEFAULT = f.NCOMP_IN_S COLLATE DATABASE_DEFAULT WHERE c.T_COMP = 'REM' AND c.FECHA_MOV >= $desde UNION SELECT DISTINCT c.N_COMP COLLATE DATABASE_DEFAULT, f.T_COMP_V COLLATE DATABASE_DEFAULT, f.N_COMP COLLATE DATABASE_DEFAULT FROM GVA54 f JOIN STA14 c ON c.TCOMP_IN_S COLLATE DATABASE_DEFAULT = f.TCOMP_IN_S COLLATE DATABASE_DEFAULT AND c.NCOMP_IN_S COLLATE DATABASE_DEFAULT = f.NCOMP_IN_S COLLATE DATABASE_DEFAULT WHERE c.T_COMP = 'REM' AND c.FECHA_MOV >= $desde" }
 catch { $out.facturas = @(); $out.facturas_error = $_.Exception.Message }
+# Remitos que Tango ya marca como facturados (STA14.ESTADO_MOV = F), aunque no se encuentre la factura
+try { $out.estado_f = Q "SELECT c.N_COMP COLLATE DATABASE_DEFAULT AS N_COMP FROM STA14 c WHERE c.T_COMP = 'REM' AND c.ESTADO_MOV = 'F' AND c.FECHA_MOV >= $desde" }
+catch { $out.estado_f = @() }
+# Posible factura de los remitos pendientes: factura del mismo cliente, por el mismo importe sin impuestos
+# (GVA12.IMPORTE_GR = STA14.IMPORTE_TOTAL_CON_IMPUESTOS, que en el remito es el neto), de 5 dias antes a 45 despues.
+# Caso visto el 26/11/2026: remito 596 de SCIPIO y factura A 0003-00013004, hecha sin elegir el remito.
+try { $out.posibles = Q "SELECT c.N_COMP COLLATE DATABASE_DEFAULT AS N_COMP, f.T_COMP COLLATE DATABASE_DEFAULT AS T_COMP, f.N_COMP COLLATE DATABASE_DEFAULT AS N_FAC, f.FECHA_EMIS AS FECHA, f.ESTADO_STK AS ESTADO_STK FROM STA14 c JOIN GVA12 f ON f.COD_CLIENT COLLATE DATABASE_DEFAULT = c.COD_PRO_CL COLLATE DATABASE_DEFAULT AND f.T_COMP = 'FAC' AND f.FECHA_EMIS BETWEEN DATEADD(day, -5, c.FECHA_MOV) AND DATEADD(day, 45, c.FECHA_MOV) AND ABS(f.IMPORTE_GR - c.IMPORTE_TOTAL_CON_IMPUESTOS) <= 1 WHERE c.T_COMP = 'REM' AND c.ESTADO_MOV <> 'F' AND c.IMPORTE_TOTAL_CON_IMPUESTOS > 0 AND c.FECHA_MOV >= $desde" }
+catch { $out.posibles = @(); $out.posibles_error = $_.Exception.Message }
 $out | ConvertTo-Json -Depth 4 -Compress
 """
 
@@ -590,8 +598,19 @@ def _remitos_con_pedido_local() -> dict:
              "t_comp": t, "n_comp": str(f.get("N_FAC") or "").strip()}
         if x not in facturas.setdefault(n, []):
             facturas[n].append(x)
+    posibles: dict[str, list[dict]] = {}
+    for f in _como_lista(datos.get("posibles")):
+        n = str(f.get("N_COMP") or "").strip()
+        t = str(f.get("T_COMP") or "").strip()
+        x = {"tipo": _TIPOS.get(t, t), "numero": _numero_comprobante(str(f.get("N_FAC") or "")), "t_comp": t,
+             "n_comp": str(f.get("N_FAC") or "").strip(), "fecha": f.get("FECHA"),
+             "sin_entregar": str(f.get("ESTADO_STK") or "").strip().upper() == "P"}
+        if x not in posibles.setdefault(n, []):
+            posibles[n].append(x)
     res = {"relacion": bool(datos.get("relacion")), "remitos": por_remito, "facturas": facturas,
-           "facturas_leidas": not datos.get("facturas_error")}
+           "facturas_leidas": not datos.get("facturas_error"),
+           "estado_f": sorted({str(f.get("N_COMP") or "").strip() for f in _como_lista(datos.get("estado_f"))}),
+           "posibles": posibles}
     _cache[clave] = (time.time(), res)
     return res
 

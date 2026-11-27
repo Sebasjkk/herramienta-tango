@@ -44,6 +44,7 @@
   .remito .der { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .remito .partidas { display: block; font-size: .8rem; color: var(--plomo); }
   .remito .cod { display: block; font-size: .78rem; color: var(--plomo); }
+  .aviso-posible { margin: 10px 0 0; padding: 8px 10px; border-radius: var(--radio); background: color-mix(in srgb, var(--advertencia, #B7791F) 12%, transparent); }
   .acciones-rem { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
   .mas { text-align: center; color: var(--plomo); font-size: .88rem; }
 </style>
@@ -89,8 +90,8 @@
       ayuda: "Con pedido: se hicieron desde un pedido de Tango. Si un pedido se entregó en partes, cada remito aparece con el mismo pedido." },
     { id: "sin", titulo: "Sin pedido", f: r => !r.pedidos.length,
       ayuda: "Sin pedido: se hicieron directo, sin un pedido detrás. No tienen orden de compra del cliente asociada en Tango." },
-    { id: "sinfac", titulo: "Sin facturar", f: r => Array.isArray(r.facturas) && !r.facturas.length,
-      ayuda: "Sin facturar: se entregó la mercadería pero ninguno de sus renglones está en una factura todavía." },
+    { id: "sinfac", titulo: "Sin facturar", f: r => r.sin_facturar === true,
+      ayuda: "Sin facturar: ninguna factura está hecha con este remito y Tango lo tiene pendiente. Si aparece una «posible factura», es una del mismo cliente y por el mismo importe que se hizo sin elegir el remito." },
   ];
   let remitos = [], grupo = "todos", mostrar = MAX;
   const params = new URLSearchParams(location.search);
@@ -100,7 +101,7 @@
 
   const corto = n => (n || "").trim().slice(-8).replace(/^0+/, "") || "0";   // pedido sin el prefijo de sucursal
   const textoBusqueda = r => norm([r.numero_corto, r.numero, r.cliente, r.codigo_cliente,
-    ...r.pedidos.flatMap(p => [corto(p.numero), p.orden_compra]), ...(r.facturas || []).map(f => f.numero)].join(" "));
+    ...r.pedidos.flatMap(p => [corto(p.numero), p.orden_compra]), ...(r.facturas || []).map(f => f.numero), ...(r.posibles_facturas || []).map(f => f.numero)].join(" "));
 
   async function cargar(forzar) {
     $("estado").textContent = "Consultando Tango…";
@@ -222,11 +223,20 @@
     } else ped.append(el("span", "sin", "Sin pedido"));
     if (Array.isArray(r.facturas)) {
       ped.append(" · ");
+      const pdfFac = f => f.n_comp ? `/factura.pdf?t=${encodeURIComponent(f.t_comp)}&n=${encodeURIComponent(f.n_comp)}` : null;
       if (r.facturas.length) {
         ped.append(el("span", "con", "Facturado "));
-        r.facturas.forEach((f, k) => { if (k) ped.append(", ");
-          ped.append(linkPdf(f.numero, f.n_comp ? `/factura.pdf?t=${encodeURIComponent(f.t_comp)}&n=${encodeURIComponent(f.n_comp)}` : null)); });
-      } else ped.append(el("span", "sin", "Sin facturar"));
+        r.facturas.forEach((f, k) => { if (k) ped.append(", "); ped.append(linkPdf(f.numero, pdfFac(f))); });
+      } else if (r.facturado_segun_tango) {
+        ped.append(el("span", "con", "Facturado"), " (según Tango)");
+      } else {
+        ped.append(el("span", "sin", "Sin facturar"));
+        const pos = r.posibles_facturas || [];
+        if (pos.length) {
+          ped.append(" · posible factura ");
+          pos.forEach((f, k) => { if (k) ped.append(", "); ped.append(linkPdf(f.numero, pdfFac(f))); });
+        }
+      }
     }
     const num = el("span", "num"); num.append(linkPdf(r.numero_corto, r.id ? `/remito/${r.id}.pdf` : null));
     s.append(num, el("span", "cli", r.cliente || r.codigo_cliente), el("span", "fec", fecha(r.fecha)), ped);
@@ -258,6 +268,15 @@
       }
       t.append(thead, tb);
       cuerpo.replaceChildren(t);
+      if (r.sin_facturar && (r.posibles_facturas || []).length) {
+        const f = r.posibles_facturas[0];
+        cuerpo.append(el("p", "nota aviso-posible",
+          `La factura ${f.numero} (${fecha(f.fecha)}) es del mismo cliente y por el mismo importe, pero se hizo sin elegir este remito: ` +
+          `para Tango este remito sigue sin facturar` + (f.sin_entregar ? " y esa factura, sin entregar" : "") + ". Es casi seguro la misma venta. " +
+          "De acá en adelante, conviene facturar desde el remito."));
+      } else if (r.facturado_segun_tango) {
+        cuerpo.append(el("p", "nota", "Tango lo tiene como facturado, pero no se encontró con qué factura."));
+      }
       const acc = el("div", "acciones-rem");
       const et = el("a", "boton chico", "Etiqueta de envío"); et.href = "/etiquetas?remito=" + r.id;
       acc.append(et);

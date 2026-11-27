@@ -32,7 +32,7 @@ def vista(servicio, forzar: bool = False) -> dict:
         return {"id": p.id if p else id_pedido, "numero": (p.numero if p else numero) or "",
                 "orden_compra": p.orden_compra_cliente if p else "", "estado": p.estado if p else None}
 
-    origen, aviso, mapa, facturas = "base", "", {}, {}
+    origen, aviso, mapa, facturas, estado_f, posibles = "base", "", {}, {}, set(), {}
     try:
         datos = base_tango.remitos_con_pedido()
         if not datos.get("relacion"):
@@ -41,6 +41,8 @@ def vista(servicio, forzar: bool = False) -> dict:
         facturas = {_clave(k): v for k, v in (datos.get("facturas") or {}).items()}
         if not datos.get("facturas_leidas", True):
             facturas = None
+        estado_f = {_clave(k) for k in datos.get("estado_f") or []}
+        posibles = {_clave(k): v for k, v in (datos.get("posibles") or {}).items()}
     except base_tango.BaseNoDisponible as e:
         origen = "ultimo_remito"
         aviso = (f"{e} Se muestra el pedido solo para el último remito de cada pedido: con entregas parciales, "
@@ -52,10 +54,15 @@ def vista(servicio, forzar: bool = False) -> dict:
             peds = [pedido_dict(x.get("id"), x.get("numero")) for x in mapa.get(_clave(r.numero), [])]
         else:
             peds = [pedido_dict(None, r.pedido)] if r.pedido else []
+        facs = facturas.get(_clave(r.numero), []) if origen == "base" and facturas is not None else None
+        # "Sin facturar" solo si no hay factura vinculada y Tango tampoco lo marca como facturado (estado F)
+        segun_tango = facs is not None and not facs and _clave(r.numero) in estado_f
+        sin_facturar = facs is not None and not facs and not segun_tango
         salida.append({"id": r.id, "numero": r.numero, "numero_corto": r.numero_corto, "fecha": r.fecha,
                        "id_cliente": r.id_cliente, "codigo_cliente": r.codigo_cliente, "cliente": r.cliente,
                        "estado": r.estado, "pedidos": peds,
-                       "facturas": facturas.get(_clave(r.numero), []) if origen == "base" and facturas is not None else None})
+                       "facturas": facs, "facturado_segun_tango": segun_tango, "sin_facturar": sin_facturar,
+                       "posibles_facturas": posibles.get(_clave(r.numero), []) if sin_facturar else []})
     return {"remitos": salida, "origen": origen, "aviso": aviso}, momento
 
 

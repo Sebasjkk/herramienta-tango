@@ -333,7 +333,7 @@
   // ---------------------------------------------------------------- remitos sin facturar
   async function remitosSinFacturar(forzar) {
     const pintar = d => {
-      const sin = d.datos.remitos.filter(r => Array.isArray(r.facturas) && !r.facturas.length)
+      const sin = d.datos.remitos.filter(r => r.sin_facturar === true)
         .sort((a, b) => (a.fecha || "").localeCompare(b.fecha || ""));
       const leidas = d.datos.remitos.some(r => Array.isArray(r.facturas));
       if (!leidas) {
@@ -344,7 +344,8 @@
       const viejos = sin.filter(r => r.fecha && diasHasta(r.fecha) < -7).length;
       cifra("rem", sin.length, viejos ? `${fmt.format(viejos)} de hace más de una semana` : sin.length ? "todos de esta semana" : "", viejos ? "atencion" : sin.length ? "" : "ok");
       panel("rem", lista(sin.map(r => ({ href: "/remitos?q=" + encodeURIComponent(r.numero), tit: `${r.numero_corto} · ${r.cliente || r.codigo_cliente}`,
-        sub: r.pedidos.length ? "Pedido " + r.pedidos.map(p => corto(p.numero)).join(", ") : "Sin pedido",
+        sub: [r.pedidos.length ? "Pedido " + r.pedidos.map(p => corto(p.numero)).join(", ") : "Sin pedido",
+              (r.posibles_facturas || []).length ? "posible factura " + r.posibles_facturas[0].numero : ""].filter(Boolean).join(" · "),
         estado: r.fecha && diasHasta(r.fecha) < -7 ? ["vencida", `Hace ${-diasHasta(r.fecha)} días`] : null,
         der: r.fecha && diasHasta(r.fecha) >= -7 ? fecha(r.fecha) : "" })), "No hay remitos sin facturar.", sin.length));
     };

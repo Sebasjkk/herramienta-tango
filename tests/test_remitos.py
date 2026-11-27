@@ -99,6 +99,35 @@ class TestDiagnostico(unittest.TestCase):
         self.assertNotRegex(base_tango._DIAG_PEDIDO_REMITO.upper(), r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|EXEC)\b")
 
 
+class TestPosibleFactura(unittest.TestCase):
+    def test_facturado_segun_tango_y_posible_factura(self):
+        base = {"relacion": True, "remitos": {}, "facturas_leidas": True,
+                "facturas": {"R0000800000110": [{"tipo": "Factura", "numero": "A 0003-00013009"}]},
+                "estado_f": ["R0000800000111"],
+                "posibles": {"R0000800000112": [{"tipo": "Factura", "numero": "A 0003-00013004", "n_comp": "A0000300013004",
+                                                 "t_comp": "FAC", "fecha": "2026-11-16", "sin_entregar": True}]}}
+        with mock.patch.object(base_tango, "remitos_con_pedido", return_value=base):
+            d, _ = remitos.vista(Servicio())
+        r = {x["id"]: x for x in d["remitos"]}
+        self.assertFalse(r[1]["sin_facturar"])                       # factura vinculada
+        self.assertTrue(r[2]["facturado_segun_tango"])                # estado F, sin factura encontrada
+        self.assertFalse(r[2]["sin_facturar"])
+        self.assertTrue(r[3]["sin_facturar"])
+        self.assertEqual(r[3]["posibles_facturas"][0]["numero"], "A 0003-00013004")
+
+    def test_lee_posibles_de_la_base(self):
+        js = ('{"relacion":true,"filas":[],"facturas":[],"estado_f":{"N_COMP":"R0000800000598"},'
+              '"posibles":{"N_COMP":"R0000800000596","T_COMP":"FAC","N_FAC":"A0000300013004","FECHA":"2026-11-16","ESTADO_STK":"P"}}')
+        base_tango._cache.clear()
+        with mock.patch.object(base_tango.sys, "platform", "win32"), mock.patch.object(base_tango, "es_servidor", return_value=True), \
+             mock.patch.object(base_tango.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, js, "")) as run:
+            d = base_tango.remitos_con_pedido()
+        self.assertIn("ABS(f.IMPORTE_GR - c.IMPORTE_TOTAL_CON_IMPUESTOS) <= 1", run.call_args[0][0][-1])
+        self.assertEqual(d["estado_f"], ["R0000800000598"])
+        self.assertEqual(d["posibles"]["R0000800000596"][0]["numero"], "A 0003-00013004")
+        self.assertTrue(d["posibles"]["R0000800000596"][0]["sin_entregar"])
+
+
 class TestDiagFactura(unittest.TestCase):
     def test_solo_lectura(self):
         self.assertNotRegex(base_tango._DIAG_FACTURA_REMITO.upper(), r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|EXEC)\b")
