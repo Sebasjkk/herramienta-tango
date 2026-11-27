@@ -46,6 +46,16 @@
   .art.difiere { border-color: var(--ambar); box-shadow: inset 4px 0 0 var(--ambar); }
   .marca-excel { display: inline-block; font-size: .76rem; font-weight: 700; padding: 2px 9px; border-radius: 99px; margin: 6px 0 0;
                  background: var(--ambar-suave); color: var(--ambar); font-variant-numeric: tabular-nums; }
+  .secciones { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 4px; border-radius: 14px; margin: 0 0 14px;
+                background: var(--papel); border: 1px solid var(--linea); }
+  .seccion { font: inherit; border: 0; border-radius: 10px; padding: 10px 12px; cursor: pointer; text-align: left;
+             background: transparent; color: var(--grafito); display: grid; gap: 1px; }
+  .seccion b { font-size: 1rem; }
+  .seccion small { font-size: .8rem; color: var(--plomo); }
+  .seccion[aria-pressed="true"] { background: var(--ambar-suave); box-shadow: inset 0 0 0 1.5px var(--ambar); }
+  .seccion.todo[aria-pressed="true"] { background: var(--patina-suave); box-shadow: inset 0 0 0 1.5px var(--patina); }
+  .secciones .seccion { border-radius: 10px; padding: 10px 12px; min-height: 0; }
+  .seccion:focus-visible { outline: 2px solid var(--patina); outline-offset: 2px; }
   .pista-excel { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 12px; }
   .lote { display: grid; grid-template-columns: minmax(0, 1fr) 112px auto; gap: 6px 10px; align-items: center;
           padding: 9px 0; border-top: 1px dashed var(--linea); margin-top: 8px; }
@@ -110,6 +120,7 @@
   let items = [];                   // [{codigo, descripcion, unidad, partidas, lotes: [{partida, tango}], _t}]
   let articulos = new Map();
   let filtro = "todos", mostrar = POR_PAGINA;
+  let seccion = null;               // "dif": solo lo que difiere con el inventario Excel · "todo": todo el stock
   let conCeros = false;
   try { conCeros = localStorage.getItem("ht_recuento_ceros") === "1"; } catch {}
   let actualizadoTango = null;
@@ -263,15 +274,16 @@
   }
 
   // estado de un lote: null (sin contar) o diferencia
+  const enSeccion = x => seccion !== "dif" || difiereExcel(x);
+  const deSeccion = () => items.filter(enSeccion);
   const difLote = (x, l) => { const c = conteo(x.codigo, l.partida); return c ? Math.round((c.cantidad - c.tango) * 1e4) / 1e4 : null; };
   function cuentaLotes() {
     let total = 0, contados = 0, conDif = 0;
-    for (const x of items) for (const l of x.lotes) { total++; const d = difLote(x, l); if (d !== null) { contados++; if (Math.abs(d) > EPS) conDif++; } }
+    for (const x of deSeccion()) for (const l of x.lotes) { total++; const d = difLote(x, l); if (d !== null) { contados++; if (Math.abs(d) > EPS) conDif++; } }
     return { total, contados, conDif };
   }
   function pasaFiltro(x) {
     if (filtro === "todos") return true;
-    if (filtro === "excel") return difiereExcel(x);
     const ds = x.lotes.map(l => difLote(x, l));
     if (filtro === "sin") return !x.lotes.length || ds.some(d => d === null);
     if (filtro === "contados") return x.lotes.length && ds.every(d => d !== null);
@@ -290,6 +302,19 @@
 
     if (!abierto) frag.push(el("p", "info", "Este recuento está cerrado: se puede ver y descargar, pero para seguir contando hay que reabrirlo (Más opciones)."));
 
+    if (seccion === null || (seccion === "dif" && !rc.referencia)) seccion = rc.referencia ? "dif" : "todo";
+    if (rc.referencia) {
+      const nDif = items.filter(difiereExcel).length;
+      const sec = el("div", "secciones"); sec.setAttribute("role", "group"); sec.setAttribute("aria-label", "Qué contar");
+      for (const [id, tit, sub] of [["dif", "Diferencias", `${nDif} que no coinciden con el Excel`],
+                                    ["todo", "Todo el stock", `${items.length} artículos en Central`]]) {
+        const b = el("button", "seccion " + id); b.type = "button"; b.setAttribute("aria-pressed", String(seccion === id));
+        b.append(el("b", "", tit), el("small", "", sub));
+        b.addEventListener("click", () => { seccion = id; filtro = "todos"; mostrar = POR_PAGINA; dibujarRecuento(); });
+        sec.append(b);
+      }
+      frag.push(sec);
+    }
     const barra = el("div", "barra");
     const br = el("div", "barra-rc");
     const busc = el("div", "buscador");
@@ -308,13 +333,14 @@
     const lab = el("label", "ceros"); const chk = el("input"); chk.type = "checkbox"; chk.checked = conCeros;
     chk.addEventListener("change", () => { conCeros = chk.checked; try { localStorage.setItem("ht_recuento_ceros", conCeros ? "1" : "0"); } catch {} cargarRecuento(false); });
     lab.append(chk, "Incluir artículos en cero");
+    lab.hidden = seccion === "dif";
     bf.append(fs, lab);
     barra.append(br, aviso, bf);
     frag.push(barra);
 
     if (!rc.referencia && abierto) {
       const pista = el("div", "info pista-excel");
-      pista.append(el("span", "", "Cargá la comparación con el inventario Excel para marcar los artículos que difieren."));
+      pista.append(el("span", "", "¿Solo querés contar lo que no coincide con el Excel? Cargá la comparación con el inventario y aparece la sección Diferencias."));
       const b = el("button", "boton chico", "Cargar comparación"); b.type = "button";
       b.addEventListener("click", cargarComparacion);
       pista.append(b); frag.push(pista);
@@ -337,19 +363,18 @@
   }
 
   function dibujarFiltros() {
-    const n = { todos: items.length, excel: 0, sin: 0, contados: 0, dif: 0 };
-    for (const x of items) {
-      if (difiereExcel(x)) n.excel++;
+    const lista = deSeccion();
+    const n = { todos: lista.length, sin: 0, contados: 0, dif: 0 };
+    for (const x of lista) {
       const ds = x.lotes.map(l => difLote(x, l));
       if (!x.lotes.length || ds.some(d => d === null)) n.sin++;
       if (x.lotes.length && ds.every(d => d !== null)) n.contados++;
       if (ds.some(d => d !== null && Math.abs(d) > EPS)) n.dif++;
     }
     const fs = $("filtros"); fs.replaceChildren();
-    const opciones = [["todos", "Todos"], ["sin", "Sin contar"], ["contados", "Contados"], ["dif", "Con diferencia"]];
-    if (rc.referencia) opciones.splice(1, 0, ["excel", "Difieren con el Excel"]);
+    const opciones = [["todos", "Todos"], ["sin", "Sin contar"], ["contados", "Contados"], ["dif", "Contado ≠ Tango"]];
     for (const [id, t] of opciones) {
-      const b = el("button", "filtro" + (id === "dif" || id === "excel" ? " alerta" : ""), t); b.type = "button";
+      const b = el("button", "filtro" + (id === "dif" ? " alerta" : ""), t); b.type = "button";
       b.append(el("b", "", String(n[id]))); b.setAttribute("aria-pressed", String(filtro === id));
       b.addEventListener("click", () => { filtro = id; mostrar = POR_PAGINA; dibujarArticulos(); });
       fs.append(b);
@@ -365,8 +390,15 @@
   function dibujarArticulos() {
     dibujarFiltros();
     const ts = tokens($("q").value);
-    const vis = items.filter(x => pasaFiltro(x) && ts.every(t => x._t.includes(t)));
+    const vis = deSeccion().filter(x => pasaFiltro(x) && ts.every(t => x._t.includes(t)));
     const cont = $("articulos"); cont.replaceChildren();
+    if (!vis.length && seccion === "dif" && ts.length && items.some(x => ts.every(t => x._t.includes(t)))) {
+      cont.append(el("p", "aviso", "No está entre las diferencias con el Excel."));
+      const b = el("button", "boton chico", "Buscarlo en todo el stock"); b.type = "button";
+      b.addEventListener("click", () => { const v = $("q").value; seccion = "todo"; dibujarRecuento(); $("q").value = v; document.querySelector(".barra .limpiar").hidden = false; dibujarArticulos(); });
+      cont.append(b);
+      return;
+    }
     if (!vis.length) {
       const p = el("p", "aviso", ts.length ? "No hay artículos que coincidan." : filtro === "dif" ? "Ningún lote contado tiene diferencia." : "No hay nada en esta vista.");
       cont.append(p);
@@ -546,7 +578,8 @@
             x = { codigo: a.codigo, descripcion: a.descripcion, unidad: a.unidad, partidas: !!a.usa_partidas, lotes: [], _t: t };
             items.unshift(x);
           }
-          $("q").value = a.codigo; filtro = "todos"; dibujarArticulos();
+          if (seccion === "dif" && !difiereExcel(x)) { seccion = "todo"; dibujarRecuento(); }
+          $("q").value = a.codigo; filtro = "todos"; document.querySelector(".barra .limpiar").hidden = false; dibujarArticulos();
           if (x.partidas) agregarLote(x); else if (!x.lotes.length) { x.lotes.push({ partida: "", tango: 0 }); redibujarTarjeta(x, ""); }
         });
         li.append(b); ul.append(li);
@@ -596,7 +629,7 @@
     elegirArchivo(".xlsx", async archivo => {
       const r = (await escribir("/api/recuentos/referencia", { id: rc.id, archivo })).datos;
       avisar(`Listo: ${r.con_diferencia ?? 0} artículos difieren con el Excel`);
-      filtro = r.con_diferencia ? "excel" : filtro;
+      if (r.con_diferencia) { seccion = "dif"; filtro = "todos"; }
     }, () => cargarRecuento(false));
   }
 
