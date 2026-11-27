@@ -11,6 +11,18 @@
 <link rel="stylesheet" href="/comun.css">
 <script>try{var t=localStorage.getItem("ht_tema");if(t==="claro"||t==="oscuro")document.documentElement.dataset.tema=t}catch(e){}</script>
 <style>
+  .diag h3 { font-size: .92rem; margin: 16px 0 6px; }
+  .diag .veredicto { font-size: 1rem; font-weight: 600; margin: 4px 0 2px; }
+  .diag .veredicto.ok { color: var(--patina); }
+  .diag .veredicto.no { color: var(--ambar); }
+  .diag dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0; font-size: .88rem; }
+  .diag dt { color: var(--plomo); }
+  .diag dd { margin: 0; overflow-wrap: anywhere; }
+  .diag ul { margin: 0; padding-left: 18px; font-size: .88rem; }
+  .diag li { margin: 3px 0; }
+  .diag li small { color: var(--plomo); }
+  .diag details { margin-top: 14px; font-size: .82rem; }
+  .diag details textarea { width: 100%; font-size: .72rem; margin-top: 6px; }
   .explica { margin: 8px 0 0; font-size: .86rem; max-width: 70ch; }
   .pestanas { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
   .pestana { font: inherit; font-size: .88rem; font-weight: 600; min-height: 36px; padding: 4px 14px; border-radius: 999px;
@@ -160,17 +172,121 @@
   // Para un remito que se sabe facturado pero cuya factura no aparece: busca en la base donde quedó la relación
   function botonDiagFactura(r) {
     const caja = el("p", "nota");
-    const b = el("button", "boton-texto", "¿Está facturado y no aparece? Buscar su factura en la base"); b.type = "button";
+    const texto0 = "¿Está facturado y no aparece? Buscar su factura en la base";
+    const b = el("button", "boton-texto", texto0); b.type = "button";
     b.addEventListener("click", async () => {
       b.disabled = true; b.textContent = "Buscando (puede tardar un par de minutos)…";
-      let texto;
-      try { texto = JSON.stringify({ remito: r.numero, ...(await pedir(`/api/remitos/${r.id}/diagnostico-factura`, true)).datos }, null, 1); }
-      catch (e) { texto = "Error: " + textoError(e); }
-      mostrarParaCopiar("Factura del remito " + r.numero_corto, texto);
-      b.disabled = false; b.textContent = "¿Está facturado y no aparece? Buscar su factura en la base";
+      try {
+        const datos = (await pedir(`/api/remitos/${r.id}/diagnostico-factura`, true)).datos;
+        if (datos.error) throw new Error(datos.error);
+        mostrarDiagFactura(r, datos);
+      } catch (e) { mostrarParaCopiar("Factura del remito " + r.numero_corto, "Error: " + textoError(e)); }
+      b.disabled = false; b.textContent = texto0;
     });
     caja.append(b);
     return caja;
+  }
+
+  // "R0000800000586" -> "R 0008-00000586"
+  const nroComp = n => { n = String(n || "").trim(); const m = n.match(/^([A-Z]?)\s*(\d{4,5})(\d{8})$/); return m ? `${m[1] ? m[1] + " " : ""}${m[2]}-${m[3]}` : n; };
+  const ESTADO_MOV = { P: "Pendiente de facturar", F: "Facturado", A: "Anulado" };
+  // Que es cada tabla de Tango donde puede aparecer el remito, en palabras
+  const TABLAS = {
+    GVA54: ["Factura hecha desde el remito", "factura"], GVA107: ["Factura hecha desde el remito (circuito de pedidos)", "factura"],
+    GVA12: ["Factura", "factura"], GVA53: ["Renglón de una factura", "factura"],
+    GVA55: ["Pedido del que salió", "pedido"], GVA106: ["Pedido del que salió", "pedido"], REFERENCIA_REMITO: ["Pedido del que salió", "pedido"],
+    GVA45: ["Textos del remito (descripciones de los renglones)", "texto"], STA09: ["Partidas que salieron del stock", "partida"],
+    STA14TY: ["Copia del remito impreso", "texto"],
+  };
+
+  function mostrarDiagFactura(r, d) {
+    const rem = (d.remito || [])[0] || {};
+    const coinc = d.coincidencias || [];
+    const deFactura = coinc.filter(c => (TABLAS[c.tabla] || [])[1] === "factura");
+    const facturas = new Set();
+    for (const c of deFactura) for (const f of c.ejemplo || []) {
+      const t = f.TCOMP_V || f.T_COMP_V || f.T_COMP, n = f.NCOMP_V || (c.tabla === "GVA54" ? f.N_COMP : f.N_COMP);
+      if (n && n !== rem.N_COMP) facturas.add(`${t || "FAC"} ${nroComp(n)}`);
+    }
+    const anulado = rem.ESTADO_MOV === "A" || (rem.FECHA_ANU && !String(rem.FECHA_ANU).startsWith("1800"));
+    HT.ventana("Remito " + (r.numero_corto || nroComp(rem.N_COMP)), (dlg, cerrar) => {
+      const v = el("div", "diag");
+      let veredicto, clase;
+      if (anulado) { veredicto = "El remito está anulado."; clase = "no"; }
+      else if (facturas.size) { veredicto = "Está facturado: " + [...facturas].join(", "); clase = "ok"; }
+      else if (deFactura.length) { veredicto = "Tango lo tiene vinculado a una factura."; clase = "ok"; }
+      else { veredicto = "Tango no tiene ninguna factura vinculada a este remito."; clase = "no"; }
+      v.append(el("p", "veredicto " + clase, veredicto));
+      if (!anulado && !deFactura.length) {
+        v.append(el("p", "nota", (d.facturas_cliente || []).length
+          ? "Abajo están las facturas de ese cliente cerca de la fecha: si alguna es la de este remito, se hizo sin vincularlo."
+          : "Tampoco hay facturas de ese cliente entre 15 días antes y 60 días después del remito: lo más probable es que no se haya facturado todavía (o que se facturó a otro cliente)."));
+      }
+
+      v.append(el("h3", "", "El remito"));
+      const dl = el("dl");
+      const fila = (k, val) => { if (val === undefined || val === null || val === "") return; dl.append(el("dt", "", k), el("dd", "", String(val))); };
+      fila("Cliente", rem.COD_PRO_CL);
+      fila("Fecha", fecha(rem.FECHA_MOV));
+      fila("Estado en Tango", anulado ? `Anulado${rem.USUARIO_ANU ? " por " + rem.USUARIO_ANU : ""}` : (ESTADO_MOV[rem.ESTADO_MOV] || rem.ESTADO_MOV));
+      if (typeof rem.CANTIDAD_KILOS === "number" && rem.CANTIDAD_KILOS) fila("Kilos", fmt.format(rem.CANTIDAD_KILOS));
+      if (typeof rem.IMPORTE_TOTAL_CON_IMPUESTOS === "number" && rem.IMPORTE_TOTAL_CON_IMPUESTOS)
+        fila("Importe", "$ " + HT.fmtPrecio.format(rem.IMPORTE_TOTAL_CON_IMPUESTOS) + (rem.COTIZ > 1 ? ` (cotización ${fmt.format(rem.COTIZ)})` : ""));
+      fila("Leyendas", [1, 2, 3, 4, 5].map(i => rem["LEYENDA" + i]).filter(Boolean).join(" · "));
+      fila("Lo hizo", [rem.USUARIO_INGRESO || rem.USUARIO, rem.TERMINAL_INGRESO].filter(Boolean).join(" en "));
+      v.append(dl);
+
+      const partidas = coinc.filter(c => c.tabla === "STA09").flatMap(c => c.ejemplo || []);
+      if (partidas.length) {
+        v.append(el("h3", "", "Qué salió del stock"));
+        const ul = el("ul");
+        for (const x of partidas) ul.append(el("li", "", `${x.COD_ARTICU} · partida ${x.N_PARTIDA || "-"} · ${fmt.format(x.CANTIDAD)}`));
+        v.append(ul);
+      }
+      const textos = coinc.filter(c => c.tabla === "GVA45").flatMap(c => c.ejemplo || []).map(x => x.DESC).filter(Boolean);
+      if (textos.length) {
+        v.append(el("h3", "", "Textos del remito"));
+        const ul = el("ul"); for (const t of textos) ul.append(el("li", "", t)); v.append(ul);
+      }
+
+      v.append(el("h3", "", "Dónde aparece en Tango"));
+      const ul = el("ul");
+      for (const c of coinc) {
+        const [nombre] = TABLAS[c.tabla] || [`Otra tabla (${c.tabla})`];
+        const li = el("li", "", nombre + " ");
+        li.append(el("small", "", `${c.tabla}.${c.columna} · ${c.filas} ${c.filas === 1 ? "registro" : "registros"}`));
+        ul.append(li);
+      }
+      if (!coinc.length) ul.append(el("li", "", "En ningún otro lado."));
+      v.append(ul);
+
+      const fc = d.facturas_cliente || [];
+      v.append(el("h3", "", "Facturas de ese cliente cerca de la fecha"));
+      if (!fc.length) v.append(el("p", "nota", "Ninguna."));
+      else {
+        const ulf = el("ul");
+        for (const f of fc) {
+          const li = el("li");
+          const a = el("a", "", `${f.T_COMP} ${nroComp(f.N_COMP)}`);
+          a.href = `/factura.pdf?t=${encodeURIComponent(f.T_COMP)}&n=${encodeURIComponent(f.N_COMP)}`; a.target = "_blank"; a.rel = "noopener";
+          li.append(a, el("small", "", ` · ${fecha(f.FECHA_EMIS)}` + (typeof f.IMPORTE === "number" ? ` · $ ${HT.fmtPrecio.format(f.IMPORTE)}` : "")));
+          ulf.append(li);
+        }
+        v.append(ulf);
+      }
+
+      const det = el("details"); det.append(el("summary", "", "Datos técnicos (para quien mantiene la Herramienta)"));
+      const texto = JSON.stringify({ remito: r.numero, ...d }, null, 1);
+      const ta = el("textarea"); ta.value = texto; ta.readOnly = true; ta.rows = 8;
+      det.append(ta); v.append(det);
+
+      const acc = el("div", "acciones");
+      const cp = el("button", "boton", "Copiar datos técnicos"); cp.type = "button";
+      cp.addEventListener("click", async () => { try { await navigator.clipboard.writeText(texto); } catch { ta.select(); document.execCommand("copy"); } cp.textContent = "Copiado"; });
+      const c = el("button", "boton primario", "Cerrar"); c.type = "button"; c.addEventListener("click", cerrar);
+      acc.append(cp, c);
+      dlg.append(v, acc);
+    });
   }
 
   function coincide(r, ts) {
